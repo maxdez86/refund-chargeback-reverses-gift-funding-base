@@ -1,0 +1,25 @@
+{
+  "name": "@brimax/infra-cdk",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cdk": "cdk",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@brimax/api": "workspace:*",
+    "@brimax/config": "workspace:*",
+    "aws-cdk-lib": "^2.196.0",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1017.0",
+    "esbuild": "^0.25.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

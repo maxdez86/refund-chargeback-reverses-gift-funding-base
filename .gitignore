@@ -1,3 +1,12 @@
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+.turbo/
+.pnpm-store/
+cdk.out/
+*.tsbuildinfo
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

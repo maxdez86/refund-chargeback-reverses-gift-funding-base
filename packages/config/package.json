@@ -1,0 +1,19 @@
+{
+  "name": "@brimax/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "test": "node -e \"console.log('No tests for @brimax/config')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
