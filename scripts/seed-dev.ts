@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { invitationKeys, phoneLookupIndex } from "../apps/api/src/services/dynamodb/key-builder";
+import { resourceName, resolveStage } from "../packages/config/src";
 
-const tableName = process.env.WEDDING_TABLE_NAME ?? "brimax-wedding-dev";
+const stage = resolveStage(process.env.STAGE);
+const tableName = process.env.WEDDING_TABLE_NAME ?? resourceName("brimax-wedding", stage);
 const invitationCode = process.env.INVITATION_CODE ?? "ABCD1234";
 const householdId = process.env.HOUSEHOLD_ID ?? "household-001";
 const guestId = process.env.GUEST_ID ?? randomUUID();

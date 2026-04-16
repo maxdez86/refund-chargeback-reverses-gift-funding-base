@@ -6,6 +6,12 @@ coverage/
 .pnpm-store/
 cdk.out/
 *.tsbuildinfo
+.terraform/
+.terraform.tfstate.lock.info
+.opentofu/
+*.tfstate
+*.tfstate.*
+crash.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

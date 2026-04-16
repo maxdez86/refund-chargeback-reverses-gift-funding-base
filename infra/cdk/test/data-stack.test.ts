@@ -26,4 +26,28 @@ describe("DataStack", () => {
 
     expect(template.toJSON()).toBeDefined();
   });
+
+  it("keeps production table names bare", () => {
+    const app = new cdk.App();
+    const stack = new DataStack(app, "ProdDataStack", {
+      stage: "prod"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "brimax-wedding"
+    });
+  });
+
+  it("adds a dev prefix to development table names", () => {
+    const app = new cdk.App();
+    const stack = new DataStack(app, "DevDataStack", {
+      stage: "dev"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "dev-brimax-wedding"
+    });
+  });
 });

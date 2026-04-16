@@ -1,0 +1,71 @@
+name: deploy-landing-page
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+      TOFU_STATE_KEY_PREFIX: ${{ secrets.TOFU_STATE_KEY_PREFIX }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build landing page
+        run: pnpm build:web
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Deploy platform stack
+        run: pnpm deploy:platform
+
+      - name: Deploy certificate stack
+        run: pnpm deploy:landing:cert
+
+      - name: Init certificate validation OpenTofu
+        run: bash scripts/landing-opentofu.sh certificate-validation init
+
+      - name: Apply certificate validation OpenTofu
+        run: bash scripts/landing-opentofu.sh certificate-validation apply -auto-approve
+
+      - name: Wait for ACM certificate issuance
+        run: pnpm wait:landing:cert
+
+      - name: Deploy landing edge stack
+        run: pnpm deploy:landing:edge
+
+      - name: Init landing DNS OpenTofu
+        run: bash scripts/landing-opentofu.sh edge-dns init
+
+      - name: Apply landing DNS OpenTofu
+        run: bash scripts/landing-opentofu.sh edge-dns apply -auto-approve

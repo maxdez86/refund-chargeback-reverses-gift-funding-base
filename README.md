@@ -32,7 +32,8 @@ pnpm synth
 
 ## Stages
 
-- `dev`
-- `prod`
+- Default stage: `prod`
+- Optional non-production stage: `dev`
 
-Stage selection is handled through the `STAGE` environment variable and CDK context defaults.
+Stage behavior is centralized in `packages/config`.
+Production names stay bare, and `dev` resources receive a `dev-` prefix only when `STAGE=dev` or CDK context explicitly selects `dev`.

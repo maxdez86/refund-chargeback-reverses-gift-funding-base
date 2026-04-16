@@ -33,5 +33,8 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build landing page
+        run: pnpm build:web
+
       - name: CDK Synth
         run: pnpm synth
