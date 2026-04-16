@@ -4,6 +4,14 @@ This runbook is for the **first production deploy** of the landing page to `brim
 
 Use **two terminals** because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
 
+This bootstrap also establishes the baseline edge hardening through IaC:
+- Cloudflare minimum TLS version `1.2`
+- `Strict-Transport-Security`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- CloudFront host-header restriction so only `brimax.life` and `www.brimax.life` are served
+
 ## Prerequisites
 
 1. Create a Cloudflare API token for the `brimax.life` zone with:
@@ -131,6 +139,11 @@ This creates the Cloudflare DNS records that point:
 
 CloudFront then redirects `www.brimax.life` to `brimax.life`.
 
+This same `edge-dns` apply also enforces:
+- `ssl = strict`
+- `always_use_https = on`
+- `min_tls_version = 1.2`
+
 ## Full First-Time Command Sequence
 
 ### Terminal 1
@@ -168,6 +181,13 @@ bash scripts/landing-opentofu.sh edge-dns apply
 - `BrimaxCertificateStack` reaches `CREATE_COMPLETE`
 - `pnpm wait:landing:cert` reports the ACM certificate as `ISSUED`
 - `BrimaxEdgeStack` reaches `CREATE_COMPLETE`
+- Cloudflare minimum TLS version is `1.2`
+- `https://brimax.life` returns:
+  - `strict-transport-security`
+  - `x-content-type-options: nosniff`
+  - `x-frame-options: DENY`
+  - `referrer-policy: strict-origin-when-cross-origin`
 - `https://brimax.life` renders the landing page
 - `https://www.brimax.life` redirects to `https://brimax.life`
+- `https://ds721j5fxkwu6.cloudfront.net` returns `403`
 - Cloudflare records are proxied

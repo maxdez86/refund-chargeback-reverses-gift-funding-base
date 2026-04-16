@@ -55,5 +55,56 @@ describe("EdgeStack", () => {
         Aliases: ["brimax.life", "www.brimax.life"]
       })
     });
+
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('host === "www\\.brimax\\.life"')
+    });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('host !== "brimax\\.life"')
+    });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('statusCode: 403')
+    });
+  });
+
+  it("attaches a response headers policy with the baseline security headers", () => {
+    const app = new cdk.App();
+    const stack = new EdgeStack(app, "TestEdgeSecurityHeadersStack", {
+      siteAssetPath: fixtureSiteAssetPath,
+      stage: "prod"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
+      ResponseHeadersPolicyConfig: Match.objectLike({
+        SecurityHeadersConfig: Match.objectLike({
+          ContentTypeOptions: Match.objectLike({
+            Override: true
+          }),
+          FrameOptions: Match.objectLike({
+            FrameOption: "DENY",
+            Override: true
+          }),
+          ReferrerPolicy: Match.objectLike({
+            Override: true,
+            ReferrerPolicy: "strict-origin-when-cross-origin"
+          }),
+          StrictTransportSecurity: Match.objectLike({
+            AccessControlMaxAgeSec: 31536000,
+            IncludeSubdomains: true,
+            Override: true,
+            Preload: false
+          })
+        })
+      })
+    });
+
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          ResponseHeadersPolicyId: Match.anyValue()
+        })
+      })
+    });
   });
 });

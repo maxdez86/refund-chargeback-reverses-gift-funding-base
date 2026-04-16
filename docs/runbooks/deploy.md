@@ -36,11 +36,6 @@ After the certificate has already been issued and the DNS wiring exists, the lan
 source .env
 pnpm build:web
 pnpm deploy:landing:edge
-```
-
-If DNS needs to be reconciled again:
-
-```bash
 bash scripts/landing-opentofu.sh edge-dns init
 bash scripts/landing-opentofu.sh edge-dns apply
 ```
@@ -53,4 +48,8 @@ bash scripts/landing-opentofu.sh edge-dns apply
 - `prod` is the default stage, so you do not need to pass `stage=prod`.
 - Use `STAGE=dev` or `--context stage=dev` only when you intentionally want prefixed development resources.
 - First-time landing-page DNS and certificate validation are handled in `infra/opentofu`; use the two-terminal bootstrap steps in [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1).
+- Edge hardening is part of the normal managed deploy:
+  - CloudFront adds the baseline security headers
+  - CloudFront only serves the canonical hosts and rejects the default `cloudfront.net` hostname
+  - OpenTofu keeps Cloudflare `ssl`, `always_use_https`, and `min_tls_version` aligned
 - Keep production resources on retain policies unless there is a deliberate teardown plan.
