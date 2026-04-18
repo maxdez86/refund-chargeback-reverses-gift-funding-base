@@ -11,5 +11,5 @@ if [[ "${STAGE}" == "dev" ]]; then
   CDK_ARGS+=(--context "stage=dev")
 fi
 
-pnpm --filter @brimax/web build
+pnpm build:web
 pnpm --filter @brimax/infra-cdk cdk deploy "${LANDING_EDGE_STACK_NAME}" --require-approval never "${CDK_ARGS[@]}"

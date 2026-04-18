@@ -30,6 +30,13 @@ downloads/
 eggs/
 .eggs/
 lib/
+!infra/cdk/lib/
+infra/cdk/lib/*
+!infra/cdk/lib/constructs/
+infra/cdk/lib/constructs/*
+!infra/cdk/lib/constructs/website/
+infra/cdk/lib/constructs/website/*
+!infra/cdk/lib/constructs/website/static-site-construct.ts
 lib64/
 parts/
 sdist/

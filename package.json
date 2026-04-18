@@ -5,7 +5,7 @@
   "packageManager": "pnpm@9.12.1",
   "scripts": {
     "build": "pnpm -r build",
-    "build:web": "pnpm --filter @brimax/web build",
+    "build:web": "pnpm --filter @brimax/web build && pnpm --filter @brimax/web-v2 build",
     "deploy:platform": "bash scripts/deploy-platform.sh",
     "dev:web": "pnpm --filter @brimax/web dev",
     "deploy:landing:cert": "bash scripts/deploy-landing-certificate.sh",

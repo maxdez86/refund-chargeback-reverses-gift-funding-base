@@ -65,6 +65,15 @@ describe("EdgeStack", () => {
     template.hasResourceProperties("AWS::CloudFront::Function", {
       FunctionCode: Match.stringLikeRegexp('statusCode: 403')
     });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp("rewriteVersionedLandingPath")
+    });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('"/index\\.html"')
+    });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp("v\\[123\\]")
+    });
   });
 
   it("attaches a response headers policy with the baseline security headers", () => {
