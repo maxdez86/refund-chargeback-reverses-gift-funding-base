@@ -11,6 +11,7 @@
 
 ```bash
 source .env
+pnpm build:web
 pnpm typecheck
 pnpm test
 pnpm --filter @brimax/infra-cdk cdk synth
@@ -43,6 +44,7 @@ bash scripts/landing-opentofu.sh edge-dns apply
 ## Notes
 
 - Source your local `.env` before running deploy commands.
+- `pnpm build:web` assembles the full production landing bundle for `/`, `/v2`, `/v3`, and `/v4` into `apps/web/dist`.
 - The first landing-page bootstrap is intentionally documented separately because the certificate validation step blocks in one terminal while OpenTofu must run in another.
 - Replace placeholder secrets before deploying webhook or admin flows.
 - `prod` is the default stage, so you do not need to pass `stage=prod`.

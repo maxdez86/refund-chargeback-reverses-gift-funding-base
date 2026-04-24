@@ -33,7 +33,7 @@ export class StaticSiteConstruct extends Construct {
         ? new cloudfront.Function(this, "CanonicalHostRedirect", {
             code: cloudfront.FunctionCode.fromInline(`
 function rewriteVersionedLandingPath(uri) {
-  var match = /^\\/(v[123])\\/?$/.exec(uri);
+  var match = /^\\/(v[234])\\/?$/.exec(uri);
   if (!match) {
     return uri;
   }
