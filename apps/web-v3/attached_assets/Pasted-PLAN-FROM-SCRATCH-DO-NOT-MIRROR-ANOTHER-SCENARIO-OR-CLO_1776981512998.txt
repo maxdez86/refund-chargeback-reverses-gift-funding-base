@@ -1,0 +1,167 @@
+PLAN FROM SCRATCH. DO NOT MIRROR ANOTHER SCENARIO OR CLONE ANOTHER PROJECT.
+
+# S15 - Step 04 - Hero, Contagem Regressiva e Local
+
+## Goal
+
+Specify the first conversion path and the essential event information.
+
+Read `15-design-references.md` before making decisions in this step. The Distilled Creative Brief must inform hero composition, animation technique, and first-impression choices.
+
+This step covers the opening frame, the countdown, and the venue section. These sections must make the wedding identity, date, time, and location immediately clear for mobile guests.
+
+---
+
+## Scope
+
+This step covers:
+
+- Section 1, `Hero`
+- Section 2, `Countdown`
+- Section 5, `Local da Cerimônia`
+- first-viewport CTA placement
+- event-detail presentation
+- map/link affordance
+
+This step does not cover:
+
+- story carousel
+- pre-wedding carousel
+- RSVP group lookup internals
+- gift list content
+
+---
+
+## Section 1 - Hero
+
+Purpose:
+
+- establish the premium carousel-led wedding identity immediately
+- make `Brida e Max` the dominant first-viewport signal
+- give guests the essential event details
+- provide the primary RSVP action
+
+Required visible content:
+
+- `Brida e Max`
+- `06/12/2026`
+- `15:00`
+- `Buffet Tulipas - Unidade Villa Valentim`
+- `Confirmar Presença`
+- optional secondary link to `Lista de Presentes`
+
+Hero treatment:
+
+- free-style opening frame as defined in Step 01
+- editorial, warm, playful-premium composition
+- may use cropped photo moments from the Couple Photo Source Library defined in Step 01
+- use premium replaceable image placeholders only if the listed couple photos are unavailable or unsuitable for the chosen composition
+- may include a subtle carousel cue that previews swipeable chapters
+- must not look like a generic centered wedding template
+- apply hero composition and first-impression insights from `15-design-references.md`
+
+Recommended pt-BR supporting copy:
+
+- `Vamos celebrar esse dia ao lado das pessoas que fazem parte da nossa história.`
+- `São Paulo, 06 de dezembro de 2026`
+
+Implementation requirements:
+
+- primary CTA scrolls to `#confirmar-presenca`
+- secondary CTA scrolls to `#presentes`
+- event details remain readable on mobile
+- image treatment must not obscure text
+- do not use the Couple Photo Source Library for gift, padrinhos, or vendor imagery
+- do not depend on hover for any important information
+
+---
+
+## Section 2 - Countdown
+
+Purpose:
+
+- create anticipation for the ceremony
+- reinforce the date and time
+- keep the page emotionally warm without reducing clarity
+
+Countdown target:
+
+- `06/12/2026 15:00`
+- local wedding time in São Paulo, Brazil
+
+Required display units:
+
+- dias
+- horas
+- minutos
+- segundos
+
+Recommended pt-BR labels:
+
+- `Faltam`
+- `dias`
+- `horas`
+- `minutos`
+- `segundos`
+- `para celebrarmos juntos`
+
+Behavior:
+
+- update live on the frontend
+- keep numbers readable
+- handle post-event state gracefully with pt-BR copy such as `Hoje celebramos esse momento especial.`
+- avoid over-animated numeric changes
+
+---
+
+## Section 5 - Local da Cerimônia
+
+Purpose:
+
+- make the venue immediately useful for guests
+- reduce friction for mobile visitors who need directions
+
+Required visible content:
+
+- `Buffet Tulipas - Unidade Villa Valentim`
+- `Rua Valentim Magalhães, 293 - São Paulo - SP`
+- `06/12/2026`
+- `15:00`
+
+Recommended pt-BR headings and labels:
+
+- `Local da Cerimônia`
+- `Buffet Tulipas - Unidade Villa Valentim`
+- `Rua Valentim Magalhães, 293 - São Paulo - SP`
+- `Ver no mapa`
+- `Cerimônia às 15h`
+
+Map/link requirement:
+
+- Include an elegant map or external map link affordance when possible.
+- The map action should open directions for the exact address.
+- If embedding a map is not practical, use a polished link button instead.
+
+Mobile requirements:
+
+- address must be selectable or easy to copy when feasible
+- map action must have a comfortable touch target
+- venue information must not be hidden inside a carousel
+
+---
+
+## Expected Output
+
+After this step, the implementer has build-ready requirements for:
+
+- a strong first viewport informed by external design references
+- primary conversion CTA placement
+- countdown logic and copy
+- venue detail presentation
+- mobile-friendly directions
+
+## Dependencies
+
+- Step 01, `Fundação do Cenário, Direção Criativa e Biblioteca de Fotos`
+- Step 02, `Pesquisa de Referências de Design` — read `15-design-references.md` before proceeding
+- Step 03, `Estrutura Geral da Página e Navegação`

@@ -1,0 +1,166 @@
+PLAN FROM SCRATCH. DO NOT MIRROR ANOTHER SCENARIO OR CLONE ANOTHER PROJECT.
+
+# S15 - Step 02 - Pesquisa de Referências de Design
+
+## Goal
+
+Research external reference websites before any implementation begins.
+
+This step instructs the implementing model to review and analyze a curated list of high-quality websites known for exceptional design systems and complex animations. The findings must be captured in a shared project document so every subsequent step can use them as creative reference.
+
+Do not build any wedding page content in this step. Only research, document, and save.
+
+---
+
+## Scope
+
+This step covers:
+
+- in-browser review and visual analysis of the reference URLs listed below
+- extraction of relevant design patterns, animation techniques, color strategies, typography, and layout choices
+- saving findings to a shared reference document in the current Bolt workspace
+- preparing a concise creative brief derived from the research for use in steps 03 onwards
+
+This step does not cover:
+
+- any section of the wedding page
+- code implementation
+- design decisions (those come in steps 03 onwards, informed by this research)
+
+---
+
+## Reference URLs
+
+<!-- ============================================================
+  ACTION REQUIRED BEFORE RUNNING THIS STEP
+  The project owner must add the reference website URLs below.
+  Add one URL per line under the "Sites to scrape" heading.
+  These should be websites with exceptional design systems and
+  complex animations that can inspire the wedding page build.
+  Examples of the kind of sites intended: award-winning agency
+  portfolios, luxury brand campaigns, creative studio sites,
+  Awwwards Site of the Year winners.
+  ============================================================ -->
+
+Sites to scrape:
+
+- https://www.mcshannock.design/
+- https://duyvenvoorde.nl/
+- https://www.galvanite.io/
+- https://elyse-residence-dev.webflow.io/
+- https://www.voxr.ai/
+- https://www.mockit.design/
+- https://www.assistantly.com/
+- https://haven-annecy.fr/en 
+
+Add as many URLs as needed. Remove this placeholder block once real URLs are inserted.
+
+---
+
+## Research Instructions
+
+For each URL in the list above, perform the following analysis:
+
+### Visual Design
+
+- What is the dominant color palette? List primary, secondary, and accent colors with approximate values.
+- What typographic scale and font choices are evident? Note heading weights, tracking, and hierarchy.
+- How is whitespace used? Is it generous, tight, editorial, or structured?
+- What layout grid or composition pattern is used? Describe the rhythm.
+- Are there notable asymmetric or editorial layout moments?
+
+### Animation and Motion
+
+- What types of animations are present? (scroll-triggered reveals, parallax, cursor-reactive, SVG morphing, page transitions, etc.)
+- How is motion paced? Is it slow and cinematic, fast and energetic, or somewhere between?
+- Are animations decorative or functional? How do they support the narrative?
+- What triggers interactions? (scroll position, hover, click, load)
+- Is `prefers-reduced-motion` or any graceful degradation visible?
+
+### Carousel and Horizontal Scroll
+
+- Does the site use any carousel, horizontal scroll, or swipe interaction?
+- How is the carousel indicated to the user? (arrows, dots, drag hints, partial card peek)
+- How are transitions handled between cards?
+- Note any particularly elegant or novel carousel technique.
+
+### Emotional Tone
+
+- What emotion does the site evoke on first impression?
+- What design choices most directly contribute to that emotion?
+- Is there warmth, coldness, tension, joy, intimacy, grandeur?
+
+### Technical Signals
+
+- What stack signals are visible? (CSS custom properties, SVG filters, WebGL, canvas, clip paths, view transitions)
+- Are there any interaction patterns that feel particularly well-suited to a mobile wedding experience?
+
+---
+
+## Output Requirements
+
+Create or update a workspace markdown document named `15-design-references.md`.
+
+The saved file must use this structure:
+
+```markdown
+# Design References - S15
+
+## Summary
+
+[3-5 sentences: the most important cross-site patterns that should inform the S15 wedding page.]
+
+## Per-Site Analysis
+
+### [Site name or URL]
+
+**Color palette:** ...
+**Typography:** ...
+**Whitespace and rhythm:** ...
+**Layout pattern:** ...
+**Animation types:** ...
+**Motion pacing:** ...
+**Carousel technique:** ...
+**Emotional tone:** ...
+**Technical signals:** ...
+**Most transferable insight for S15:** ...
+
+[Repeat for each site]
+
+## Distilled Creative Brief for S15
+
+[A concise actionable brief derived from the research. This section will be read by subsequent steps.
+Include:
+- 3-5 specific animation or motion techniques to adopt
+- 2-3 color strategy observations to consider
+- 2-3 typography or spacing choices to explore
+- Any carousel behavior worth emulating
+- Any pattern to explicitly avoid because it would conflict with the warm pt-BR wedding tone]
+```
+
+---
+
+## Usage by Subsequent Steps
+
+Every step from Step 03 onwards must read `15-design-references.md` before making implementation decisions. If all steps are happening in one continuous Bolt session, keep this document updated and continue using it as the shared reference.
+
+The Distilled Creative Brief section of that file is the primary reference. Implementation steps should reflect the research findings in their design choices, specifically for:
+
+- motion choreography and animation technique (Step 03 and 04)
+- carousel behavior and progress cues (Step 03 and later)
+- hero composition and first-impression impact (Step 04)
+- overall visual rhythm and typography scale (all steps)
+
+If the research findings conflict with a hard rule from Step 01 (such as pt-BR copy, mobile-first usability, or anti-generic constraints), Step 01 takes precedence.
+
+---
+
+## Expected Output
+
+After this step, the workspace contains a populated `15-design-references.md` document.
+
+Subsequent steps will read this document to make informed design decisions.
+
+## Dependencies
+
+- Step 01, `Fundação do Cenário, Direção Criativa e Biblioteca de Fotos`

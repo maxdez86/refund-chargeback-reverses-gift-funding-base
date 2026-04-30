@@ -1,0 +1,293 @@
+PLAN FROM SCRATCH. DO NOT MIRROR ANOTHER SCENARIO OR CLONE ANOTHER PROJECT.
+
+# S15 - Step 08 - Confirmar Presença por Grupo de Convite
+
+## Goal
+
+Implement the group-based guest confirmation section.
+
+The section must allow a guest to find their invitation by typing any authorized name in their invitation group, then confirm exactly which pre-authorized people from that group will attend.
+
+No extra guests can be added. No names can be changed. Only pre-authorized names are shown and selectable.
+
+This prompt is intended for a browser-based builder such as `bolt.new`. If no live backend is connected yet, keep the interaction fully functional with sample data in the project and preserve a clean path for later integration.
+
+---
+
+## Scope
+
+This step covers:
+
+- Section 9, `Confirmar Presença`
+- grouped guest data model
+- name-based lookup
+- group resolution from any member name
+- per-person checkbox selection
+- submission payload shape
+- empty, result, ambiguous, not-found, and success states
+- backend support requirements
+- fallback options if the target platform cannot support grouped RSVP
+
+This step does not cover:
+
+- adding extra guests
+- changing guest names
+- collecting attendee counts
+- admin screens
+- authentication
+- actual backend implementation unless separately approved
+
+---
+
+## Section 9 - Confirmar Presença
+
+Purpose:
+
+- prevent guests from adding uninvited people
+- make RSVP simple for families and invitation groups
+- keep the experience clear for older guests
+- preserve a future-friendly path to a real guest database and RSVP API
+
+Primary visible field label:
+
+- `Digite seu nome para localizar seu convite`
+
+After a successful lookup, show this prompt:
+
+- `Confirme quais convidados do seu convite irão comparecer:`
+
+---
+
+## Required Flow
+
+### Step A — Name Input
+
+- Display a single text input.
+- Label: `Digite seu nome para localizar seu convite`
+- Provide a clear submit action such as `Localizar convite`.
+
+### Step B — Data Lookup
+
+- Search a predefined guest list structured as invitation groups.
+- Any name in the group can be used as the search key — not only the primary name.
+- The system resolves the matched name to the full invitation group.
+
+### Step C — Show Only the Matched Group
+
+- After lookup, display only the people in the resolved invitation group.
+- Do not show other groups or unrelated guests.
+
+### Step D — Guest Selects Who Is Attending
+
+- Show one checkbox per pre-authorized person in the resolved group.
+- The guest checks or unchecks each name.
+- Do not provide any way to add people, change names, or enter a number of attendees.
+
+---
+
+## Guest Data Model
+
+Model the guest database as invitation groups.
+
+Recommended data shape:
+
+```js
+const invitationGroups = [
+  {
+    id: "grupo-jose-da-silva",
+    primaryName: "José da Silva",
+    guests: [
+      "José da Silva",
+      "Maria da Silva",
+      "Lucas da Silva",
+      "Estela da Silva"
+    ]
+  },
+  {
+    id: "grupo-ana-souza",
+    primaryName: "Ana Souza",
+    guests: [
+      "Ana Souza",
+      "Pedro Souza"
+    ]
+  }
+];
+```
+
+For fast lookup, derive an index where every guest name points to the group:
+
+```js
+const guestNameIndex = {
+  "jose da silva": "grupo-jose-da-silva",
+  "maria da silva": "grupo-jose-da-silva",
+  "lucas da silva": "grupo-jose-da-silva",
+  "estela da silva": "grupo-jose-da-silva",
+  "ana souza": "grupo-ana-souza",
+  "pedro souza": "grupo-ana-souza"
+};
+```
+
+No real guest list is currently available. Until a real list exists, use representative sample data that is easy to replace. Sample names may come from the padrinhos and madrinhas lists in Step 01. Sample data must be clearly marked as development placeholder data.
+
+---
+
+## Search Recommendation
+
+Use normalized exact matching first, then fuzzy matching.
+
+Normalization should handle:
+
+- case differences
+- leading/trailing whitespace
+- repeated internal spaces
+- common accent differences where applicable
+
+Fuzzy matching should support:
+
+- minor typos
+- partial first-and-last-name searches when confidence is high
+- ambiguous results when multiple groups are plausible
+
+Do not auto-select a group when the result is ambiguous.
+
+---
+
+## UI States
+
+Empty state:
+
+- Prompt the guest to type their name.
+- Example copy: `Digite seu nome como está no convite para localizarmos sua família.`
+
+Searching state:
+
+- Show a short loading state if lookup is asynchronous.
+- Example copy: `Localizando seu convite...`
+
+Results state:
+
+- If exactly one group is resolved, show only that group.
+- Display the prompt `Confirme quais convidados do seu convite irão comparecer:`
+- Show one checkbox per guest.
+
+Ambiguous state:
+
+- If multiple groups match, ask the guest to choose the correct invitation group.
+- Show enough information to distinguish groups without exposing the full guest database.
+- Example copy: `Encontramos mais de um convite parecido. Selecione o seu grupo para continuar.`
+
+Not-found state:
+
+- Suggest checking spelling and contacting the couple.
+- Required contact: `casamento@brimax.life`
+- Example copy: `Não encontramos esse nome. Confira a grafia ou fale com a gente pelo e-mail casamento@brimax.life.`
+
+Success state:
+
+- Show the selected names and confirmation status.
+- Be honest if the implementation is frontend-only.
+- Example copy for frontend-only prototype: `Confirmação registrada nesta experiência de teste. A integração final será conectada ao sistema de convidados.`
+
+---
+
+## Selection Constraints
+
+The RSVP UI must not include:
+
+- field to add extra people
+- field to change names
+- field to enter number of attendees
+- free-text guest name additions
+- plus-one controls
+
+Only pre-authorized names from the matched invitation group are shown and selectable.
+
+This prevents guests from adding uninvited people, such as relatives, friends, or extra children who are not on the authorized list.
+
+---
+
+## Submission Data
+
+Submission should store individual confirmations per name.
+
+Recommended payload shape:
+
+```js
+{
+  invitationGroupId: "grupo-jose-da-silva",
+  searchedName: "Maria da Silva",
+  confirmations: [
+    { name: "José da Silva", attending: true },
+    { name: "Maria da Silva", attending: true },
+    { name: "Lucas da Silva", attending: false },
+    { name: "Estela da Silva", attending: true }
+  ],
+  submittedAt: "ISO-8601 timestamp"
+}
+```
+
+The payload must not include unauthorized guest names.
+
+---
+
+## Data and Backend Requirements for Future Integration
+
+The target site must support:
+
+- guest database with group/family associations
+- name-based search
+- group resolution from any member's name
+- per-person checkbox selection
+- submission storage with individual confirmations per name
+- stable invitation group IDs
+- not-found and ambiguous lookup handling
+
+Recommended backend behavior:
+
+- normalized exact search first
+- fuzzy search second
+- never expose the full guest list publicly
+- rate-limit or otherwise protect the lookup endpoint if implemented server-side
+
+---
+
+## Fallback Options
+
+If the current build remains frontend-only and cannot yet support grouped RSVP with live data:
+
+**Fallback 1 — copy adjustment:**
+
+- collect only the number of attendees with honest copy
+- make clear that the couple will validate the invite list manually
+- this is less strict and does not fully prevent unauthorized additions
+
+**Fallback 2 — external custom form:**
+
+- use Google Forms, Typeform, Tally, or another form platform
+- configure conditional logic if available
+- keep copy pt-BR
+- use the landing page as the entry point and link out clearly
+
+**Fallback 3 — custom RSVP page:**
+
+- create a small custom-built page or endpoint dedicated to group lookup and confirmation
+- connect it to a real guest database
+- return guests to the main wedding site after submission if desired
+
+---
+
+## Expected Output
+
+After this step, the implementer has build-ready requirements for:
+
+- group-based RSVP behavior
+- guest data shape
+- name lookup strategy
+- checkbox confirmation UI
+- future backend contract
+- fallback options
+
+## Dependencies
+
+- Step 01, `Fundação do Cenário, Direção Criativa e Biblioteca de Fotos`
+- Step 03, `Estrutura Geral da Página e Navegação`

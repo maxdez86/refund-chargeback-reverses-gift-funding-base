@@ -1,0 +1,174 @@
+PLAN FROM SCRATCH. DO NOT MIRROR ANOTHER SCENARIO OR CLONE ANOTHER PROJECT.
+
+# S15 - Step 05 - Carrosséis Narrativos e Visuais
+
+## Goal
+
+Specify the carousel sections that tell the couple's story and present pre-wedding imagery.
+
+Read `15-design-references.md` before making decisions in this step. Apply insights about carousel transitions, image treatment, and emotional motion pacing to both sections here.
+
+These sections carry the emotional and visual core of the page. They must feel like swipeable chapters from a premium wedding memory deck.
+
+---
+
+## Scope
+
+This step covers:
+
+- Section 3, `Nossa História`
+- Section 4, `Pré-Wedding`
+- story card sequence
+- media handling
+- photo placeholder strategy
+- captions
+- carousel controls and progress cues for these sections
+
+This step does not cover:
+
+- padrinhos and vendors
+- gift registry cards
+- RSVP group lookup
+- global carousel rules already defined in Step 03
+
+---
+
+## Section 3 - Nossa História
+
+Purpose:
+
+- tell the relationship story through horizontal chapter cards
+- make the couple feel personal, warm, and specific
+- keep copy refined, clear, and not overly sentimental
+
+Carousel requirement:
+
+- Use a horizontal story carousel.
+- Each card tells one chapter with media and text.
+- Cards must be understandable independently.
+- The sequence must stay in the required order.
+
+Required card sequence:
+
+1. `A aula de teatro`
+   - Brida and Max met in theatre class.
+
+2. `Par romântico em cena`
+   - They worked together in a play as a couple.
+
+3. `O primeiro beijo`
+   - The first kiss happened during a rehearsal.
+
+4. `Depois da cortina`
+   - They started going out after the play ended.
+
+5. `Belo Horizonte`
+   - The official relationship request happened during a trip to Belo Horizonte for a football game.
+
+6. `Mais de 12 viagens`
+   - They have taken more than 12 trips together. This may use one or more cards if the design benefits from it.
+
+7. `O pedido nas alturas`
+   - The engagement happened during a hot air balloon flight.
+
+Copy requirements:
+
+- visible copy must be pt-BR
+- keep each card concise
+- use warm, natural language
+- do not invent extra factual events beyond the provided story beats
+
+Recommended card structure:
+
+- chapter number or small label
+- title
+- image/video slot using the Couple Photo Source Library from Step 01 where a Brida-and-Max photo improves the chapter
+- short paragraph
+- subtle progress indicator
+
+Recommended pt-BR heading:
+
+- `Nossa História`
+
+Recommended pt-BR intro:
+
+- `Antes do grande dia, existe uma história feita de encontros, palco, viagens e escolhas vividas com carinho.`
+
+---
+
+## Section 4 - Pré-Wedding
+
+Purpose:
+
+- create visual beauty and emotional connection
+- present pre-wedding imagery as a large image-first horizontal carousel
+
+Image handling:
+
+- Use the Couple Photo Source Library from Step 01 as the primary image source for Brida and Max.
+- Use those photos for `Pré-Wedding` and other Brida-and-Max couple media slots where they fit the composition.
+- If a listed couple photo is unavailable or unsuitable for a specific slot, create a premium replaceable placeholder.
+- Placeholders must make image slots obvious and easy to swap later.
+- Placeholders should be realistic and wedding-appropriate, not generic grey boxes.
+- Do not use the couple photo source library for `Lista de Presentes`, `Padrinhos e Madrinhas`, or vendor cards.
+
+Carousel requirement:
+
+- Use large visual cards.
+- Include captions where useful.
+- Keep image areas stable with defined aspect ratios.
+- Avoid hiding navigation or captions on hover only.
+
+Recommended pt-BR heading:
+
+- `Pré-Wedding`
+
+Recommended pt-BR supporting copy:
+
+- `Alguns registros para guardar a atmosfera desse caminho até o casamento.`
+
+Photo placeholder requirements:
+
+- each placeholder should identify its intended slot, such as `Foto pré-wedding 01`
+- replacement should require changing image paths or data entries, not restructuring layout
+- avoid fake claims that the placeholder is a real photo
+
+---
+
+## Section-Specific Carousel Controls
+
+Use the global carousel model from Step 03.
+
+For `Nossa História`:
+
+- show card number or chapter progress
+- make story titles visible at all times
+- support horizontal swipe on mobile
+- support desktop arrows and keyboard navigation where feasible
+
+For `Pré-Wedding`:
+
+- prioritize image scale
+- keep captions readable
+- show progress without covering important image areas
+- avoid excessive parallax that competes with the photos
+
+Apply carousel transition techniques from `15-design-references.md` that feel premium and emotionally appropriate for wedding storytelling.
+
+---
+
+## Expected Output
+
+After this step, the implementer has build-ready requirements for:
+
+- the full required story sequence
+- the pre-wedding carousel
+- media and placeholder handling
+- caption and progress behavior
+- emotional copy direction
+
+## Dependencies
+
+- Step 01, `Fundação do Cenário, Direção Criativa e Biblioteca de Fotos`
+- Step 02, `Pesquisa de Referências de Design` — read `15-design-references.md` before proceeding
+- Step 03, `Estrutura Geral da Página e Navegação`

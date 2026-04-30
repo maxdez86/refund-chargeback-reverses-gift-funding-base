@@ -1,0 +1,309 @@
+PLAN FROM SCRATCH. DO NOT MIRROR ANOTHER SCENARIO OR CLONE ANOTHER PROJECT.
+
+# S15 - Step 07 - Lista de Presentes
+
+## Goal
+
+Specify the secondary CTA and gift registry carousel.
+
+This section must be clear, tactile, honest about frontend-only behavior, and easy to connect to a real registry later. It supports two purchase models: full single purchase and fractional partial purchase for higher-value gifts.
+
+---
+
+## Scope
+
+This step covers:
+
+- Section 8, `Lista de Presentes`
+- gift card content requirements
+- realistic image or placeholder slots
+- two purchase models: full and fractional
+- fractional purchase eligibility rule (value > R$200)
+- quantity selector for fractional gifts
+- progress bar for partially funded gifts
+- three availability states: available, partially funded, fully funded
+- sorting logic
+- disabled fully-funded treatment
+- frontend-only messaging
+
+This step does not cover:
+
+- RSVP confirmation
+- vendor cards
+- FAQ
+- global carousel behavior already defined in Step 03
+
+---
+
+## Section 8 - Lista de Presentes
+
+Purpose:
+
+- provide the secondary conversion path
+- present gift options in a premium horizontal carousel
+- make both purchase models and funding progress clear to guests
+- avoid pretending a final registry integration exists if it does not
+
+Required CTA:
+
+- `Lista de Presentes`
+
+Recommended pt-BR heading:
+
+- `Lista de Presentes`
+
+Recommended pt-BR supporting copy:
+
+- `Se quiser nos presentear, preparamos uma seleção para nossa nova fase.`
+
+---
+
+## Gift Data Model
+
+Each gift item in the data layer must include:
+
+```js
+{
+  id: "presente-01",
+  name: "Panela de Pressão Elétrica",        // pt-BR name
+  description: "Para facilitar o dia a dia.", // short optional description
+  image: "...",                               // image URL or placeholder key
+  totalValue: 350.00,                         // full price in BRL
+  fractional: true,                           // true if value > R$200
+  partValue: 50.00,                           // value per part (only if fractional)
+  totalParts: 7,                              // totalValue / partValue (only if fractional)
+  partsFunded: 3,                             // parts already purchased by other guests
+  fullyFunded: false                          // true when partsFunded === totalParts
+}
+```
+
+For non-fractional gifts (value ≤ R$200):
+
+```js
+{
+  id: "presente-02",
+  name: "Jogo de Toalhas",
+  description: "Toalhas para o novo lar.",
+  image: "...",
+  totalValue: 120.00,
+  fractional: false,
+  partValue: null,
+  totalParts: null,
+  partsFunded: null,
+  fullyFunded: false   // true when the gift has been claimed/purchased entirely
+}
+```
+
+---
+
+## Purchase Model Rules
+
+### Rule 1 — Fractional Eligibility
+
+A gift is eligible for fractional purchase **only if its total value is greater than R$200**.
+
+Gifts at or below R$200 use the full-purchase model only.
+
+### Rule 2 — Part Calculation
+
+For fractional gifts, the number of parts and the value per part are defined in the data layer. The UI must reflect these values exactly.
+
+Example:
+
+- Gift total: R$1.000,00
+- Part value: R$50,00
+- Total parts: 20
+- If 7 parts are already funded: 35% funded, 13 parts remaining
+
+### Rule 3 — Quantity Selector
+
+When a guest opens a fractional gift card to contribute:
+
+- Show the part value clearly: `Cada cota: R$50,00`
+- Show a quantity input or stepper from `1` to the number of remaining parts
+- Show the contribution total in real time as the guest changes quantity: `Sua contribuição: R$150,00`
+- Show how many parts are still available: `13 cotas disponíveis`
+
+The quantity selector must not allow:
+
+- selecting more parts than are currently available
+- selecting zero parts
+- non-integer quantities
+
+### Rule 4 — Progress Bar
+
+All fractional gifts — whether partially or fully funded — must display a funding progress bar instead of a simple available/unavailable label.
+
+Progress bar requirements:
+
+- show the filled percentage visually: e.g. `35%`
+- show funded amount and total: e.g. `R$350 de R$1.000`
+- show remaining parts: e.g. `13 cotas restantes`
+- update to reflect the current `partsFunded` value from the data layer
+- when `partsFunded === totalParts`, the bar shows 100% and the item is treated as fully funded
+
+### Rule 5 — Fully Funded State
+
+A gift is fully funded when:
+
+- for fractional gifts: `partsFunded === totalParts`
+- for non-fractional gifts: `fullyFunded === true`
+
+Fully funded gifts must:
+
+- be visually disabled (greyed image, reduced opacity, `Presente já garantido` label)
+- show the completed progress bar at 100% for fractional items
+- not be clickable as an active gift
+- be sorted to the far right of the carousel
+
+### Rule 6 — Partially Funded State (fractional only)
+
+A fractional gift that has at least one part funded but is not yet fully funded is in the partially funded state.
+
+Partially funded gifts must:
+
+- appear before fully funded gifts in the carousel
+- appear after all non-fractional available gifts, or interleaved with available gifts — implementer may choose the most readable order
+- show the progress bar with the current funded percentage
+- remain clickable and available for further contributions
+
+---
+
+## Gift Card Requirements
+
+### Non-Fractional Gift Card (value ≤ R$200)
+
+Card content:
+
+- realistic fake photo or replaceable realistic image slot
+- gift name in pt-BR
+- short optional description
+- total value: e.g. `R$120,00`
+- availability action or label:
+  - available: `Escolher presente` or `Ver presente`
+  - unavailable: `Presente já garantido` (disabled, greyed)
+
+### Fractional Gift Card (value > R$200)
+
+Card content:
+
+- realistic fake photo or replaceable realistic image slot
+- gift name in pt-BR
+- short optional description
+- total value: e.g. `R$1.000,00`
+- part value: e.g. `Cotas de R$50,00`
+- funding progress bar showing percentage funded and amounts
+- remaining parts count
+- primary action:
+  - available/partial: `Contribuir` or `Escolher cotas`
+  - fully funded: `Presente já garantido` (disabled, greyed)
+
+### Expanded State (on click/tap for fractional gifts)
+
+When a guest taps or clicks a fractional gift card:
+
+- expand the card or open a panel/modal
+- show:
+  - gift photo and name
+  - `Cada cota: R$[partValue]`
+  - `[N] cotas disponíveis`
+  - quantity stepper: `−  [1]  +` clamped to `[1, remainingParts]`
+  - real-time contribution total: `Sua contribuição: R$[quantity × partValue]`
+  - funding progress bar
+  - confirm action: `Confirmar contribuição`
+  - cancel/close action
+- be honest that this is frontend-only if a real payment integration does not exist
+
+---
+
+## Gift Examples
+
+Include at least 8 gift items. Use a mix of fractional and non-fractional items.
+
+Suggested items:
+
+| Name | Approx. Value | Model |
+|------|--------------|-------|
+| `Robô de Cozinha` | R$1.200 | Fractional (cotas de R$60) |
+| `Jogo de Panelas` | R$800 | Fractional (cotas de R$50) |
+| `Aparelho de Jantar` | R$600 | Fractional (cotas de R$50) |
+| `Aspirador Robô` | R$500 | Fractional (cotas de R$50) |
+| `Jogo de Cama King` | R$350 | Fractional (cotas de R$50) |
+| `Jogo de Toalhas` | R$150 | Full purchase |
+| `Porta-retratos` | R$80 | Full purchase |
+| `Vela decorativa` | R$60 | Full purchase |
+
+Pre-populate some items as partially funded and at least one as fully funded to demonstrate the states in the prototype.
+
+---
+
+## Images
+
+- use real registry-quality images only if available and approved
+- otherwise use replaceable realistic slots that look like actual household/wedding gift items
+- do not use the Couple Photo Source Library from Step 01 for gift-card imagery
+- do not use generic blank or grey boxes
+- keep image aspect ratios stable across all card types
+
+---
+
+## Availability States Summary
+
+| State | Condition | Visual treatment | Position in carousel |
+|-------|-----------|-----------------|----------------------|
+| Available | Not funded, non-fractional, `fullyFunded: false` | Full image, active CTA | Left / first |
+| Available fractional | Partial gift with 0 parts funded | Full image, progress bar at 0%, `Contribuir` CTA | Left / with available |
+| Partially funded | Fractional, `partsFunded > 0`, not yet 100% | Full image, progress bar, `Contribuir` CTA | After fully available, before fully funded |
+| Fully funded | `fullyFunded: true` or `partsFunded === totalParts` | Greyed image, 100% bar or disabled label, not clickable | Far right / last |
+
+Required carousel sort order:
+
+1. Available non-fractional gifts
+2. Available fractional gifts (0% funded)
+3. Partially funded fractional gifts (sorted by funding percentage ascending, least funded first)
+4. Fully funded gifts (last, visually disabled)
+
+---
+
+## Frontend-Only Behavior
+
+If a real payment integration does not exist:
+
+- do not simulate a payment flow
+- on confirming a contribution, show an honest success message such as: `Obrigado pelo seu interesse! O link para a lista completa estará disponível em breve.`
+- keep all card components structured so a real URL or API endpoint can be wired in later per item or globally
+- the quantity selector and progress bar must still function visually to demonstrate the interaction model
+
+---
+
+## Carousel Requirements
+
+Use the global carousel model from Step 03.
+
+Additional gift-specific requirements:
+
+- availability and progress state must be visible without hover
+- progress bars must not be confused with carousel progress indicators — use distinct visual treatments
+- fully funded disabled cards must remain readable but clearly inactive
+- mobile cards must show item name, price, state, and primary action in one clear view
+- the expanded/detail state for fractional gifts must work well on a small screen without requiring a new page
+
+---
+
+## Expected Output
+
+After this step, the implementer has build-ready requirements for:
+
+- gift registry carousel content
+- two gift card shapes (full and fractional)
+- image slot strategy
+- three availability states with distinct visual treatments
+- fractional quantity selector behavior and constraints
+- funding progress bar display and real-time update
+- carousel sort order covering all four states
+- honest frontend-only CTA behavior
+
+## Dependencies
+
+- Step 01, `Fundação do Cenário, Direção Criativa e Biblioteca de Fotos`
+- Step 03, `Estrutura Geral da Página e Navegação`
