@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:web": "bash scripts/build-landing-bundle.sh",
+    "dev:all-web": "bash scripts/dev-all-web-apps.sh",
     "deploy:platform": "bash scripts/deploy-platform.sh",
     "dev:web": "pnpm --filter @brimax/web dev",
     "deploy:landing:cert": "bash scripts/deploy-landing-certificate.sh",

@@ -34,6 +34,21 @@ pnpm test
 pnpm synth
 ```
 
+Run all frontend apps locally and open each one in your browser:
+
+```bash
+pnpm dev:all-web
+```
+
+This starts:
+
+- `apps/web` on `http://127.0.0.1:5173`
+- `apps/web-v2` on `http://127.0.0.1:5174`
+- `apps/web-v3/artifacts/brimax` on `http://127.0.0.1:5175`
+- `apps/web-v4` on `http://127.0.0.1:5176`
+
+Logs are written to `.tmp/dev-all-web-apps/`. Keep the command running; use `Ctrl+C` to stop every app.
+
 `pnpm build:web` assembles the production landing bundle in `apps/web/dist` with:
 
 - `/` from `apps/web`
