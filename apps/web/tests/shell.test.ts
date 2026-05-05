@@ -1,15 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("index.html", () => {
-  it("contains the updated pt-BR shell metadata", () => {
-    const currentPackagePath = resolve(process.cwd(), "index.html");
-    const repoRootPath = resolve(process.cwd(), "apps/web/index.html");
-    const html = readFileSync(existsSync(currentPackagePath) ? currentPackagePath : repoRootPath, "utf8");
+  it("contains migrated brimax shell metadata", () => {
+    const html = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
 
-    expect(html).toContain('<html lang="pt-BR">');
-    expect(html).toContain("<title>Brida e Max | 06/12/2026</title>");
-    expect(html).toContain('name="description"');
+    expect(html).toContain('<html lang="pt-BR" class="scroll-smooth">');
+    expect(html).toContain("<title>Brimax — Casamento Brida e Max</title>");
+    expect(html).toContain("raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures/6.jpg");
     expect(html).toContain("fonts.googleapis.com");
   });
 });

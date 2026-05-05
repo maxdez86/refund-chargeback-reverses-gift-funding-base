@@ -8,7 +8,7 @@ const heroCopy = {
   dateShort: "06.12.2026",
   brideShort: "Brida",
   groomShort: "Max",
-  tagline: "Dois caminhos, uma só história. Celebre com a gente.",
+  tagline: "Feito com carinho para celebrar nosso amor.",
 } as const;
 
 function scrollToId(event: MouseEvent<HTMLAnchorElement>, id: string) {

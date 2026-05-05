@@ -1,64 +1,76 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { App } from "../src/app/App";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import App from "../src/App";
 
-describe("App", () => {
-  it("renders the wedding landing page in pt-BR", () => {
+describe("official web app", () => {
+  it("renders the migrated brimax landing page sections", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Brida e Max" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Contagem" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Brida/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Nossa História" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Lista de Presentes" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Confirmação por grupo de convite" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lista de Presentes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sua presença é o nosso maior presente" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tire suas dúvidas." })).toBeInTheDocument();
   });
 
-  it("opens the gift dialog and keeps funded gifts disabled", async () => {
+  it("opens the gift dialog flow", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Escolher cotas" })[0]);
-    const dialog = await waitFor(() => {
-      const element = document.querySelector(".gift-dialog[open]");
-      expect(element).not.toBeNull();
-      return element as HTMLElement;
-    });
+    fireEvent.click(screen.getAllByRole("button", { name: /Contribuir|Escolher presente/i })[0]);
 
-    expect(within(dialog).getByRole("heading", { name: "Robô de Cozinha" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar contribuição" }));
     expect(
-      screen.getByText("Obrigado pelo seu interesse! O link para a lista completa estará disponível em breve.")
+      await screen.findByRole("heading", { name: /4 Toalhas de Banho|Armário de Cozinha/i })
     ).toBeInTheDocument();
 
-    expect(document.querySelector(".gift-action.is-disabled")).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar contribuição" }));
+
+    expect(
+      await screen.findByText(
+        /Obrigado pelo seu interesse! O link para a lista completa estará disponível em breve./i
+      )
+    ).toBeInTheDocument();
   });
 
-  it("resolves an invitation group and prevents adding names", async () => {
+  it("resolves an RSVP group and supports ambiguous search results", async () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText("Digite seu nome para localizar seu convite"), {
-      target: { value: "Débora" }
+      target: { value: "Débora" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Localizar convite" }));
 
-    expect(await screen.findByText("Confirme quais convidados do seu convite irão comparecer:")).toBeInTheDocument();
-    expect(screen.getByLabelText("Débora")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Adicionar/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Confirme quais convidados do seu convite irão comparecer:")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Débora")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar presença" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+    expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar outro convite/i }));
+    fireEvent.change(screen.getByLabelText("Digite seu nome para localizar seu convite"), {
+      target: { value: "Car" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Localizar convite" }));
+
+    expect(
+      await screen.findByText(
+        "Encontramos mais de um convite parecido. Selecione o seu grupo para continuar."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the local section map link and venue media", async () => {
+    render(<App />);
+
+    expect(screen.getByRole("link", { name: /Ver no mapa:/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("google.com/maps")
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Reproduzir Tour 360 do Villa Valentim/i }));
 
     await waitFor(() =>
-      expect(screen.getByText("Confirmação registrada nesta experiência de teste.")).toBeInTheDocument()
+      expect(screen.getByTitle("Tour 360 do Villa Valentim")).toBeInTheDocument()
     );
-  });
-
-  it("shows ambiguous RSVP choices when the search is not specific enough", async () => {
-    render(<App />);
-
-    fireEvent.change(screen.getByLabelText("Digite seu nome para localizar seu convite"), {
-      target: { value: "Car" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Localizar convite" }));
-
-    expect(await screen.findAllByText("Encontramos mais de um convite parecido.")).toHaveLength(2);
-    expect(document.querySelectorAll(".rsvp-choice-card").length).toBeGreaterThan(1);
   });
 });
