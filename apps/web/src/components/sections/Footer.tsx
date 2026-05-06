@@ -19,7 +19,6 @@ export function Footer() {
       </div>
 
       <div className="relative mx-auto max-w-4xl px-6 text-center">
-        <div className="footer-v2-brand text-2xl text-[#d6ae64]">Brimax</div>
         <p className="font-serif mx-auto mt-6 max-w-md text-2xl italic text-[#fbf7f0] md:text-3xl">
           Com amor, Brida &amp; Max.
         </p>

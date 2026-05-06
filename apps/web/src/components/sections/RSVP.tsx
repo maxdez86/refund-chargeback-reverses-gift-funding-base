@@ -14,8 +14,8 @@ type InvitationGroup = {
 const invitationGroups: InvitationGroup[] = [
   {
     id: "grupo-amanda-cris",
-    primaryName: "Amanda e Cris",
-    guests: ["Amanda", "Cris"],
+    primaryName: "Amanda e Chris",
+    guests: ["Amanda", "Chris"],
   },
   {
     id: "grupo-fabi-fernando",
@@ -209,9 +209,6 @@ export function RSVP() {
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           >
-            <span className="text-sm font-medium tracking-[0.2em] uppercase text-muted-foreground mb-4 block">
-              Sua presença
-            </span>
             <h2 className="font-serif text-4xl md:text-5xl text-foreground mb-4">
               Sua presença é o nosso maior presente
             </h2>
@@ -256,12 +253,6 @@ export function RSVP() {
                       Localizar convite
                     </Button>
                   </div>
-                  {result.kind === "empty" && (
-                    <p className="text-xs text-muted-foreground">
-                      Digite seu nome como está no convite para localizarmos sua
-                      família.
-                    </p>
-                  )}
                 </form>
 
                 {result.kind === "not-found" && (

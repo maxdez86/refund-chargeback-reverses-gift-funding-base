@@ -8,7 +8,7 @@ const heroCopy = {
   dateShort: "06.12.2026",
   brideShort: "Brida",
   groomShort: "Max",
-  tagline: "Feito com carinho para celebrar nosso amor.",
+  tagline: "A medida do amor é amar sem medida.",
 } as const;
 
 function scrollToId(event: MouseEvent<HTMLAnchorElement>, id: string) {

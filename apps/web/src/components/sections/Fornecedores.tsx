@@ -37,9 +37,6 @@ export function Fornecedores() {
           <h2 className="fornecedores-v2-balance font-serif mt-4 text-3xl text-[#30251f] md:text-4xl">
             Profissionais que tornaram tudo possível.
           </h2>
-          <p className="mt-5 text-base leading-relaxed text-[#6e5b4f]">
-            Siga e mande um carinho para quem está fazendo esse dia acontecer.
-          </p>
         </motion.div>
 
         <div className="mx-auto mt-12 grid max-w-5xl grid-cols-2 gap-4 md:grid-cols-4 md:gap-5">

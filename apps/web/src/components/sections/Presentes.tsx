@@ -478,9 +478,6 @@ export function Presentes() {
           transition={{ duration: 0.8 }}
           className="max-w-xl"
         >
-          <span className="text-sm font-medium tracking-[0.2em] uppercase text-muted-foreground mb-4 block">
-            Carinho em forma de presente
-          </span>
           <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-6">
             Se você quiser nos<br />presentear
           </h2>
