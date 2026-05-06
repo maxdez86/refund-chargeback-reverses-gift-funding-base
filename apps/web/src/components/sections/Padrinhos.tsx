@@ -49,7 +49,7 @@ const people: Person[] = [
   { id: "nessa-carlos", name: "Nessa e Carlos" },
   { id: "nicolas", name: "Nícolas", role: "Pajem" },
   { id: "nuza-sid", name: "Nuza e Sid" },
-  { id: "raquel", name: "Raquel", role: "Madrinha" },
+  { id: "raquel", name: "Raquel", role: "Madrinha", photo: "padrinhos/Raquel.jpeg" },
   { id: "tami-marcos", name: "Tami e Marcos", photo: "padrinhos/Tami%20e%20Marcos.jpeg" },
 ];
 
