@@ -31,10 +31,10 @@ type Person = {
 const people: Person[] = [
   { id: "nilza-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photo: "padrinhos/Nilza%20e%20Cerqueira.jpeg" },
   { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true },
-  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva", isFamily: true },
+  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva", isFamily: true, photo: "padrinhos/Cristiane%20e%20Juliano.jpeg" },
   { id: "alice", name: "Alice", role: "Madrinha", photo: "padrinhos/Alice.jpeg" },
   { id: "amanda-cris", name: "Amanda e Chris" },
-  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra" },
+  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photo: "padrinhos/Ana%20Clara.jpeg" },
   { id: "Carlinhos", name: "Carlinhos", role: "Pajem" },
   { id: "carol-igor", name: "Carol e Igor" },
   { id: "debora-nael", name: "Débora e Nael" },
