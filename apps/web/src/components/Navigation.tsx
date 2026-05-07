@@ -67,7 +67,11 @@ export function Navigation() {
                   <a
                     href={link.href}
                     onClick={(e) => scrollTo(e, link.href)}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    className={`text-sm font-medium transition-colors ${
+                      isScrolled
+                        ? "text-muted-foreground hover:text-foreground"
+                        : "text-[#fbf7f0]/80 hover:text-[#fbf7f0]"
+                    }`}
                   >
                     {link.label}
                   </a>

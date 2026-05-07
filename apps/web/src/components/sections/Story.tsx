@@ -102,9 +102,30 @@ export function Story() {
     return () => node.removeEventListener("keydown", onKey);
   }, [emblaApi]);
 
+  useEffect(() => {
+    if (!emblaApi) return;
+    const root = emblaApi.rootNode();
+    let lastFire = 0;
+    const onWheel = (e: WheelEvent) => {
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(delta) < 4) return;
+      const goingNext = delta > 0;
+      if (goingNext && !emblaApi.canScrollNext()) return;
+      if (!goingNext && !emblaApi.canScrollPrev()) return;
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastFire < 220) return;
+      lastFire = now;
+      if (goingNext) emblaApi.scrollNext();
+      else emblaApi.scrollPrev();
+    };
+    root.addEventListener("wheel", onWheel, { passive: false });
+    return () => root.removeEventListener("wheel", onWheel);
+  }, [emblaApi]);
+
   return (
-    <section id="historia" className="py-24 md:py-32 bg-background overflow-hidden">
-      <div className="container mx-auto px-6 mb-12 md:mb-20 flex flex-col md:flex-row md:items-end justify-between gap-8">
+    <section id="historia" className="py-16 md:py-20 bg-background overflow-hidden">
+      <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}

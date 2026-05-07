@@ -235,8 +235,8 @@ html {
 .padrinhos-v4-heading {
   font-family: "Cormorant Garamond", "Times New Roman", serif;
   letter-spacing: -0.02em;
-  font-size: clamp(2.75rem, 4.8vw, 4.9rem);
-  line-height: 0.98;
+  font-size: clamp(2.25rem, 4vw, 3.75rem);
+  line-height: 1.05;
 }
 
 .padrinhos-v4-eyebrow {

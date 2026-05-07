@@ -31,11 +31,11 @@ type Person = {
 const people: Person[] = [
   { id: "nilza-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photo: "padrinhos/Nilza%20e%20Cerqueira.jpeg" },
   { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true },
-  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva", isFamily: true, photo: "padrinhos/Cristiane%20e%20Juliano.jpeg" },
+  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva & Padrinho", isFamily: true, photo: "padrinhos/Cristiane%20e%20Juliano.jpeg" },
   { id: "alice", name: "Alice", role: "Madrinha", photo: "padrinhos/Alice.jpeg" },
   { id: "amanda-cris", name: "Amanda e Chris" },
   { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photo: "padrinhos/Ana%20Clara.jpeg" },
-  { id: "Carlinhos", name: "Carlinhos", role: "Pajem" },
+  { id: "Carlinhos", name: "Carlinhos", role: "Pajem", photo: "padrinhos/Carlinhos.jpeg" },
   { id: "carol-igor", name: "Carol e Igor" },
   { id: "debora-nael", name: "Débora e Nael" },
   { id: "drielly", name: "Drielly", role: "Madrinha", photo: "padrinhos/Drielly.jpeg" },
@@ -113,9 +113,9 @@ export function Padrinhos() {
     <section
       id="padrinhos"
       aria-labelledby="padrinhos-heading"
-      className="padrinhos-v4 overflow-hidden bg-[#f5efe6] py-24 text-foreground md:py-32"
+      className="padrinhos-v4 overflow-hidden bg-[#f5efe6] py-16 text-foreground md:py-20"
     >
-      <div className="container mx-auto px-6 mb-12 md:mb-20 flex flex-col md:flex-row md:items-end justify-between gap-8">
+      <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
