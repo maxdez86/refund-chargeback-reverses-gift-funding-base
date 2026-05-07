@@ -35,7 +35,7 @@ export function Hero() {
           <img
             src={`${PHOTO_BASE}/hero.jpeg`}
             alt="Casal de mãos dadas ao pôr do sol"
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover object-[50%_50%] md:object-[50%_48%] xl:object-[50%_42%] 2xl:object-[50%_38%]"
             fetchPriority="high"
           />
         </picture>
