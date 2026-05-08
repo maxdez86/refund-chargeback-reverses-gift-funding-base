@@ -6,13 +6,25 @@ import { cn } from "@/lib/utils";
 const faqs = [
   {
     question: "Qual o dress code?",
-    answer:
-      "Esporte fino / Passeio completo. Queremos que você se sinta elegante e confortável para aproveitar a festa. Evite as cores branco, off-white e tons de rosa muito claros (reservados para as madrinhas)."
+    answer: (
+      <>
+        Esporte fino / Passeio completo. Queremos que você se sinta elegante e confortável para aproveitar a festa. Evite as cores branco, off-white e tons de rosa muito claros (reservados para as madrinhas).{" "}
+        <a
+          href="https://photos.app.goo.gl/GwwmS9diZCcBzQ1u8"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
+        >
+          Veja aqui
+        </a>
+        {" "}a paleta que escolhemos para os padrinhos para ter uma ideia das cores que combinam com a celebração.
+      </>
+    )
   },
   {
     question: "Crianças são bem-vindas?",
     answer:
-      "Amamos os pequenos, mas devido ao formato da nossa celebração, o evento será restrito a adultos, com exceção de familiares muito próximos já convidados. Esperamos que compreendam e aproveitem a noite livre!"
+      "Sim, os pequenos são muito bem-vindos! Durante a festa teremos um espaço kids com muitos brinquedos divertidos e três profissionais especializados cuidando das crianças, para que você possa aproveitar a celebração com tranquilidade."
   },
   {
     question: "Há estacionamento no local?",
@@ -20,14 +32,14 @@ const faqs = [
       "Sim, o Buffet Tulipas conta com serviço de valet com manobrista no local para maior conforto dos convidados."
   },
   {
-    question: "Como funcionam os presentes?",
+    question: "Os presentes da lista são reais ou apenas ilustrativos?",
     answer:
-      "Para nós, sua presença é o maior presente! Porém, se desejar contribuir para nossa vida juntos e lua de mel, disponibilizamos nossa chave PIX na seção 'Lista de Presentes'."
+      "Reais! Cada item foi escolhido por nós com carinho para a nossa nova casa. Para facilitar, você escolhe o presente e nós mesmos compramos todos de uma vez no final, assim eles chegam direto na nossa futura casa, sem que você precise se preocupar com a loja."
   },
   {
     question: "Qual o horário de chegada ideal?",
     answer:
-      "A cerimônia começará pontualmente às 15:00. Recomendamos chegar com 15 a 30 minutos de antecedência para se acomodar com tranquilidade."
+      "A cerimônia começará às 15:00. Recomendamos chegar com 15 minutos de antecedência para se acomodar com tranquilidade."
   },
   {
     question: "Hospedagem sugerida?",
@@ -35,14 +47,29 @@ const faqs = [
       "Para quem vem de fora, existem ótimas opções no bairro do Tatuapé e região, que ficam a uma curta distância do buffet."
   },
   {
-    question: "Como voltar após a festa?",
-    answer:
-      "Recomendamos fortemente o uso de aplicativos de transporte como Uber ou táxi, especialmente se for consumir bebidas alcoólicas. A região é de fácil acesso."
-  },
-  {
     question: "Fotos nas redes sociais?",
     answer:
-      "Por favor! Adoramos fotos. Use nossa hashtag #brimax nas redes sociais para podermos ver todos os momentos especiais pelos olhos de vocês."
+      "Por favor! Adoramos fotos. Marque nosso @brimax.life no instagram para podermos ver todos os momentos especiais pelos olhos de vocês."
+  },
+  {
+    question: "Posso pedir para os fotógrafos tirarem uma foto minha?",
+    answer:
+      "Por favor, recomendamos muito! Todos vocês estarão lindos e queremos registrar o máximo de fotos com nossos convidados. Contratamos um time de fotografia maravilhoso e eles estarão atentos para fotografar todos. Depois da festa, vamos disponibilizar um link com todas as fotos profissionais para que vocês possam baixar à vontade — então aproveitem para tirar aquela foto especial!"
+  },
+  {
+    question: "Posso levar um convidado que não está na lista?",
+    answer: (
+      <>
+        Pedimos desculpas se nos esquecemos de incluir alguém especial no seu convite! Por gentileza, envie um e-mail para{" "}
+        <a
+          href="mailto:casamento@brimax.life"
+          className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
+        >
+          casamento@brimax.life
+        </a>
+        {" "}com o nome do convidado para que possamos atualizar o sistema. Muito obrigado pela compreensão!
+      </>
+    )
   }
 ];
 
@@ -52,7 +79,7 @@ function FaqItem({
   onClick,
   question,
 }: {
-  answer: string;
+  answer: React.ReactNode;
   isOpen: boolean;
   onClick: () => void;
   question: string;
