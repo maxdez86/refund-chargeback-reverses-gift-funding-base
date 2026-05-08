@@ -79,7 +79,7 @@ const giftsData: Gift[] = [
   fractional("g-microondas", "Micro-ondas", 484, "microondas_484.jpg"),
   single("g-processador", "Processador de Alimentos", 129, "processador_129.jpg"),
   single("g-purificador", "Purificador de Água", 169, "purificador_agua_169.png"),
-  fractional("g-refrigerador", "Refrigerador Brastemp", 2911, "Refrigerador_Brastemp_2911_z.webp"),
+  fractional("g-refrigerador", "Geladeira Brastemp", 2960, "Geladeira_Brastemp_2960.jpg"),
   fractional("g-sofa", "Sofá", 1482, "sofa_ 1482.webp"),
   single("g-steamer", "Steamer", 141, "steamer_141.jpg"),
   single("g-travesseiros", "Travesseiros", 59, "travesseiros_59.jpg"),

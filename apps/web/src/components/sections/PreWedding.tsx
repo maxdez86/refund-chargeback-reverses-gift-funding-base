@@ -15,9 +15,6 @@ export function PreWedding() {
           <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-6">
             Pré-Wedding
           </h2>
-          <p className="text-lg text-muted-foreground font-light leading-relaxed">
-            Alguns registros para guardar a atmosfera desse caminho até o casamento.
-          </p>
         </motion.div>
       </div>
 

@@ -29,8 +29,8 @@ const invitationGroups: InvitationGroup[] = [
   },
   {
     id: "grupo-elis-son",
-    primaryName: "Elis e Son",
-    guests: ["Elis", "Son"],
+    primaryName: "Elís e Son",
+    guests: ["Elís", "Son"],
   },
   {
     id: "grupo-kelly-sa",
