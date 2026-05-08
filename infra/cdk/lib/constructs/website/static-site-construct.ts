@@ -1,4 +1,4 @@
-import { Duration } from "aws-cdk-lib";
+import { Duration, Size } from "aws-cdk-lib";
 import path from "node:path";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
@@ -32,15 +32,6 @@ export class StaticSiteConstruct extends Construct {
       props.rootDomain && props.wwwDomain
         ? new cloudfront.Function(this, "CanonicalHostRedirect", {
             code: cloudfront.FunctionCode.fromInline(`
-function rewriteVersionedLandingPath(uri) {
-  var match = /^\\/(v[234])\\/?$/.exec(uri);
-  if (!match) {
-    return uri;
-  }
-
-  return "/" + match[1] + "/index.html";
-}
-
 function serializeQuerystring(querystring) {
   var parts = [];
   for (var key in querystring) {
@@ -63,8 +54,6 @@ function serializeQuerystring(querystring) {
 function handler(event) {
   var request = event.request;
   var host = request.headers.host && request.headers.host.value;
-
-  request.uri = rewriteVersionedLandingPath(request.uri);
 
   if (host === "${props.wwwDomain}") {
     return {
@@ -149,6 +138,8 @@ function handler(event) {
       destinationBucket: this.bucket,
       distribution: this.distribution,
       distributionPaths: ["/*"],
+      ephemeralStorageSize: Size.gibibytes(1),
+      memoryLimit: 1024,
       sources: [s3deploy.Source.asset(path.resolve(props.siteAssetPath))]
     });
   }

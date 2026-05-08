@@ -53,7 +53,7 @@ pnpm deploy:landing:cert
 
 Expected behavior:
 - `pnpm deploy:platform` creates the OpenTofu backend bucket and lock table.
-- `pnpm build:web` assembles the production landing bundle for `/`, `/v2`, `/v3`, and `/v4`.
+- `pnpm build:web` assembles the production landing bundle for `apps/web`.
 - `pnpm deploy:landing:cert` starts `BrimaxCertificateStack`.
 - This last command will **pause** while ACM waits for DNS validation.
 

@@ -9,15 +9,9 @@ cd "${REPO_ROOT}"
 rm -rf apps/web/dist
 
 pnpm --filter @brimax/web build
-pnpm --filter @brimax/web-v2 build
-pnpm --dir apps/web-v3 --filter @workspace/brimax build:prod
-npm --prefix apps/web-v4 run build:prod
 
 required_files=(
   apps/web/dist/index.html
-  apps/web/dist/v2/index.html
-  apps/web/dist/v3/index.html
-  apps/web/dist/v4/index.html
 )
 
 for file in "${required_files[@]}"; do

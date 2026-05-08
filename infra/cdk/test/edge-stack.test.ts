@@ -65,22 +65,32 @@ describe("EdgeStack", () => {
     template.hasResourceProperties("AWS::CloudFront::Function", {
       FunctionCode: Match.stringLikeRegexp('statusCode: 403')
     });
-    template.hasResourceProperties("AWS::CloudFront::Function", {
-      FunctionCode: Match.stringLikeRegexp("rewriteVersionedLandingPath")
-    });
-    template.hasResourceProperties("AWS::CloudFront::Function", {
-      FunctionCode: Match.stringLikeRegexp('"/index\\.html"')
-    });
-
     const functionResources = template.findResources("AWS::CloudFront::Function");
     const functionCode = Object.values(functionResources)[0]?.Properties?.FunctionCode as string;
 
-    template.hasResourceProperties("AWS::CloudFront::Function", {
-      FunctionCode: Match.stringLikeRegexp("v\\[234\\]")
+    expect(functionCode).not.toContain("rewriteVersionedLandingPath");
+    expect(functionCode).not.toContain("v[234]");
+    expect(functionCode).not.toContain("/index.html");
+  });
+
+  it("configures the bucket deployment custom resource with higher Lambda resources", () => {
+    const app = new cdk.App();
+    const stack = new EdgeStack(app, "TestEdgeBucketDeploymentStack", {
+      siteAssetPath: fixtureSiteAssetPath,
+      stage: "prod"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("Custom::CDKBucketDeployment", {
+      ServiceToken: Match.anyValue()
     });
 
-    expect(functionCode).not.toContain("v[123]");
-    expect(functionCode).not.toContain("/(v[123])");
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      EphemeralStorage: {
+        Size: 1024
+      },
+      MemorySize: 1024
+    });
   });
 
   it("attaches a response headers policy with the baseline security headers", () => {

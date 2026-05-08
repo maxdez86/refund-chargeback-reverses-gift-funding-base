@@ -9,9 +9,6 @@ mkdir -p "${LOG_DIR}"
 
 apps=(
   "web|5173|pnpm --filter @brimax/web dev -- --host 0.0.0.0 --port 5173 --strictPort"
-  "web-v2|5174|pnpm --filter @brimax/web-v2 dev -- --host 0.0.0.0 --port 5174 --strictPort"
-  "web-v3|5175|PORT=5175 pnpm --dir apps/web-v3 --filter @workspace/brimax dev"
-  "web-v4|5176|npm --prefix apps/web-v4 run dev -- --host 0.0.0.0 --port 5176 --strictPort"
 )
 
 pids=()
@@ -88,5 +85,5 @@ for app in "${apps[@]}"; do
   open_url "http://127.0.0.1:${port}"
 done
 
-printf '\nAll web apps are running. Press Ctrl+C to stop them.\n'
+printf '\nThe web app is running. Press Ctrl+C to stop it.\n'
 wait
