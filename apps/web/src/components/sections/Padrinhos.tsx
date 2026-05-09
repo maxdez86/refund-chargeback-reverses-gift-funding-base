@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PHOTO_BASE =
@@ -57,17 +57,22 @@ export function Padrinhos() {
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start", skipSnaps: false });
   const [prevEnabled, setPrevEnabled] = useState(false);
   const [nextEnabled, setNextEnabled] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
-  const scrollTo = useCallback((i: number) => emblaApi && emblaApi.scrollTo(i), [emblaApi]);
+
+  const scrollToNext = useCallback(() => {
+    const el = document.querySelector("#fornecedores");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
 
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
     setPrevEnabled(emblaApi.canScrollPrev());
     setNextEnabled(emblaApi.canScrollNext());
-    setSelectedIndex(emblaApi.selectedScrollSnap());
   }, [emblaApi]);
 
   useEffect(() => {
@@ -93,12 +98,20 @@ export function Padrinhos() {
     const root = emblaApi.rootNode();
     let lastFire = 0;
     const onWheel = (e: WheelEvent) => {
+      const photoEl = root.querySelector<HTMLElement>("[data-padrinhos-photo]");
+      if (!photoEl) return;
+      const band = photoEl.getBoundingClientRect();
+      if (e.clientY < band.top || e.clientY > band.bottom) return;
+
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (Math.abs(delta) < 4) return;
+
+      e.preventDefault();
+
       const goingNext = delta > 0;
       if (goingNext && !emblaApi.canScrollNext()) return;
       if (!goingNext && !emblaApi.canScrollPrev()) return;
-      e.preventDefault();
+
       const now = Date.now();
       if (now - lastFire < 220) return;
       lastFire = now;
@@ -176,6 +189,7 @@ export function Padrinhos() {
                   aria-labelledby={`person-name-${person.id}`}
                 >
                   <div
+                    data-padrinhos-photo
                     className={`aspect-[3/4] rounded-2xl overflow-hidden mb-6 bg-muted relative ${
                       person.isFamily
                         ? "ring-2 ring-[#d6ae64] ring-offset-2 ring-offset-[#f5efe6]"
@@ -210,24 +224,16 @@ export function Padrinhos() {
         </div>
       </div>
 
-      <div
-        className="container mx-auto px-6 mt-4 flex justify-center gap-2"
-        role="tablist"
-        aria-label="Progresso do cortejo"
-      >
-        {people.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => scrollTo(i)}
-            aria-label={`Ir para a pessoa ${i + 1}`}
-            aria-selected={selectedIndex === i}
-            role="tab"
-            className={`h-2 rounded-full transition-all duration-300 ${
-              selectedIndex === i ? "w-8 bg-foreground" : "w-2 bg-foreground/25 hover:bg-foreground/50"
-            }`}
-          />
-        ))}
+      <div className="container mx-auto px-6 mt-6 flex justify-center">
+        <Button
+          variant="outline"
+          size="icon"
+          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          onClick={scrollToNext}
+          aria-label="Rolar para a próxima seção"
+        >
+          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+        </Button>
       </div>
     </section>
   );

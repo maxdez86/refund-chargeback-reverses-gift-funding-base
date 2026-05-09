@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
+    "./functions/asaas-webhook/handler": "./src/functions/asaas-webhook/handler.ts",
+    "./functions/asaas-webhook-processor/handler": "./src/functions/asaas-webhook-processor/handler.ts",
     "./functions/admin-export/handler": "./src/functions/admin-export/handler.ts",
     "./functions/invitation-get/handler": "./src/functions/invitation-get/handler.ts",
+    "./functions/payments-create/handler": "./src/functions/payments-create/handler.ts",
+    "./functions/payments-get/handler": "./src/functions/payments-get/handler.ts",
     "./functions/rsvp/handler": "./src/functions/rsvp/handler.ts",
     "./functions/stripe-webhook/handler": "./src/functions/stripe-webhook/handler.ts",
     "./functions/whatsapp-webhook/handler": "./src/functions/whatsapp-webhook/handler.ts"
@@ -17,6 +21,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.790.0",
+    "@aws-sdk/client-secrets-manager": "^3.924.0",
+    "@aws-sdk/client-sqs": "^3.924.0",
     "@aws-sdk/lib-dynamodb": "^3.790.0",
     "@brimax/config": "workspace:*",
     "@brimax/contracts": "workspace:*",
@@ -24,6 +30,7 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.149",
+    "@types/node": "^22.15.14",
     "typescript": "^5.8.3",
     "vitest": "^3.1.2"
   }

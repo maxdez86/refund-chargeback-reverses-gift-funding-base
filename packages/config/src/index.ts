@@ -1,6 +1,8 @@
 export const APP_STAGES = ["prod", "dev"] as const;
 export const DEFAULT_STAGE = "prod" as const;
 
+export * from "./gifts";
+
 export type AppStage = (typeof APP_STAGES)[number];
 
 export function resolveStage(value: string | undefined): AppStage {

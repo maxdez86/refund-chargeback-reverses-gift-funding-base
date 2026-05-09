@@ -40,6 +40,27 @@ export function webhookKeys(provider: string, eventId: string) {
   };
 }
 
+export function paymentKeys(paymentId: string) {
+  return {
+    PK: `PAYMENT#${paymentId}`,
+    SK: "PAYMENT"
+  };
+}
+
+export function idempotencyKeys(idempotencyKey: string) {
+  return {
+    PK: `IDEMPOTENCY#${idempotencyKey}`,
+    SK: "PAYMENT"
+  };
+}
+
+export function asaasPaymentLookupIndex(asaasPaymentId: string) {
+  return {
+    GSI1PK: `ASAAS#PAYMENT#${asaasPaymentId}`,
+    GSI1SK: "PAYMENT"
+  };
+}
+
 export function conversationKeys(phoneNumber: string) {
   return {
     PK: `PHONE#${phoneNumber}`,

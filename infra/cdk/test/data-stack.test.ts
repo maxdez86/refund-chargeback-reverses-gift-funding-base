@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DataStack } from "../lib/stacks/data-stack";
 
 describe("DataStack", () => {
-  it("creates a DynamoDB table with TTL and a phone lookup index", () => {
+  it("creates a DynamoDB table with TTL and the Asaas payment lookup index", () => {
     const app = new cdk.App();
     const stack = new DataStack(app, "TestDataStack", {
       stage: "dev"
