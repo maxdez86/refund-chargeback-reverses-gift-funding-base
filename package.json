@@ -7,6 +7,7 @@
     "build": "pnpm -r build",
     "build:web": "bash scripts/build-landing-bundle.sh",
     "dev:all-web": "bash scripts/dev-all-web-apps.sh",
+    "deploy:backend": "bash scripts/deploy-backend.sh",
     "deploy:platform": "bash scripts/deploy-platform.sh",
     "dev:web": "pnpm --filter @brimax/web dev",
     "deploy:landing:cert": "bash scripts/deploy-landing-certificate.sh",
@@ -19,6 +20,9 @@
     "opentofu:dns:init": "bash scripts/landing-opentofu.sh edge-dns init",
     "opentofu:dns:plan": "bash scripts/landing-opentofu.sh edge-dns plan",
     "synth": "pnpm build:web && pnpm --filter @brimax/infra-cdk cdk synth",
+    "test:payments:negative": "bash scripts/test-payments-negative.sh",
+    "test:payments:pix": "bash scripts/test-payments-pix.sh",
+    "test:payments:webhook": "bash scripts/test-payments-webhook.sh",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "wait:landing:cert": "bash scripts/wait-for-landing-certificate.sh"

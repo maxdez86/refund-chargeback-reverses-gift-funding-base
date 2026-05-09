@@ -43,6 +43,18 @@ Logs are written to `.tmp/dev-all-web-apps/`. Keep the command running; use `Ctr
 
 `pnpm build:web` assembles the production landing bundle for `apps/web` in `apps/web/dist`.
 
+## Payment API Testing
+
+Backend payment deployment and production API validation are documented in [docs/payments-api-testing.md](docs/payments-api-testing.md).
+Useful entrypoints:
+
+```bash
+pnpm deploy:backend
+pnpm test:payments:pix
+pnpm test:payments:webhook
+pnpm test:payments:negative
+```
+
 ## Stages
 
 - Default stage: `prod`
