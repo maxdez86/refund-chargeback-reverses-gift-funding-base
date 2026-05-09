@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PHOTO_BASE =
@@ -69,6 +69,14 @@ export function Padrinhos() {
     window.scrollTo({ top, behavior: "smooth" });
   }, []);
 
+  const scrollToPrev = useCallback(() => {
+    const el = document.querySelector("#local");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
     setPrevEnabled(emblaApi.canScrollPrev());
@@ -126,9 +134,9 @@ export function Padrinhos() {
     <section
       id="padrinhos"
       aria-labelledby="padrinhos-heading"
-      className="padrinhos-v4 overflow-hidden bg-[#f5efe6] py-16 text-foreground md:py-20"
+      className="padrinhos-v4 overflow-hidden bg-[#f5efe6] py-4 text-foreground md:py-6"
     >
-      <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
+      <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -136,10 +144,22 @@ export function Padrinhos() {
           transition={{ duration: 0.8 }}
           className="max-w-xl"
         >
-          <h2 id="padrinhos-heading" className="padrinhos-v4-heading mb-4">
+          <h2 id="padrinhos-heading" className="padrinhos-v4-heading">
             O Cortejo
           </h2>
         </motion.div>
+
+        <div className="hidden md:flex absolute inset-x-0 bottom-0 justify-center pointer-events-none">
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            onClick={scrollToPrev}
+            aria-label="Rolar para a seção anterior"
+          >
+            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+          </Button>
+        </div>
 
         <div className="hidden md:flex items-center gap-3">
           <Button
@@ -174,7 +194,7 @@ export function Padrinhos() {
           aria-roledescription="carrossel"
           aria-label="Carrossel de padrinhos, madrinhas e família"
         >
-          <div className="flex gap-6 md:gap-8 pb-12">
+          <div className="flex gap-6 md:gap-8 pb-2">
             {people.map((person, index) => {
               const photo = person.photo ?? placeholderPhotos[index % placeholderPhotos.length];
               const eyebrow = person.role ?? (person.isFamily ? "Família" : "Madrinha & Padrinho");
@@ -190,7 +210,7 @@ export function Padrinhos() {
                 >
                   <div
                     data-padrinhos-photo
-                    className={`aspect-[3/4] rounded-2xl overflow-hidden mb-6 bg-muted relative ${
+                    className={`aspect-[5/6] rounded-2xl overflow-hidden mb-3 bg-muted relative ${
                       person.isFamily
                         ? "ring-2 ring-[#d6ae64] ring-offset-2 ring-offset-[#f5efe6]"
                         : ""
@@ -224,7 +244,7 @@ export function Padrinhos() {
         </div>
       </div>
 
-      <div className="container mx-auto px-6 mt-6 flex justify-center">
+      <div className="container mx-auto px-6 mt-0 flex justify-center">
         <Button
           variant="outline"
           size="icon"
