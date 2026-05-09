@@ -1,0 +1,398 @@
+{
+  "/BrimaxAppStack/PublicHttpApiUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiUrl"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookUrl"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomainName": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomainName"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomainUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomainUrl"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomainRegionalTarget": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomainRegionalTarget"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomainRegionalHostedZoneId": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomainRegionalHostedZoneId"
+    }
+  ],
+  "/BrimaxAppStack/WeddingTableName": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WeddingTableName"
+    }
+  ],
+  "/BrimaxAppStack/WebhookQueueUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WebhookQueueUrl"
+    }
+  ],
+  "/BrimaxAppStack/AsaasApiSecretArn": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasApiSecretArn"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookSecretArn": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookSecretArn"
+    }
+  ],
+  "/BrimaxAppStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/BrimaxAppStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/BrimaxAppStack/AsaasApiSecret/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasApiSecret2FB7D6D5"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookSecret/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookSecret64DBF9DA"
+    }
+  ],
+  "/BrimaxAppStack/WebhookDlq/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WebhookDlqAEF195B3"
+    }
+  ],
+  "/BrimaxAppStack/WebhookQueue/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WebhookQueueA9D318EA"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApi954A824B"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomain/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomain9620A9CE"
+    }
+  ],
+  "/BrimaxAppStack/ApiCustomDomainMapping/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiCustomDomainMapping1A8E9120"
+    }
+  ],
+  "/BrimaxAppStack/CreatePaymentFunction/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreatePaymentFunction419FCB44"
+    }
+  ],
+  "/BrimaxAppStack/GetPaymentFunction/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "GetPaymentFunction0BB43E1F"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookFunction/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookFunction12DE391A"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookProcessorFunction/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookProcessorFunctionA70B1ED6"
+    }
+  ],
+  "/BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A"
+    }
+  ],
+  "/BrimaxAppStack/create-paymentCreateFailuresMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "createpaymentCreateFailuresMetricC7F6C388"
+    }
+  ],
+  "/BrimaxAppStack/create-paymentWebhookAuthMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "createpaymentWebhookAuthMetric8EF8888F"
+    }
+  ],
+  "/BrimaxAppStack/create-paymentWebhookDuplicateMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "createpaymentWebhookDuplicateMetric84A72357"
+    }
+  ],
+  "/BrimaxAppStack/create-paymentPaymentTransitionsMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "createpaymentPaymentTransitionsMetric4D9D8999"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhookCreateFailuresMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookCreateFailuresMetric1E044C18"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhookWebhookAuthMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookWebhookAuthMetricB96B5C8C"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhookWebhookDuplicateMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookWebhookDuplicateMetricB68A309D"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhookPaymentTransitionsMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookPaymentTransitionsMetric9B083C58"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhook-processorCreateFailuresMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookprocessorCreateFailuresMetricC998A21D"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhook-processorWebhookAuthMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookprocessorWebhookAuthMetricD787AEF6"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhook-processorWebhookDuplicateMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookprocessorWebhookDuplicateMetric6A8C8CDB"
+    }
+  ],
+  "/BrimaxAppStack/asaas-webhook-processorPaymentTransitionsMetric/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "asaaswebhookprocessorPaymentTransitionsMetric65ABA4E2"
+    }
+  ],
+  "/BrimaxAppStack/WebhookDlqAlarm/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WebhookDlqAlarmD64A2B49"
+    }
+  ],
+  "/BrimaxAppStack/CreatePaymentErrorsAlarm/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreatePaymentErrorsAlarm03359A32"
+    }
+  ],
+  "/BrimaxAppStack/WebhookProcessorErrorsAlarm/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WebhookProcessorErrorsAlarm7ED47FBA"
+    }
+  ],
+  "/BrimaxAppStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/BrimaxAppStack/CDKMetadata/Condition": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadataAvailable"
+    }
+  ],
+  "/BrimaxAppStack/Exports/Output{\"Ref\":\"PublicHttpApi954A824B\"}": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ExportsOutputRefPublicHttpApi954A824BFDAF0667"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/DefaultStage/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiDefaultStageC42D72D2"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--payments/CreatePaymentIntegration-Permission": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTpaymentsCreatePaymentIntegrationPermissionE4866522"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--payments/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTpaymentsBB8BA426"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/GetPaymentIntegration-Permission": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiGETpaymentspaymentIdGetPaymentIntegrationPermission527B5B41"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiGETpaymentspaymentId12AC16AF"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/AsaasWebhookIntegration-Permission": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTwebhooksasaasAsaasWebhookIntegrationPermission0783306A"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTwebhooksasaasC0DB9F57"
+    }
+  ],
+  "/BrimaxAppStack/CreatePaymentFunction/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreatePaymentFunctionServiceRoleAB96AA05"
+    }
+  ],
+  "/BrimaxAppStack/CreatePaymentFunction/LogRetention/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreatePaymentFunctionLogRetention2236CDDA"
+    }
+  ],
+  "/BrimaxAppStack/GetPaymentFunction/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "GetPaymentFunctionServiceRole12F32798"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookFunction/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookFunctionServiceRoleB88A95FC"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookFunction/LogRetention/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookFunctionLogRetention46EB1591"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookProcessorFunction/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookProcessorFunctionServiceRole6368F98B"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookProcessorFunction/SqsEventSource:BrimaxAppStackWebhookQueue428B2059/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookProcessorFunctionSqsEventSourceBrimaxAppStackWebhookQueue428B2059EAF00666"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookProcessorFunction/LogRetention/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookProcessorFunctionLogRetentionB68C82C6"
+    }
+  ],
+  "/BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--payments/CreatePaymentIntegration/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTpaymentsCreatePaymentIntegrationBA6EBFE7"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/GetPaymentIntegration/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiGETpaymentspaymentIdGetPaymentIntegrationA6736846"
+    }
+  ],
+  "/BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/AsaasWebhookIntegration/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PublicHttpApiPOSTwebhooksasaasAsaasWebhookIntegrationD3E43939"
+    }
+  ],
+  "/BrimaxAppStack/CreatePaymentFunction/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreatePaymentFunctionServiceRoleDefaultPolicy4B9002F1"
+    }
+  ],
+  "/BrimaxAppStack/GetPaymentFunction/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "GetPaymentFunctionServiceRoleDefaultPolicyAC4005AE"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookFunction/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookFunctionServiceRoleDefaultPolicy9B84D106"
+    }
+  ],
+  "/BrimaxAppStack/AsaasWebhookProcessorFunction/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AsaasWebhookProcessorFunctionServiceRoleDefaultPolicyCBD5FB45"
+    }
+  ],
+  "/BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB"
+    }
+  ]
+}

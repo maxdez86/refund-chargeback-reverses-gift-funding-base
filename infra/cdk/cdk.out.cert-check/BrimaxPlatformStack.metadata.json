@@ -1,0 +1,62 @@
+{
+  "/BrimaxPlatformStack/TofuStateBucketName": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuStateBucketName"
+    }
+  ],
+  "/BrimaxPlatformStack/TofuLockTableName": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuLockTableName"
+    }
+  ],
+  "/BrimaxPlatformStack/TofuBackendRegion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuBackendRegion"
+    }
+  ],
+  "/BrimaxPlatformStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/BrimaxPlatformStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/BrimaxPlatformStack/TofuStateBucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuStateBucketBF43C300"
+    }
+  ],
+  "/BrimaxPlatformStack/TofuLockTable/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuLockTableE37B47F4"
+    }
+  ],
+  "/BrimaxPlatformStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/BrimaxPlatformStack/CDKMetadata/Condition": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadataAvailable"
+    }
+  ],
+  "/BrimaxPlatformStack/TofuStateBucket/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TofuStateBucketPolicyFBF75126"
+    }
+  ]
+}

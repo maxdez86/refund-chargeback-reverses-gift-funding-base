@@ -1,0 +1,20 @@
+{
+  "version": "53.0.0",
+  "files": {
+    "bdd4348fbbde8cfb0f62ea203ca5cbe155bc96b61b9ae3aafc291447b983429a": {
+      "displayName": "BrimaxPlatformStack Template",
+      "source": {
+        "path": "BrimaxPlatformStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region-3779e37c": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "bdd4348fbbde8cfb0f62ea203ca5cbe155bc96b61b9ae3aafc291447b983429a.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODULE_NAME="${1:?Expected module name (certificate-validation or edge-dns)}"
+MODULE_NAME="${1:?Expected module name (certificate-validation, edge-dns, or api-dns)}"
 ACTION="${2:?Expected action (init, validate, plan, apply)}"
 shift 2
 
@@ -47,15 +47,23 @@ case "${ACTION}" in
         -var "root_validation_record_name=${ROOT_VALIDATION_RECORD_NAME}"
         -var "root_validation_record_type=${ROOT_VALIDATION_RECORD_TYPE}"
         -var "root_validation_record_value=${ROOT_VALIDATION_RECORD_VALUE}"
+        -var "api_validation_record_name=${API_VALIDATION_RECORD_NAME}"
+        -var "api_validation_record_type=${API_VALIDATION_RECORD_TYPE}"
+        -var "api_validation_record_value=${API_VALIDATION_RECORD_VALUE}"
         -var "www_validation_record_name=${WWW_VALIDATION_RECORD_NAME}"
         -var "www_validation_record_type=${WWW_VALIDATION_RECORD_TYPE}"
         -var "www_validation_record_value=${WWW_VALIDATION_RECORD_VALUE}"
       )
-    else
+    elif [[ "${MODULE_NAME}" == "edge-dns" ]]; then
       VAR_ARGS+=(
         -var "edge_stack_name=${LANDING_EDGE_STACK_NAME}"
         -var "root_domain=${ROOT_DOMAIN}"
         -var "www_domain=${WWW_DOMAIN}"
+      )
+    else
+      VAR_ARGS+=(
+        -var "app_stack_name=${PAYMENTS_STACK_NAME:-${STAGE_PREFIX}BrimaxAppStack}"
+        -var "api_domain=${API_DOMAIN}"
       )
     fi
 

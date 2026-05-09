@@ -1,0 +1,1946 @@
+{
+ "Resources": {
+  "AsaasApiSecret2FB7D6D5": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "Name": "/prod/brimax/asaas/api-key",
+    "SecretString": "{\"apiKey\":\"cdk-placeholder-asaas-api-key\"}"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasApiSecret/Resource"
+   }
+  },
+  "AsaasWebhookSecret64DBF9DA": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "Name": "/prod/brimax/asaas/webhook-token",
+    "SecretString": "{\"token\":\"cdk-placeholder-asaas-webhook-token\"}"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookSecret/Resource"
+   }
+  },
+  "WebhookDlqAEF195B3": {
+   "Type": "AWS::SQS::Queue",
+   "Properties": {
+    "MessageRetentionPeriod": 1209600
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/WebhookDlq/Resource"
+   }
+  },
+  "WebhookQueueA9D318EA": {
+   "Type": "AWS::SQS::Queue",
+   "Properties": {
+    "RedrivePolicy": {
+     "deadLetterTargetArn": {
+      "Fn::GetAtt": [
+       "WebhookDlqAEF195B3",
+       "Arn"
+      ]
+     },
+     "maxReceiveCount": 5
+    },
+    "VisibilityTimeout": 90
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/WebhookQueue/Resource"
+   }
+  },
+  "PublicHttpApi954A824B": {
+   "Type": "AWS::ApiGatewayV2::Api",
+   "Properties": {
+    "CorsConfiguration": {
+     "AllowHeaders": [
+      "content-type",
+      "idempotency-key",
+      "x-admin-token",
+      "asaas-access-token"
+     ],
+     "AllowMethods": [
+      "GET",
+      "POST",
+      "OPTIONS"
+     ],
+     "AllowOrigins": [
+      "*"
+     ]
+    },
+    "Name": "brimax-prod-api",
+    "ProtocolType": "HTTP"
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/Resource"
+   }
+  },
+  "PublicHttpApiDefaultStageC42D72D2": {
+   "Type": "AWS::ApiGatewayV2::Stage",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "AutoDeploy": true,
+    "DefaultRouteSettings": {
+     "ThrottlingBurstLimit": 20,
+     "ThrottlingRateLimit": 10
+    },
+    "StageName": "$default"
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/DefaultStage/Resource"
+   }
+  },
+  "PublicHttpApiPOSTpaymentsCreatePaymentIntegrationBA6EBFE7": {
+   "Type": "AWS::ApiGatewayV2::Integration",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "IntegrationType": "AWS_PROXY",
+    "IntegrationUri": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunction419FCB44",
+      "Arn"
+     ]
+    },
+    "PayloadFormatVersion": "2.0"
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--payments/CreatePaymentIntegration/Resource"
+   }
+  },
+  "PublicHttpApiPOSTpaymentsCreatePaymentIntegrationPermissionE4866522": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunction419FCB44",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "PublicHttpApi954A824B"
+       },
+       "/*/*/payments"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--payments/CreatePaymentIntegration-Permission"
+   }
+  },
+  "PublicHttpApiPOSTpaymentsBB8BA426": {
+   "Type": "AWS::ApiGatewayV2::Route",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "AuthorizationType": "NONE",
+    "RouteKey": "POST /payments",
+    "Target": {
+     "Fn::Join": [
+      "",
+      [
+       "integrations/",
+       {
+        "Ref": "PublicHttpApiPOSTpaymentsCreatePaymentIntegrationBA6EBFE7"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--payments/Resource"
+   }
+  },
+  "PublicHttpApiGETpaymentspaymentIdGetPaymentIntegrationA6736846": {
+   "Type": "AWS::ApiGatewayV2::Integration",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "IntegrationType": "AWS_PROXY",
+    "IntegrationUri": {
+     "Fn::GetAtt": [
+      "GetPaymentFunction0BB43E1F",
+      "Arn"
+     ]
+    },
+    "PayloadFormatVersion": "2.0"
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/GetPaymentIntegration/Resource"
+   }
+  },
+  "PublicHttpApiGETpaymentspaymentIdGetPaymentIntegrationPermission527B5B41": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "GetPaymentFunction0BB43E1F",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "PublicHttpApi954A824B"
+       },
+       "/*/*/payments/{paymentId}"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/GetPaymentIntegration-Permission"
+   }
+  },
+  "PublicHttpApiGETpaymentspaymentId12AC16AF": {
+   "Type": "AWS::ApiGatewayV2::Route",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "AuthorizationType": "NONE",
+    "RouteKey": "GET /payments/{paymentId}",
+    "Target": {
+     "Fn::Join": [
+      "",
+      [
+       "integrations/",
+       {
+        "Ref": "PublicHttpApiGETpaymentspaymentIdGetPaymentIntegrationA6736846"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/GET--payments--{paymentId}/Resource"
+   }
+  },
+  "PublicHttpApiPOSTwebhooksasaasAsaasWebhookIntegrationD3E43939": {
+   "Type": "AWS::ApiGatewayV2::Integration",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "IntegrationType": "AWS_PROXY",
+    "IntegrationUri": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunction12DE391A",
+      "Arn"
+     ]
+    },
+    "PayloadFormatVersion": "2.0"
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/AsaasWebhookIntegration/Resource"
+   }
+  },
+  "PublicHttpApiPOSTwebhooksasaasAsaasWebhookIntegrationPermission0783306A": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunction12DE391A",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "PublicHttpApi954A824B"
+       },
+       "/*/*/webhooks/asaas"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/AsaasWebhookIntegration-Permission"
+   }
+  },
+  "PublicHttpApiPOSTwebhooksasaasC0DB9F57": {
+   "Type": "AWS::ApiGatewayV2::Route",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "AuthorizationType": "NONE",
+    "RouteKey": "POST /webhooks/asaas",
+    "Target": {
+     "Fn::Join": [
+      "",
+      [
+       "integrations/",
+       {
+        "Ref": "PublicHttpApiPOSTwebhooksasaasAsaasWebhookIntegrationD3E43939"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/PublicHttpApi/POST--webhooks--asaas/Resource"
+   }
+  },
+  "ApiCustomDomain9620A9CE": {
+   "Type": "AWS::ApiGatewayV2::DomainName",
+   "Properties": {
+    "DomainName": "api.brimax.life",
+    "DomainNameConfigurations": [
+     {
+      "CertificateArn": {
+       "Fn::ImportValue": "BrimaxCertificateStack:ExportsOutputRefApiCertificateE5063062"
+      },
+      "EndpointType": "REGIONAL"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/ApiCustomDomain/Resource"
+   }
+  },
+  "ApiCustomDomainMapping1A8E9120": {
+   "Type": "AWS::ApiGatewayV2::ApiMapping",
+   "Properties": {
+    "ApiId": {
+     "Ref": "PublicHttpApi954A824B"
+    },
+    "DomainName": {
+     "Ref": "ApiCustomDomain9620A9CE"
+    },
+    "Stage": "$default"
+   },
+   "DependsOn": [
+    "PublicHttpApiDefaultStageC42D72D2"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/ApiCustomDomainMapping/Resource"
+   }
+  },
+  "CreatePaymentFunctionServiceRoleAB96AA05": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CreatePaymentFunction/ServiceRole/Resource"
+   }
+  },
+  "CreatePaymentFunctionServiceRoleDefaultPolicy4B9002F1": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "AsaasApiSecret2FB7D6D5"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "CreatePaymentFunctionServiceRoleDefaultPolicy4B9002F1",
+    "Roles": [
+     {
+      "Ref": "CreatePaymentFunctionServiceRoleAB96AA05"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CreatePaymentFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "CreatePaymentFunction419FCB44": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "7162cb36569d7c478bb4375921bb1c17e00ba6278ea45cf8490c28b28ea5ee2c.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "ADMIN_EXPORT_TOKEN": "disabled",
+      "ASAAS_API_BASE_URL": "https://api.asaas.com/v3",
+      "ASAAS_API_SECRET_ARN": {
+       "Ref": "AsaasApiSecret2FB7D6D5"
+      },
+      "ASAAS_WEBHOOK_SECRET_ARN": {
+       "Ref": "AsaasWebhookSecret64DBF9DA"
+      },
+      "WEBHOOK_QUEUE_URL": {
+       "Ref": "WebhookQueueA9D318EA"
+      },
+      "WEDDING_TABLE_NAME": {
+       "Fn::ImportValue": "BrimaxDataStack:ExportsOutputRefWeddingTableC1914BC6243DFD65"
+      }
+     }
+    },
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunctionServiceRoleAB96AA05",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 15
+   },
+   "DependsOn": [
+    "CreatePaymentFunctionServiceRoleDefaultPolicy4B9002F1",
+    "CreatePaymentFunctionServiceRoleAB96AA05"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CreatePaymentFunction/Resource",
+    "aws:asset:path": "asset.7162cb36569d7c478bb4375921bb1c17e00ba6278ea45cf8490c28b28ea5ee2c",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "CreatePaymentFunctionLogRetention2236CDDA": {
+   "Type": "Custom::LogRetention",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+      "Arn"
+     ]
+    },
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/lambda/",
+       {
+        "Ref": "CreatePaymentFunction419FCB44"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CreatePaymentFunction/LogRetention/Resource"
+   }
+  },
+  "GetPaymentFunctionServiceRole12F32798": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/GetPaymentFunction/ServiceRole/Resource"
+   }
+  },
+  "GetPaymentFunctionServiceRoleDefaultPolicyAC4005AE": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "GetPaymentFunctionServiceRoleDefaultPolicyAC4005AE",
+    "Roles": [
+     {
+      "Ref": "GetPaymentFunctionServiceRole12F32798"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/GetPaymentFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "GetPaymentFunction0BB43E1F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "e12d57e22c45a8728f2b1b5f55c0c2d754e0edc6f0d0e37acde2a9bef495b8f1.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "ADMIN_EXPORT_TOKEN": "disabled",
+      "ASAAS_API_BASE_URL": "https://api.asaas.com/v3",
+      "ASAAS_API_SECRET_ARN": {
+       "Ref": "AsaasApiSecret2FB7D6D5"
+      },
+      "ASAAS_WEBHOOK_SECRET_ARN": {
+       "Ref": "AsaasWebhookSecret64DBF9DA"
+      },
+      "WEBHOOK_QUEUE_URL": {
+       "Ref": "WebhookQueueA9D318EA"
+      },
+      "WEDDING_TABLE_NAME": {
+       "Fn::ImportValue": "BrimaxDataStack:ExportsOutputRefWeddingTableC1914BC6243DFD65"
+      }
+     }
+    },
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "GetPaymentFunctionServiceRole12F32798",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "GetPaymentFunctionServiceRoleDefaultPolicyAC4005AE",
+    "GetPaymentFunctionServiceRole12F32798"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/GetPaymentFunction/Resource",
+    "aws:asset:path": "asset.e12d57e22c45a8728f2b1b5f55c0c2d754e0edc6f0d0e37acde2a9bef495b8f1",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AsaasWebhookFunctionServiceRoleB88A95FC": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookFunction/ServiceRole/Resource"
+   }
+  },
+  "AsaasWebhookFunctionServiceRoleDefaultPolicy9B84D106": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "sqs:SendMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "WebhookQueueA9D318EA",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "AsaasWebhookSecret64DBF9DA"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "AsaasWebhookFunctionServiceRoleDefaultPolicy9B84D106",
+    "Roles": [
+     {
+      "Ref": "AsaasWebhookFunctionServiceRoleB88A95FC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "AsaasWebhookFunction12DE391A": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "68a300ba39cafc5d4897307045a514d97720a42be1499d070c26882d7dac0b61.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "ADMIN_EXPORT_TOKEN": "disabled",
+      "ASAAS_API_BASE_URL": "https://api.asaas.com/v3",
+      "ASAAS_API_SECRET_ARN": {
+       "Ref": "AsaasApiSecret2FB7D6D5"
+      },
+      "ASAAS_WEBHOOK_SECRET_ARN": {
+       "Ref": "AsaasWebhookSecret64DBF9DA"
+      },
+      "WEBHOOK_QUEUE_URL": {
+       "Ref": "WebhookQueueA9D318EA"
+      },
+      "WEDDING_TABLE_NAME": {
+       "Fn::ImportValue": "BrimaxDataStack:ExportsOutputRefWeddingTableC1914BC6243DFD65"
+      }
+     }
+    },
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunctionServiceRoleB88A95FC",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "AsaasWebhookFunctionServiceRoleDefaultPolicy9B84D106",
+    "AsaasWebhookFunctionServiceRoleB88A95FC"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookFunction/Resource",
+    "aws:asset:path": "asset.68a300ba39cafc5d4897307045a514d97720a42be1499d070c26882d7dac0b61",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AsaasWebhookFunctionLogRetention46EB1591": {
+   "Type": "Custom::LogRetention",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+      "Arn"
+     ]
+    },
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/lambda/",
+       {
+        "Ref": "AsaasWebhookFunction12DE391A"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookFunction/LogRetention/Resource"
+   }
+  },
+  "AsaasWebhookProcessorFunctionServiceRole6368F98B": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookProcessorFunction/ServiceRole/Resource"
+   }
+  },
+  "AsaasWebhookProcessorFunctionServiceRoleDefaultPolicyCBD5FB45": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:ChangeMessageVisibility",
+        "sqs:GetQueueUrl",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "WebhookQueueA9D318EA",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "BrimaxDataStack:ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+           },
+           "/index/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "AsaasWebhookProcessorFunctionServiceRoleDefaultPolicyCBD5FB45",
+    "Roles": [
+     {
+      "Ref": "AsaasWebhookProcessorFunctionServiceRole6368F98B"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookProcessorFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "AsaasWebhookProcessorFunctionA70B1ED6": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "49e1879ef545020f4b7fc9c9d986d7e8085f17ce30de88907c24f66d309c6a67.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "ADMIN_EXPORT_TOKEN": "disabled",
+      "ASAAS_API_BASE_URL": "https://api.asaas.com/v3",
+      "ASAAS_API_SECRET_ARN": {
+       "Ref": "AsaasApiSecret2FB7D6D5"
+      },
+      "ASAAS_WEBHOOK_SECRET_ARN": {
+       "Ref": "AsaasWebhookSecret64DBF9DA"
+      },
+      "WEBHOOK_QUEUE_URL": {
+       "Ref": "WebhookQueueA9D318EA"
+      },
+      "WEDDING_TABLE_NAME": {
+       "Fn::ImportValue": "BrimaxDataStack:ExportsOutputRefWeddingTableC1914BC6243DFD65"
+      }
+     }
+    },
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "AsaasWebhookProcessorFunctionServiceRole6368F98B",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "AsaasWebhookProcessorFunctionServiceRoleDefaultPolicyCBD5FB45",
+    "AsaasWebhookProcessorFunctionServiceRole6368F98B"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookProcessorFunction/Resource",
+    "aws:asset:path": "asset.49e1879ef545020f4b7fc9c9d986d7e8085f17ce30de88907c24f66d309c6a67",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AsaasWebhookProcessorFunctionSqsEventSourceBrimaxAppStackWebhookQueue428B2059EAF00666": {
+   "Type": "AWS::Lambda::EventSourceMapping",
+   "Properties": {
+    "BatchSize": 10,
+    "EventSourceArn": {
+     "Fn::GetAtt": [
+      "WebhookQueueA9D318EA",
+      "Arn"
+     ]
+    },
+    "FunctionName": {
+     "Ref": "AsaasWebhookProcessorFunctionA70B1ED6"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookProcessorFunction/SqsEventSource:BrimaxAppStackWebhookQueue428B2059/Resource"
+   }
+  },
+  "AsaasWebhookProcessorFunctionLogRetentionB68C82C6": {
+   "Type": "Custom::LogRetention",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+      "Arn"
+     ]
+    },
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/lambda/",
+       {
+        "Ref": "AsaasWebhookProcessorFunctionA70B1ED6"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/AsaasWebhookProcessorFunction/LogRetention/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+    "Roles": [
+     {
+      "Ref": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Handler": "index.handler",
+    "Runtime": "nodejs22.x",
+    "Timeout": 900,
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d.zip"
+    },
+    "Role": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/Resource",
+    "aws:asset:path": "asset.2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "createpaymentCreateFailuresMetricC7F6C388": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_CREATE_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunctionLogRetention2236CDDA",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "create-payment-payment-create-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/create-paymentCreateFailuresMetric/Resource"
+   }
+  },
+  "createpaymentWebhookAuthMetric8EF8888F": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_AUTH_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunctionLogRetention2236CDDA",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "create-payment-webhook-auth-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/create-paymentWebhookAuthMetric/Resource"
+   }
+  },
+  "createpaymentWebhookDuplicateMetric84A72357": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_DUPLICATE\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunctionLogRetention2236CDDA",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "create-payment-webhook-duplicate",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/create-paymentWebhookDuplicateMetric/Resource"
+   }
+  },
+  "createpaymentPaymentTransitionsMetric4D9D8999": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_STATE_TRANSITION\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "CreatePaymentFunctionLogRetention2236CDDA",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "create-payment-payment-state-transition",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/create-paymentPaymentTransitionsMetric/Resource"
+   }
+  },
+  "asaaswebhookCreateFailuresMetric1E044C18": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_CREATE_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunctionLogRetention46EB1591",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-payment-create-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhookCreateFailuresMetric/Resource"
+   }
+  },
+  "asaaswebhookWebhookAuthMetricB96B5C8C": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_AUTH_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunctionLogRetention46EB1591",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-webhook-auth-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhookWebhookAuthMetric/Resource"
+   }
+  },
+  "asaaswebhookWebhookDuplicateMetricB68A309D": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_DUPLICATE\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunctionLogRetention46EB1591",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-webhook-duplicate",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhookWebhookDuplicateMetric/Resource"
+   }
+  },
+  "asaaswebhookPaymentTransitionsMetric9B083C58": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_STATE_TRANSITION\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookFunctionLogRetention46EB1591",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-payment-state-transition",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhookPaymentTransitionsMetric/Resource"
+   }
+  },
+  "asaaswebhookprocessorCreateFailuresMetricC998A21D": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_CREATE_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookProcessorFunctionLogRetentionB68C82C6",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-processor-payment-create-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhook-processorCreateFailuresMetric/Resource"
+   }
+  },
+  "asaaswebhookprocessorWebhookAuthMetricD787AEF6": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_AUTH_FAILED\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookProcessorFunctionLogRetentionB68C82C6",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-processor-webhook-auth-failed",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhook-processorWebhookAuthMetric/Resource"
+   }
+  },
+  "asaaswebhookprocessorWebhookDuplicateMetric6A8C8CDB": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"WEBHOOK_DUPLICATE\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookProcessorFunctionLogRetentionB68C82C6",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-processor-webhook-duplicate",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhook-processorWebhookDuplicateMetric/Resource"
+   }
+  },
+  "asaaswebhookprocessorPaymentTransitionsMetric65ABA4E2": {
+   "Type": "AWS::Logs::MetricFilter",
+   "Properties": {
+    "FilterPattern": "\"PAYMENT_STATE_TRANSITION\"",
+    "LogGroupName": {
+     "Fn::GetAtt": [
+      "AsaasWebhookProcessorFunctionLogRetentionB68C82C6",
+      "LogGroupName"
+     ]
+    },
+    "MetricTransformations": [
+     {
+      "MetricName": "asaas-webhook-processor-payment-state-transition",
+      "MetricNamespace": "Brimax/Payments",
+      "MetricValue": "1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/asaas-webhook-processorPaymentTransitionsMetric/Resource"
+   }
+  },
+  "WebhookDlqAlarmD64A2B49": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmDescription": "Alerts when the webhook dead-letter queue receives messages.",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "Dimensions": [
+     {
+      "Name": "QueueName",
+      "Value": {
+       "Fn::GetAtt": [
+        "WebhookDlqAEF195B3",
+        "QueueName"
+       ]
+      }
+     }
+    ],
+    "EvaluationPeriods": 1,
+    "MetricName": "ApproximateNumberOfMessagesVisible",
+    "Namespace": "AWS/SQS",
+    "Period": 300,
+    "Statistic": "Maximum",
+    "Threshold": 1
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/WebhookDlqAlarm/Resource"
+   }
+  },
+  "CreatePaymentErrorsAlarm03359A32": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "Dimensions": [
+     {
+      "Name": "FunctionName",
+      "Value": {
+       "Ref": "CreatePaymentFunction419FCB44"
+      }
+     }
+    ],
+    "EvaluationPeriods": 1,
+    "MetricName": "Errors",
+    "Namespace": "AWS/Lambda",
+    "Period": 300,
+    "Statistic": "Sum",
+    "Threshold": 1
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CreatePaymentErrorsAlarm/Resource"
+   }
+  },
+  "WebhookProcessorErrorsAlarm7ED47FBA": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "Dimensions": [
+     {
+      "Name": "FunctionName",
+      "Value": {
+       "Ref": "AsaasWebhookProcessorFunctionA70B1ED6"
+      }
+     }
+    ],
+    "EvaluationPeriods": 1,
+    "MetricName": "Errors",
+    "Namespace": "AWS/Lambda",
+    "Period": 300,
+    "Statistic": "Sum",
+    "Threshold": 1
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/WebhookProcessorErrorsAlarm/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/2WQYU4CMRCFz+L/MiLIARAlmgjicgAylmEtdNu1M4WQZu9u2kVD9Ne8N51+09cRjCZDGN7giQd6exhY8wFpLagPCk+8SUw6kHCDDmsKkNbFq9nO9apT/MWQ3iNFyt0iOoWtqVHohOfjCNKzSDttTT7PJdu1YF0u9CK3Kh+lVy9OqA4oxrs88sf2c4++QeOW2BTKlZu2ZoFta1x92XdxnbLYfGwR0mznVhQaw3whzqPThf50JCdrH4OmK8b/7g9r4/yW9gzLUn4xBhtIlbfUP9eSWnlr9DnbXnWKxxtkJmGY5qJ4DA9RH0gekElZXzOkV19XJOQKdEESjJ4bKxQy6Np3SlsftycU/QlpajE0JXwWXafKhvzRl0AVcUmjfsVs596itFE6lSPBnm+Po3u4m8DwZs/GDEJ0YhqCqq/f3l4eJTcCAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "BrimaxAppStack/CDKMetadata/Default"
+   },
+   "Condition": "CDKMetadataAvailable"
+  }
+ },
+ "Outputs": {
+  "PublicHttpApiUrl": {
+   "Value": {
+    "Fn::GetAtt": [
+     "PublicHttpApi954A824B",
+     "ApiEndpoint"
+    ]
+   }
+  },
+  "AsaasWebhookUrl": {
+   "Value": "https://api.brimax.life/webhooks/asaas"
+  },
+  "ApiCustomDomainName": {
+   "Value": "api.brimax.life"
+  },
+  "ApiCustomDomainUrl": {
+   "Value": "https://api.brimax.life"
+  },
+  "ApiCustomDomainRegionalTarget": {
+   "Value": {
+    "Fn::GetAtt": [
+     "ApiCustomDomain9620A9CE",
+     "RegionalDomainName"
+    ]
+   }
+  },
+  "ApiCustomDomainRegionalHostedZoneId": {
+   "Value": {
+    "Fn::GetAtt": [
+     "ApiCustomDomain9620A9CE",
+     "RegionalHostedZoneId"
+    ]
+   }
+  },
+  "WeddingTableName": {
+   "Value": {
+    "Fn::ImportValue": "BrimaxDataStack:ExportsOutputRefWeddingTableC1914BC6243DFD65"
+   }
+  },
+  "WebhookQueueUrl": {
+   "Value": {
+    "Ref": "WebhookQueueA9D318EA"
+   }
+  },
+  "AsaasApiSecretArn": {
+   "Value": {
+    "Ref": "AsaasApiSecret2FB7D6D5"
+   }
+  },
+  "AsaasWebhookSecretArn": {
+   "Value": {
+    "Ref": "AsaasWebhookSecret64DBF9DA"
+   }
+  },
+  "ExportsOutputRefPublicHttpApi954A824BFDAF0667": {
+   "Value": {
+    "Ref": "PublicHttpApi954A824B"
+   },
+   "Export": {
+    "Name": "BrimaxAppStack:ExportsOutputRefPublicHttpApi954A824BFDAF0667"
+   }
+  }
+ },
+ "Conditions": {
+  "CDKMetadataAvailable": {
+   "Fn::Or": [
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "af-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-3"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-4"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-northwest-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-2"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "il-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "sa-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-west-1"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Equals": [
+      {
+       "Ref": "AWS::Region"
+      },
+      "us-west-2"
+     ]
+    }
+   ]
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

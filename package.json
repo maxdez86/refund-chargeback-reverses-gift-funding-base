@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:web": "bash scripts/build-landing-bundle.sh",
+    "cdk:bootstrap": "bash scripts/cdk-bootstrap.sh",
     "dev:all-web": "bash scripts/dev-all-web-apps.sh",
     "deploy:backend": "bash scripts/deploy-backend.sh",
     "deploy:platform": "bash scripts/deploy-platform.sh",
@@ -16,6 +17,9 @@
     "opentofu:cert:apply": "bash scripts/landing-opentofu.sh certificate-validation apply",
     "opentofu:cert:init": "bash scripts/landing-opentofu.sh certificate-validation init",
     "opentofu:cert:plan": "bash scripts/landing-opentofu.sh certificate-validation plan",
+    "opentofu:api-dns:apply": "bash scripts/landing-opentofu.sh api-dns apply",
+    "opentofu:api-dns:init": "bash scripts/landing-opentofu.sh api-dns init",
+    "opentofu:api-dns:plan": "bash scripts/landing-opentofu.sh api-dns plan",
     "opentofu:dns:apply": "bash scripts/landing-opentofu.sh edge-dns apply",
     "opentofu:dns:init": "bash scripts/landing-opentofu.sh edge-dns init",
     "opentofu:dns:plan": "bash scripts/landing-opentofu.sh edge-dns plan",

@@ -7,15 +7,21 @@ describe("CertificateStack", () => {
   it("requests an ACM certificate for the apex and www domains", () => {
     const app = new cdk.App();
     const stack = new CertificateStack(app, "TestCertificateStack", {
+      apiDomain: "api.brimax.life",
       rootDomain: "brimax.life",
       stage: "prod",
       wwwDomain: "www.brimax.life"
     });
     const template = Template.fromStack(stack);
 
+    template.resourceCountIs("AWS::CertificateManager::Certificate", 2);
     template.hasResourceProperties("AWS::CertificateManager::Certificate", {
       DomainName: "brimax.life",
       SubjectAlternativeNames: ["www.brimax.life"],
+      ValidationMethod: "DNS"
+    });
+    template.hasResourceProperties("AWS::CertificateManager::Certificate", {
+      DomainName: "api.brimax.life",
       ValidationMethod: "DNS"
     });
 
@@ -25,6 +31,7 @@ describe("CertificateStack", () => {
   it("exposes certificate and validation outputs for OpenTofu", () => {
     const app = new cdk.App();
     const stack = new CertificateStack(app, "TestCertificateOutputs", {
+      apiDomain: "api.brimax.life",
       rootDomain: "brimax.life",
       stage: "prod",
       wwwDomain: "www.brimax.life"
@@ -38,5 +45,9 @@ describe("CertificateStack", () => {
     template.hasOutput("WwwDomainValidationRecordName", {});
     template.hasOutput("WwwDomainValidationRecordType", {});
     template.hasOutput("WwwDomainValidationRecordValue", {});
+    template.hasOutput("ApiCertificateArn", {});
+    template.hasOutput("ApiDomainValidationRecordName", {});
+    template.hasOutput("ApiDomainValidationRecordType", {});
+    template.hasOutput("ApiDomainValidationRecordValue", {});
   });
 });

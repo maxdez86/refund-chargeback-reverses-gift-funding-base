@@ -94,7 +94,13 @@ parse_secret_value() {
 }
 
 load_payments_stack_outputs() {
-  export PAYMENTS_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "PublicHttpApiUrl")"
+  export PAYMENTS_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "ApiCustomDomainUrl")"
+  if PAYMENTS_EXECUTE_API_URL_RAW="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "RawExecuteApiUrl" 2>/dev/null)"; then
+    export PAYMENTS_EXECUTE_API_URL="${PAYMENTS_EXECUTE_API_URL_RAW}"
+  else
+    export PAYMENTS_EXECUTE_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "PublicHttpApiUrl")"
+  fi
+  export PAYMENTS_WEBHOOK_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasWebhookUrl")"
   export PAYMENTS_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
   export PAYMENTS_WEBHOOK_QUEUE_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WebhookQueueUrl")"
   export PAYMENTS_ASAAS_API_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasApiSecretArn")"
@@ -118,6 +124,24 @@ load_payments_webhook_token() {
   )"
 
   require_env ASAAS_WEBHOOK_TOKEN
+}
+
+verify_payments_secret_contract() {
+  require_env PAYMENTS_ASAAS_API_SECRET_ARN PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN
+  require_command jq >/dev/null
+
+  local api_secret_raw webhook_secret_raw api_secret_value webhook_secret_value
+  api_secret_raw="$(secret_string "${PAYMENTS_ASAAS_API_SECRET_ARN}")"
+  webhook_secret_raw="$(secret_string "${PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN}")"
+  api_secret_value="$(parse_secret_value "${api_secret_raw}")"
+  webhook_secret_value="$(parse_secret_value "${webhook_secret_raw}")"
+
+  if [[ -z "${api_secret_value}" || -z "${webhook_secret_value}" ]]; then
+    printf 'Resolved payment secrets are empty.\n' >&2
+    return 1
+  fi
+
+  printf 'Verified deployed payment secrets in Secrets Manager.\n'
 }
 
 create_payments_artifact_dir() {
@@ -150,6 +174,8 @@ require_payments_test_env() {
 
   require_env \
     PAYMENTS_API_URL \
+    PAYMENTS_EXECUTE_API_URL \
+    PAYMENTS_WEBHOOK_URL \
     PAYMENTS_TABLE_NAME \
     PAYMENTS_WEBHOOK_QUEUE_URL \
     PAYMENTS_ASAAS_API_SECRET_ARN \

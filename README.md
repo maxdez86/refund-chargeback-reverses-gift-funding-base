@@ -45,7 +45,7 @@ Logs are written to `.tmp/dev-all-web-apps/`. Keep the command running; use `Ctr
 
 ## Payment API Testing
 
-Backend payment deployment and production API validation are documented in [docs/payments-api-testing.md](docs/payments-api-testing.md).
+Backend payment deployment and production API validation are documented in [docs/runbooks/payments-api-testing.md](docs/runbooks/payments-api-testing.md).
 Useful entrypoints:
 
 ```bash

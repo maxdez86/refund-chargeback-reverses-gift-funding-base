@@ -1,0 +1,52 @@
+{
+  "/BrimaxDataStack/WeddingTable": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "WeddingTableC1914BC6"
+      }
+    }
+  ],
+  "/BrimaxDataStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/BrimaxDataStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/BrimaxDataStack/WeddingTable/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "WeddingTableC1914BC6"
+    }
+  ],
+  "/BrimaxDataStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/BrimaxDataStack/CDKMetadata/Condition": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadataAvailable"
+    }
+  ],
+  "/BrimaxDataStack/Exports/Output{\"Fn::GetAtt\":[\"WeddingTableC1914BC6\",\"Arn\"]}": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ExportsOutputFnGetAttWeddingTableC1914BC6Arn2E89CC6C"
+    }
+  ],
+  "/BrimaxDataStack/Exports/Output{\"Ref\":\"WeddingTableC1914BC6\"}": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ExportsOutputRefWeddingTableC1914BC6243DFD65"
+    }
+  ]
+}

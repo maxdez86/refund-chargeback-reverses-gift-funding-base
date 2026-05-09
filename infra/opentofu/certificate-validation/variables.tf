@@ -39,6 +39,21 @@ variable "www_validation_record_value" {
   type        = string
 }
 
+variable "api_validation_record_name" {
+  description = "DNS validation record name for the api domain certificate."
+  type        = string
+}
+
+variable "api_validation_record_type" {
+  description = "DNS validation record type for the api domain certificate."
+  type        = string
+}
+
+variable "api_validation_record_value" {
+  description = "DNS validation record value for the api domain certificate."
+  type        = string
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API token with DNS and zone settings permissions."
   sensitive   = true

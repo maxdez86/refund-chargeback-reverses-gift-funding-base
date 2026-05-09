@@ -15,12 +15,15 @@ load_local_env_file() {
     AWS_PROFILE
     AWS_REGION
     ROOT_DOMAIN
+    API_DOMAIN
     WWW_DOMAIN
     PAYMENTS_STACK_NAME
     PAYMENTS_DATA_STACK_NAME
     PAYMENTS_OBSERVABILITY_STACK_NAME
     ASAAS_ENV
     ASAAS_API_BASE_URL
+    ASAAS_API_KEY
+    ASAAS_WEBHOOK_TOKEN
     PAYMENTS_TEST_GIFT_ID
     PAYMENTS_TEST_GIFT_QUANTITY
     PAYMENTS_TEST_PAYER_NAME
@@ -66,6 +69,7 @@ load_local_env_file
 export AWS_REGION="${AWS_REGION:-us-east-1}"
 export ROOT_DOMAIN="${ROOT_DOMAIN:-brimax.life}"
 export STAGE="${STAGE:-prod}"
+export API_DOMAIN="${API_DOMAIN:-api.${ROOT_DOMAIN}}"
 export WWW_DOMAIN="${WWW_DOMAIN:-www.${ROOT_DOMAIN}}"
 
 if [[ "${STAGE}" == "dev" ]]; then

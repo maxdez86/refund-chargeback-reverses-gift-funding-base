@@ -1,0 +1,90 @@
+{
+  "version": "53.0.0",
+  "files": {
+    "7162cb36569d7c478bb4375921bb1c17e00ba6278ea45cf8490c28b28ea5ee2c": {
+      "displayName": "CreatePaymentFunction/Code",
+      "source": {
+        "path": "asset.7162cb36569d7c478bb4375921bb1c17e00ba6278ea45cf8490c28b28ea5ee2c",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-85fc6266": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "7162cb36569d7c478bb4375921bb1c17e00ba6278ea45cf8490c28b28ea5ee2c.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "e12d57e22c45a8728f2b1b5f55c0c2d754e0edc6f0d0e37acde2a9bef495b8f1": {
+      "displayName": "GetPaymentFunction/Code",
+      "source": {
+        "path": "asset.e12d57e22c45a8728f2b1b5f55c0c2d754e0edc6f0d0e37acde2a9bef495b8f1",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-e25518e1": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "e12d57e22c45a8728f2b1b5f55c0c2d754e0edc6f0d0e37acde2a9bef495b8f1.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "68a300ba39cafc5d4897307045a514d97720a42be1499d070c26882d7dac0b61": {
+      "displayName": "AsaasWebhookFunction/Code",
+      "source": {
+        "path": "asset.68a300ba39cafc5d4897307045a514d97720a42be1499d070c26882d7dac0b61",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-002a5288": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "68a300ba39cafc5d4897307045a514d97720a42be1499d070c26882d7dac0b61.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "49e1879ef545020f4b7fc9c9d986d7e8085f17ce30de88907c24f66d309c6a67": {
+      "displayName": "AsaasWebhookProcessorFunction/Code",
+      "source": {
+        "path": "asset.49e1879ef545020f4b7fc9c9d986d7e8085f17ce30de88907c24f66d309c6a67",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-3ba42a29": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "49e1879ef545020f4b7fc9c9d986d7e8085f17ce30de88907c24f66d309c6a67.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d": {
+      "displayName": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/Code",
+      "source": {
+        "path": "asset.2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-8cfb6a01": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "aee6ca5c060495bf9850379c807e43ae8f3ae858163ed9ddb74c1324762b1ec7": {
+      "displayName": "BrimaxAppStack Template",
+      "source": {
+        "path": "BrimaxAppStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region-a6053772": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "aee6ca5c060495bf9850379c807e43ae8f3ae858163ed9ddb74c1324762b1ec7.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

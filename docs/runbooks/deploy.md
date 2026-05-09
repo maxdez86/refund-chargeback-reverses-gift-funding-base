@@ -10,11 +10,18 @@
 ## Validation Commands
 
 ```bash
-source .env
 pnpm build:web
 pnpm typecheck
 pnpm test
 pnpm --filter @brimax/infra-cdk cdk synth
+```
+
+## Fresh Account Setup
+
+For a brand-new AWS account or region, bootstrap CDK before any deploy:
+
+```bash
+pnpm cdk:bootstrap
 ```
 
 ## First Landing-Page Bootstrap
@@ -41,12 +48,35 @@ bash scripts/landing-opentofu.sh edge-dns init
 bash scripts/landing-opentofu.sh edge-dns apply
 ```
 
+## API Domain Deploy
+
+The payment API custom domain is separate from the website edge deploy. The rollout order is:
+
+```bash
+bash scripts/deploy-landing-certificate.sh
+bash scripts/landing-opentofu.sh certificate-validation init
+bash scripts/landing-opentofu.sh certificate-validation apply
+pnpm wait:landing:cert
+bash scripts/deploy-backend.sh
+bash scripts/landing-opentofu.sh api-dns init
+bash scripts/landing-opentofu.sh api-dns apply
+```
+
+This provisions:
+- ACM certificate for `api.brimax.life`
+- API Gateway custom domain and mapping
+- Cloudflare DNS record for `api.brimax.life`
+
+The final branded webhook URL comes from `BrimaxAppStack` output `AsaasWebhookUrl`.
+The branded public API base URL comes from `BrimaxAppStack` output `ApiCustomDomainUrl`.
+The raw `execute-api` hostname remains available only as a fallback/debug output and should not be used for normal production traffic.
+
 ## Notes
 
-- Source your local `.env` before running deploy commands.
+- The deploy scripts auto-load `.env`, so manual `source .env` is optional.
 - `pnpm build:web` assembles the production landing bundle for `apps/web` into `apps/web/dist`.
 - The first landing-page bootstrap is intentionally documented separately because the certificate validation step blocks in one terminal while OpenTofu must run in another.
-- Replace placeholder secrets before deploying webhook or admin flows.
+- Replace placeholder env values before deploying webhook or admin flows.
 - `prod` is the default stage, so you do not need to pass `stage=prod`.
 - Use `STAGE=dev` or `--context stage=dev` only when you intentionally want prefixed development resources.
 - First-time landing-page DNS and certificate validation are handled in `infra/opentofu`; use the two-terminal bootstrap steps in [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1).
