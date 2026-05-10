@@ -2,17 +2,17 @@ import type { PaymentGift } from "@brimax/config";
 import type { PaymentMethod, PaymentStatus } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
 
-export const PAYMENT_STATUS_RANK: Record<PaymentStatus, number> = {
-  CREATED: 10,
-  AWAITING_PAYMENT: 20,
-  PROCESSING: 30,
-  CONFIRMED: 40,
-  RECEIVED: 50,
-  EXPIRED: 60,
-  CANCELED: 70,
-  FAILED: 80,
-  REFUNDED: 90,
-  CHARGEBACK: 100
+const ALLOWED_STATUS_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  CREATED: ["CREATED", "AWAITING_PAYMENT", "PROCESSING", "CONFIRMED", "RECEIVED", "EXPIRED", "CANCELED", "FAILED"],
+  AWAITING_PAYMENT: ["AWAITING_PAYMENT", "PROCESSING", "CONFIRMED", "RECEIVED", "EXPIRED", "CANCELED", "FAILED"],
+  PROCESSING: ["PROCESSING", "CONFIRMED", "RECEIVED", "EXPIRED", "CANCELED", "FAILED"],
+  CONFIRMED: ["CONFIRMED", "RECEIVED", "REFUNDED", "CHARGEBACK"],
+  RECEIVED: ["RECEIVED", "REFUNDED", "CHARGEBACK"],
+  EXPIRED: ["EXPIRED", "CONFIRMED", "RECEIVED", "CANCELED"],
+  CANCELED: ["CANCELED"],
+  REFUNDED: ["REFUNDED"],
+  CHARGEBACK: ["CHARGEBACK", "CONFIRMED", "RECEIVED", "REFUNDED"],
+  FAILED: ["FAILED"]
 };
 
 export type ResolvedGiftSelection = {
@@ -67,7 +67,7 @@ export function resolveGiftSelection(gift: PaymentGift, quantity: number | undef
 }
 
 export function initialPaymentStatus(paymentMethod: PaymentMethod): PaymentStatus {
-  return paymentMethod === "PIX" ? "AWAITING_PAYMENT" : "CREATED";
+  return "CREATED";
 }
 
 export function mapAsaasWebhookToPaymentStatus(payload: AsaasWebhookPayload): PaymentStatus {
@@ -120,5 +120,5 @@ export function mapAsaasWebhookToPaymentStatus(payload: AsaasWebhookPayload): Pa
 }
 
 export function shouldApplyStatusTransition(currentStatus: PaymentStatus, nextStatus: PaymentStatus) {
-  return PAYMENT_STATUS_RANK[nextStatus] >= PAYMENT_STATUS_RANK[currentStatus];
+  return ALLOWED_STATUS_TRANSITIONS[currentStatus].includes(nextStatus);
 }

@@ -13,6 +13,7 @@ type AsaasWebhookPayload = {
   event?: string;
   payment?: {
     id?: string;
+    checkoutSession?: string;
     externalReference?: string;
   };
   id?: string;
@@ -50,6 +51,7 @@ export async function handler(event: APIGatewayProxyEventV2) {
     eventType: String(payload.event ?? "UNKNOWN"),
     payload: rawBody,
     asaasPaymentId: payload.payment?.id ?? payload.id,
+    asaasCheckoutId: payload.payment?.checkoutSession,
     externalReference: payload.payment?.externalReference ?? payload.externalReference
   });
 

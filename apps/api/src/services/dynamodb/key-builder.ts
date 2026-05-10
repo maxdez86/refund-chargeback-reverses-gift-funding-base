@@ -61,6 +61,13 @@ export function asaasPaymentLookupIndex(asaasPaymentId: string) {
   };
 }
 
+export function asaasCheckoutLookupIndex(asaasCheckoutId: string) {
+  return {
+    GSI1PK: `ASAAS#CHECKOUT#${asaasCheckoutId}`,
+    GSI1SK: "PAYMENT"
+  };
+}
+
 export function conversationKeys(phoneNumber: string) {
   return {
     PK: `PHONE#${phoneNumber}`,

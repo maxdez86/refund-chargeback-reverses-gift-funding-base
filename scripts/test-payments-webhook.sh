@@ -11,7 +11,7 @@ timeout_seconds="${PAYMENTS_WEBHOOK_WAIT_TIMEOUT_SECONDS:-300}"
 poll_interval="${PAYMENTS_WEBHOOK_POLL_INTERVAL_SECONDS:-5}"
 deadline=$(( $(date +%s) + timeout_seconds ))
 
-printf 'Polling %s/payments/%s for webhook-driven transitions.\n' "${PAYMENTS_API_URL}" "${PAYMENT_ID}"
+printf 'Polling %s/payments/%s for webhook-driven transitions after hosted checkout completion.\n' "${PAYMENTS_API_URL}" "${PAYMENT_ID}"
 
 while (( $(date +%s) < deadline )); do
   response_file="$(mktemp)"

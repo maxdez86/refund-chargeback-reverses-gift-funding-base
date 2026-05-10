@@ -3,26 +3,26 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
-  TransactWriteCommand,
   UpdateCommand,
   type DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
-import type { PaymentMethod, PaymentStatus, PaymentSummary } from "@brimax/contracts";
+import type { PaymentStatus, PaymentSummary } from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import {
+  asaasCheckoutLookupIndex,
   asaasPaymentLookupIndex,
   idempotencyKeys,
   paymentKeys,
   webhookKeys
 } from "../key-builder";
 import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
-import { PAYMENT_STATUS_RANK } from "../../../domain/payment-state";
 
 type StoredPayment = PaymentSummary & {
-  asaasPaymentId: string;
-  externalReference: string;
+  asaasPaymentId?: string;
+  asaasCheckoutId?: string;
+  externalReference?: string;
   payerCpfHash: string;
   payerCpfMasked: string;
   payerEmail: string;
@@ -34,6 +34,7 @@ type StoredWebhookEvent = {
   eventType: string;
   payload: string;
   asaasPaymentId?: string;
+  asaasCheckoutId?: string;
   externalReference?: string;
   processedAt?: string;
 };
@@ -42,6 +43,7 @@ type IdempotencyReservation = {
   fingerprint: string;
   paymentId: string;
   status: "IN_PROGRESS" | "COMPLETED";
+  paymentSnapshot?: PaymentSummary;
 };
 
 export class PaymentRepository {
@@ -88,18 +90,19 @@ export class PaymentRepository {
     }
   }
 
-  async completeCreatePayment(idempotencyKey: string) {
+  async completeCreatePayment(idempotencyKey: string, paymentSnapshot: PaymentSummary) {
     await this.documentClient.send(
       new UpdateCommand({
         TableName: this.tableName,
         Key: idempotencyKeys(idempotencyKey),
-        UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+        UpdateExpression: "SET #status = :status, completedAt = :completedAt, paymentSnapshot = :paymentSnapshot",
         ExpressionAttributeNames: {
           "#status": "status"
         },
         ExpressionAttributeValues: {
           ":status": "COMPLETED",
-          ":completedAt": new Date().toISOString()
+          ":completedAt": new Date().toISOString(),
+          ":paymentSnapshot": paymentSnapshot
         }
       })
     );
@@ -120,21 +123,27 @@ export class PaymentRepository {
     return {
       fingerprint: String(response.Item.fingerprint),
       paymentId: String(response.Item.paymentId),
-      status: String(response.Item.status) as IdempotencyReservation["status"]
+      status: String(response.Item.status) as IdempotencyReservation["status"],
+      paymentSnapshot: response.Item.paymentSnapshot as PaymentSummary | undefined
     };
   }
 
   async putPayment(payment: StoredPayment) {
+    const lookupIndex = payment.asaasPaymentId
+      ? asaasPaymentLookupIndex(payment.asaasPaymentId)
+      : payment.asaasCheckoutId
+        ? asaasCheckoutLookupIndex(payment.asaasCheckoutId)
+        : null;
+
     try {
       await this.documentClient.send(
         new PutCommand({
           TableName: this.tableName,
           Item: {
             ...paymentKeys(payment.paymentId),
-            ...asaasPaymentLookupIndex(payment.asaasPaymentId),
+            ...(lookupIndex ?? {}),
             entityType: "Payment",
-            ...payment,
-            statusRank: PAYMENT_STATUS_RANK[payment.status]
+            ...payment
           },
           ConditionExpression: "attribute_not_exists(PK)"
         })
@@ -176,11 +185,29 @@ export class PaymentRepository {
     return (response.Items?.[0] as StoredPayment | undefined) ?? null;
   }
 
+  async getPaymentByAsaasCheckoutId(asaasCheckoutId: string): Promise<StoredPayment | null> {
+    const response = await this.documentClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: GSI1_NAME,
+        KeyConditionExpression: "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk",
+        ExpressionAttributeValues: {
+          ":gsi1pk": asaasCheckoutLookupIndex(asaasCheckoutId).GSI1PK,
+          ":gsi1sk": asaasCheckoutLookupIndex(asaasCheckoutId).GSI1SK
+        },
+        Limit: 1
+      })
+    );
+
+    return (response.Items?.[0] as StoredPayment | undefined) ?? null;
+  }
+
   async recordWebhookEventIfNew(input: {
     eventId: string;
     eventType: string;
     payload: string;
     asaasPaymentId?: string;
+    asaasCheckoutId?: string;
     externalReference?: string;
     ttlInSeconds?: number;
   }) {
@@ -198,6 +225,7 @@ export class PaymentRepository {
             eventType: input.eventType,
             payload: input.payload,
             asaasPaymentId: input.asaasPaymentId,
+            asaasCheckoutId: input.asaasCheckoutId,
             externalReference: input.externalReference,
             receivedAt: new Date().toISOString(),
             [TTL_ATTRIBUTE]: Math.floor(Date.now() / 1000) + ttlInSeconds
@@ -243,24 +271,36 @@ export class PaymentRepository {
 
   async applyWebhookUpdate(input: {
     paymentId: string;
+    expectedCurrentStatus: PaymentStatus;
     nextStatus: PaymentStatus;
     confirmedOn?: string;
     receivedOn?: string;
-    asaasPaymentId: string;
+    asaasPaymentId?: string;
+    asaasCheckoutId?: string;
   }) {
-    const statusRank = PAYMENT_STATUS_RANK[input.nextStatus];
     const updateParts = [
       "#status = :status",
-      "statusRank = :statusRank",
-      "updatedAt = :updatedAt",
-      "asaasPaymentId = :asaasPaymentId"
+      "updatedAt = :updatedAt"
     ];
     const expressionAttributeValues: Record<string, unknown> = {
       ":status": input.nextStatus,
-      ":statusRank": statusRank,
       ":updatedAt": new Date().toISOString(),
-      ":asaasPaymentId": input.asaasPaymentId
+      ":expectedCurrentStatus": input.expectedCurrentStatus
     };
+
+    if (input.asaasPaymentId) {
+      updateParts.push("asaasPaymentId = :asaasPaymentId");
+      updateParts.push("GSI1PK = :gsi1pk");
+      updateParts.push("GSI1SK = :gsi1sk");
+      expressionAttributeValues[":asaasPaymentId"] = input.asaasPaymentId;
+      expressionAttributeValues[":gsi1pk"] = asaasPaymentLookupIndex(input.asaasPaymentId).GSI1PK;
+      expressionAttributeValues[":gsi1sk"] = asaasPaymentLookupIndex(input.asaasPaymentId).GSI1SK;
+    }
+
+    if (input.asaasCheckoutId) {
+      updateParts.push("asaasCheckoutId = if_not_exists(asaasCheckoutId, :asaasCheckoutId)");
+      expressionAttributeValues[":asaasCheckoutId"] = input.asaasCheckoutId;
+    }
 
     if (input.confirmedOn) {
       updateParts.push("confirmedOn = if_not_exists(confirmedOn, :confirmedOn)");
@@ -277,7 +317,7 @@ export class PaymentRepository {
         new UpdateCommand({
           TableName: this.tableName,
           Key: paymentKeys(input.paymentId),
-          ConditionExpression: "attribute_not_exists(statusRank) OR statusRank <= :statusRank",
+          ConditionExpression: "attribute_not_exists(#status) OR #status = :expectedCurrentStatus",
           UpdateExpression: `SET ${updateParts.join(", ")}`,
           ExpressionAttributeNames: {
             "#status": "status"

@@ -4,7 +4,6 @@ import {
   CreatePaymentRequestSchema,
   PaymentSummarySchema,
   type CreatePaymentRequest,
-  type PaymentMethod,
   type PaymentSummary
 } from "@brimax/contracts";
 import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
@@ -13,14 +12,41 @@ import { hashValue, maskCpf, normalizeCpf, stableJsonHash } from "../lib/securit
 import { AsaasClient } from "../services/asaas/client";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { initialPaymentStatus, resolveGiftSelection } from "./payment-state";
-import { normalizePixExpiresAt } from "./pix-expiration";
- 
-function buildDueDate() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function toBrlDecimal(valueInCents: number) {
   return valueInCents / 100;
+}
+
+const DEFAULT_SITE_BASE_URL = "https://brimax.life";
+const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
+
+function getSiteBaseUrl() {
+  return process.env.PAYMENTS_SITE_BASE_URL?.trim() || DEFAULT_SITE_BASE_URL;
+}
+
+function getCheckoutExpirationMinutes() {
+  const rawValue = process.env.PAYMENTS_CHECKOUT_EXPIRATION_MINUTES?.trim();
+  const parsed = rawValue ? Number.parseInt(rawValue, 10) : DEFAULT_CHECKOUT_EXPIRATION_MINUTES;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_CHECKOUT_EXPIRATION_MINUTES;
+  }
+
+  return parsed;
+}
+
+function buildCheckoutCallbackUrls(paymentId: string) {
+  const baseUrl = getSiteBaseUrl();
+
+  return {
+    successUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=success`,
+    cancelUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=cancel`,
+    expiredUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=expired`
+  };
+}
+
+function buildCheckoutExpiresAt(minutesToExpire: number) {
+  return new Date(Date.now() + minutesToExpire * 60_000).toISOString();
 }
 
 export class PaymentService {
@@ -60,7 +86,10 @@ export class PaymentService {
     );
 
     if (!reservation.accepted && reservation.reservation) {
-      const existing = await this.resolveExistingPayment(reservation.reservation.paymentId, parsed.paymentMethod);
+      const existing = await this.resolveExistingPayment(
+        reservation.reservation.paymentId,
+        reservation.reservation.paymentSnapshot
+      );
 
       if (existing) {
         return CreatePaymentResponseSchema.parse({
@@ -68,18 +97,30 @@ export class PaymentService {
           payment: existing
         });
       }
+
+      throw new AppError("Existing idempotent payment could not be recovered safely.", 409);
     }
 
     const paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
     const customer = await this.findOrCreateCustomer(parsed, normalizedCpf, paymentId);
-    const asaasPayment = await this.asaasClient.createPayment({
+    const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
+    const asaasCheckout = await this.asaasClient.createCheckout({
       customer: customer.id,
-      billingType: parsed.paymentMethod,
-      value: toBrlDecimal(giftSelection.amountCents),
-      dueDate: buildDueDate(),
-      description: gift.name,
-      externalReference: paymentId
+      billingTypes: [parsed.paymentMethod],
+      callback: buildCheckoutCallbackUrls(paymentId),
+      chargeTypes: ["DETACHED"],
+      items: [
+        {
+          name: gift.name,
+          description: `Brimax payment ${paymentId}`,
+          quantity: giftSelection.quantity,
+          value: toBrlDecimal(giftSelection.amountCents)
+        }
+      ],
+      minutesToExpire: checkoutExpirationMinutes
     });
+    const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
+    const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
 
     const now = new Date().toISOString();
     const payment: PaymentSummary = {
@@ -96,31 +137,25 @@ export class PaymentService {
         unitAmountCents: giftSelection.unitAmountCents,
         amountCents: giftSelection.amountCents
       },
-      invoiceUrl: parsed.paymentMethod === "CREDIT_CARD" ? asaasPayment.invoiceUrl : undefined,
+      checkout: {
+        sessionId: asaasCheckout.id,
+        url: checkoutUrl,
+        expiresAt: checkoutExpiresAt
+      },
       createdAt: now,
       updatedAt: now
     };
 
-    if (parsed.paymentMethod === "PIX") {
-      const pixQrCode = await this.asaasClient.getPixQrCode(asaasPayment.id);
-      payment.pix = {
-        copyPaste: pixQrCode.payload,
-        qrCodeBase64: pixQrCode.encodedImage,
-        expiresAt: normalizePixExpiresAt(pixQrCode.expirationDate, "asaas")
-      };
-    }
-
     await this.repository.putPayment({
       ...payment,
-      asaasPaymentId: asaasPayment.id,
-      externalReference: paymentId,
+      asaasCheckoutId: asaasCheckout.id,
       payerCpfHash: hashValue(normalizedCpf),
       payerCpfMasked: maskCpf(normalizedCpf),
       payerEmail: parsed.payer.email.trim().toLowerCase(),
       payerName: parsed.payer.name.trim()
     });
 
-    await this.repository.completeCreatePayment(idempotencyKey);
+    await this.repository.completeCreatePayment(idempotencyKey, payment);
 
     return CreatePaymentResponseSchema.parse({
       ok: true,
@@ -138,50 +173,18 @@ export class PaymentService {
     return PaymentSummarySchema.parse(payment);
   }
 
-  private async resolveExistingPayment(paymentId: string, paymentMethod: PaymentMethod) {
+  private async resolveExistingPayment(paymentId: string, paymentSnapshot?: PaymentSummary) {
     const existingPayment = await this.repository.getPayment(paymentId);
 
     if (existingPayment) {
       return PaymentSummarySchema.parse(existingPayment);
     }
 
-    const existingAsaasPayments = await this.asaasClient.listPaymentsByExternalReference(paymentId);
-    const existingAsaasPayment = existingAsaasPayments[0];
-
-    if (!existingAsaasPayment) {
-      return null;
+    if (paymentSnapshot) {
+      return PaymentSummarySchema.parse(paymentSnapshot);
     }
 
-    const now = new Date().toISOString();
-    const recoveredPayment: PaymentSummary = {
-      paymentId,
-      paymentMethod,
-      status: initialPaymentStatus(paymentMethod),
-      amountCents: Math.round(existingAsaasPayment.value * 100),
-      currency: "BRL",
-      gift: {
-        id: "recovered",
-        name: existingAsaasPayment.description ?? "Recovered payment",
-        fractional: false,
-        quantity: 1,
-        unitAmountCents: null,
-        amountCents: Math.round(existingAsaasPayment.value * 100)
-      },
-      invoiceUrl: existingAsaasPayment.invoiceUrl,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    if (paymentMethod === "PIX") {
-      const pixQrCode = await this.asaasClient.getPixQrCode(existingAsaasPayment.id);
-      recoveredPayment.pix = {
-        copyPaste: pixQrCode.payload,
-        qrCodeBase64: pixQrCode.encodedImage,
-        expiresAt: normalizePixExpiresAt(pixQrCode.expirationDate, "asaas")
-      };
-    }
-
-    return recoveredPayment;
+    return null;
   }
 
   private async findOrCreateCustomer(

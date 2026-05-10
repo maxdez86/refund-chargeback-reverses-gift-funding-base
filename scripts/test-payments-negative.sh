@@ -106,9 +106,16 @@ fi
 
 same_payment_id_one="$(jq -r '.payment.paymentId // empty' "${same_response_one}")"
 same_payment_id_two="$(jq -r '.payment.paymentId // empty' "${same_response_two}")"
+same_checkout_url_one="$(jq -r '.payment.checkout.url // empty' "${same_response_one}")"
+same_checkout_url_two="$(jq -r '.payment.checkout.url // empty' "${same_response_two}")"
 
 if [[ -z "${same_payment_id_one}" || "${same_payment_id_one}" != "${same_payment_id_two}" ]]; then
   printf 'Expected same idempotency key replay to return the same paymentId.\n' >&2
+  exit 1
+fi
+
+if [[ -z "${same_checkout_url_one}" || "${same_checkout_url_one}" != "${same_checkout_url_two}" ]]; then
+  printf 'Expected same idempotency key replay to return the same checkout url.\n' >&2
   exit 1
 fi
 

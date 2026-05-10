@@ -37,9 +37,9 @@ export const PaymentGiftSummarySchema = z.object({
   amountCents: z.number().int().positive()
 });
 
-export const PaymentPixDetailsSchema = z.object({
-  copyPaste: z.string().min(1),
-  qrCodeBase64: z.string().min(1),
+export const PaymentCheckoutSchema = z.object({
+  sessionId: z.string().min(1),
+  url: z.string().url(),
   expiresAt: z.string().datetime({ offset: true }).optional()
 });
 
@@ -50,8 +50,7 @@ export const PaymentSummarySchema = z.object({
   amountCents: z.number().int().positive(),
   currency: z.literal("BRL"),
   gift: PaymentGiftSummarySchema,
-  invoiceUrl: z.string().url().optional(),
-  pix: PaymentPixDetailsSchema.optional(),
+  checkout: PaymentCheckoutSchema.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   confirmedOn: z.string().date().optional(),
@@ -73,7 +72,7 @@ export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentPayer = z.infer<typeof PaymentPayerSchema>;
 export type CreatePaymentRequest = z.infer<typeof CreatePaymentRequestSchema>;
 export type PaymentGiftSummary = z.infer<typeof PaymentGiftSummarySchema>;
-export type PaymentPixDetails = z.infer<typeof PaymentPixDetailsSchema>;
+export type PaymentCheckout = z.infer<typeof PaymentCheckoutSchema>;
 export type PaymentSummary = z.infer<typeof PaymentSummarySchema>;
 export type CreatePaymentResponse = z.infer<typeof CreatePaymentResponseSchema>;
 export type GetPaymentResponse = z.infer<typeof GetPaymentResponseSchema>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractAsaasErrorMessage } from "../src/services/asaas/client";
+import { AsaasClient, extractAsaasErrorMessage } from "../src/services/asaas/client";
 
 describe("extractAsaasErrorMessage", () => {
   it("prefers Asaas error descriptions over object stringification", () => {
@@ -28,5 +28,15 @@ describe("extractAsaasErrorMessage", () => {
     const message = extractAsaasErrorMessage({}, 500);
 
     expect(message).toBe("Asaas request failed with status 500.");
+  });
+
+  it("builds the public checkout url when Asaas only returns the checkout id", () => {
+    const client = Object.create(AsaasClient.prototype) as AsaasClient & { apiBaseUrl: string };
+    client.apiBaseUrl = "https://api-sandbox.asaas.com/v3";
+
+    expect(client.buildCheckoutUrl({ id: "checkout_123" })).toBe("https://api-sandbox.asaas.com/c/checkout_123");
+    expect(client.buildCheckoutUrl({ id: "checkout_123", url: "https://www.asaas.com/c/checkout_123" })).toBe(
+      "https://www.asaas.com/c/checkout_123"
+    );
   });
 });

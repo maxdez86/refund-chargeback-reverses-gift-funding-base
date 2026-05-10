@@ -143,22 +143,30 @@ In Asaas production webhook settings:
 - Set the webhook URL to `https://api.brimax.life/webhooks/asaas`
 - Set the webhook token to the same raw value used in `ASAAS_WEBHOOK_TOKEN`
 
-## PIX-first production API runbook
+## Hosted checkout production API runbook
 
-Create a PIX payment:
+Create a hosted checkout payment:
 
 ```bash
-bash scripts/test-payments-pix.sh
+bash scripts/test-payments-checkout.sh
 ```
 
 This script:
 
 - Calls `POST /payments`
 - Saves request and response artifacts to `.tmp/payments-tests/...`
-- Verifies `201`, `ok=true`, `AWAITING_PAYMENT`, `paymentId`, and PIX payload fields
+- Verifies `201`, `ok=true`, `CREATED`, `paymentId`, and hosted checkout metadata fields
 - Calls `GET /payments/{paymentId}` immediately and verifies the returned state
 
-Complete the payment manually using the printed `pix.copyPaste` value.
+For the PIX-hosted path specifically, you can still use:
+
+```bash
+bash scripts/test-payments-pix.sh
+```
+
+That wrapper forces `PAYMENTS_TEST_PAYMENT_METHOD=PIX` and reuses the hosted checkout smoke script.
+
+Complete the payment manually using the printed `checkout.url` value.
 
 Then verify webhook-driven state changes:
 
@@ -168,7 +176,7 @@ PAYMENT_ID=<captured paymentId> bash scripts/test-payments-webhook.sh
 
 Expected result:
 
-- `GET /payments/{paymentId}` moves from `AWAITING_PAYMENT` to `CONFIRMED` or `RECEIVED`
+- `GET /payments/{paymentId}` moves from `CREATED` or `AWAITING_PAYMENT` to `CONFIRMED` or `RECEIVED`
 - `payment.confirmedOn` and `payment.receivedOn` appear as `YYYY-MM-DD` values when Asaas sends them
 
 If the webhook does not arrive:
@@ -200,9 +208,9 @@ This covers:
 Manual checks still recommended after the scripts pass:
 
 - Card smoke test:
-  create one `CREDIT_CARD` payment and verify `invoiceUrl` is returned and reachable.
+  create one `CREDIT_CARD` payment and verify `checkout.url` is returned and reachable.
 - DynamoDB verification:
-  inspect the payment item and webhook event item to confirm status progression, `asaasPaymentId` lookup fields, masked CPF persistence, and webhook retention fields.
+  inspect the payment item and webhook event item to confirm status progression, `asaasCheckoutId` and `asaasPaymentId` lookup fields, masked CPF persistence, and webhook retention fields.
 - Queue verification:
   confirm the main webhook queue drains and the DLQ remains empty.
 - Alarm verification:

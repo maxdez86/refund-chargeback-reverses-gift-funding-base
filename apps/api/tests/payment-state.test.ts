@@ -42,7 +42,7 @@ describe("payment-state", () => {
   });
 
   it("maps Pix and hosted card creations to the expected initial states", () => {
-    expect(initialPaymentStatus("PIX")).toBe("AWAITING_PAYMENT");
+    expect(initialPaymentStatus("PIX")).toBe("CREATED");
     expect(initialPaymentStatus("CREDIT_CARD")).toBe("CREATED");
   });
 
@@ -107,5 +107,7 @@ describe("payment-state", () => {
   it("prevents stale updates from regressing a completed payment", () => {
     expect(shouldApplyStatusTransition("RECEIVED", "CONFIRMED")).toBe(false);
     expect(shouldApplyStatusTransition("CONFIRMED", "RECEIVED")).toBe(true);
+    expect(shouldApplyStatusTransition("EXPIRED", "RECEIVED")).toBe(true);
+    expect(shouldApplyStatusTransition("CHARGEBACK", "RECEIVED")).toBe(true);
   });
 });

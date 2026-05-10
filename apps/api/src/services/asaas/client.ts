@@ -12,6 +12,7 @@ type AsaasPayment = {
   status: string;
   value: number;
   invoiceUrl?: string;
+  checkoutSession?: string;
   externalReference?: string;
   description?: string;
   confirmedDate?: string | null;
@@ -19,10 +20,9 @@ type AsaasPayment = {
   paymentDate?: string | null;
 };
 
-type AsaasPixQrCode = {
-  encodedImage: string;
-  payload: string;
-  expirationDate?: string;
+type AsaasCheckout = {
+  id: string;
+  url?: string;
 };
 
 type AsaasListResponse<T> = {
@@ -39,6 +39,27 @@ type RequestOptions = {
 type AsaasErrorItem = {
   code?: string;
   description?: string;
+};
+
+type AsaasCheckoutBillingType = "PIX" | "CREDIT_CARD";
+type AsaasCheckoutChargeType = "DETACHED";
+
+type CreateCheckoutInput = {
+  customer: string;
+  billingTypes: AsaasCheckoutBillingType[];
+  chargeTypes: AsaasCheckoutChargeType[];
+  callback: {
+    successUrl: string;
+    cancelUrl: string;
+    expiredUrl: string;
+  };
+  items: Array<{
+    name: string;
+    description: string;
+    quantity: number;
+    value: number;
+  }>;
+  minutesToExpire: number;
 };
 
 function parseSecretString(value: string) {
@@ -116,9 +137,11 @@ export class AsaasClient {
     });
   }
 
-  async getPixQrCode(paymentId: string) {
-    return this.request<AsaasPixQrCode>({
-      path: `/payments/${paymentId}/pixQrCode`
+  async createCheckout(input: CreateCheckoutInput) {
+    return this.request<AsaasCheckout>({
+      method: "POST",
+      path: "/checkouts",
+      body: input
     });
   }
 
@@ -129,6 +152,23 @@ export class AsaasClient {
     });
 
     return response.data ?? [];
+  }
+
+  async listPaymentsByCheckoutSession(checkoutSession: string) {
+    const response = await this.request<AsaasListResponse<AsaasPayment>>({
+      path: "/payments",
+      query: { checkoutSession }
+    });
+
+    return response.data ?? [];
+  }
+
+  buildCheckoutUrl(checkout: AsaasCheckout) {
+    if (checkout.url?.trim()) {
+      return checkout.url;
+    }
+
+    return `${this.apiBaseUrl.replace(/\/v3\/?$/, "")}/c/${checkout.id}`;
   }
 
   private async request<T>({ method = "GET", path, body, query }: RequestOptions): Promise<T> {
@@ -171,3 +211,4 @@ export class AsaasClient {
 }
 
 export { extractAsaasErrorMessage };
+export type { AsaasCheckout, AsaasPayment, CreateCheckoutInput };
