@@ -22,7 +22,7 @@ const getInstagramHandle = (url: string): string => {
 
 export function Fornecedores() {
   return (
-    <section id="fornecedores" className="fornecedores-v2 bg-[#f4eee5] py-20 md:py-24">
+    <section id="fornecedores" className="fornecedores-v2 bg-muted py-20 md:py-24">
       <div className="mx-auto max-w-6xl px-6 text-center">
         <motion.div
           initial={{ opacity: 0, y: 24 }}

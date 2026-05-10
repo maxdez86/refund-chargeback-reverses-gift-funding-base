@@ -134,7 +134,7 @@ export function Padrinhos() {
     <section
       id="padrinhos"
       aria-labelledby="padrinhos-heading"
-      className="padrinhos-v4 overflow-hidden bg-[#f5efe6] py-4 text-foreground md:py-6"
+      className="padrinhos-v4 overflow-hidden bg-accent/30 py-4 text-foreground md:py-6"
     >
       <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
         <motion.div

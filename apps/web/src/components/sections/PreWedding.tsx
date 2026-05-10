@@ -3,7 +3,7 @@ import { Film } from "lucide-react";
 
 export function PreWedding() {
   return (
-    <section id="pre-wedding" className="py-24 md:py-32 bg-secondary/30 overflow-hidden">
+    <section id="pre-wedding" className="py-24 md:py-32 bg-secondary/50 overflow-hidden">
       <div className="container mx-auto px-6 mb-12 flex flex-col items-center text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

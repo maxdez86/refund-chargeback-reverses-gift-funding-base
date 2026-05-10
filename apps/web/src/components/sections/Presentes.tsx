@@ -489,7 +489,7 @@ export function Presentes() {
   return (
     <section
       id="presentes"
-      className="py-16 md:py-20 bg-background border-t border-border/30 overflow-hidden"
+      className="py-16 md:py-20 bg-[#fbf7f0] border-t border-border/30 overflow-hidden"
     >
       <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
         <motion.div

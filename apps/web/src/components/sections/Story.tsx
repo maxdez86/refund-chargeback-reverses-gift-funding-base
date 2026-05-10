@@ -124,7 +124,7 @@ export function Story() {
   }, [emblaApi]);
 
   return (
-    <section id="historia" className="py-16 md:py-20 bg-background overflow-hidden">
+    <section id="historia" className="py-16 md:py-20 bg-[#f4eee5] overflow-hidden">
       <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
         <motion.div
           initial={{ opacity: 0, x: -20 }}

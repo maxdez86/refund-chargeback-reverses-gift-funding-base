@@ -74,7 +74,7 @@ export function Local() {
     <section
       id="local"
       aria-labelledby="local-heading"
-      className="local-v4 bg-background py-24 text-foreground md:py-32"
+      className="local-v4 bg-[#f4eee5] py-24 text-foreground md:py-32"
     >
       <div className="local-v4-shell mx-auto max-w-[1180px] px-6 md:px-10">
         <motion.p

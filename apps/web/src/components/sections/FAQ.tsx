@@ -117,7 +117,7 @@ export function FAQ() {
   const [openItem, setOpenItem] = useState<string | null>("item-0");
 
   return (
-    <section id="faq" className="faq-v2 bg-[#f4eee5] py-24 md:py-32">
+    <section id="faq" className="faq-v2 bg-[#ebe2cf] py-24 md:py-32">
       <div className="mx-auto max-w-3xl px-6">
         <motion.div
           className="text-center"

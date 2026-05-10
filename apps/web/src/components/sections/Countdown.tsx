@@ -34,7 +34,7 @@ export function Countdown() {
   ];
 
   return (
-    <section id="contagem" className="countdown-v2 bg-[#f4eee5] py-20 md:py-28">
+    <section id="contagem" className="countdown-v2 bg-[#fbf7f0] py-20 md:py-28">
       <div className="mx-auto max-w-5xl px-6 text-center">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
