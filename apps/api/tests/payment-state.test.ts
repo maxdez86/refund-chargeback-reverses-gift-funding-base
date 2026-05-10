@@ -38,6 +38,13 @@ describe("payment-state", () => {
   it("maps authoritative Asaas events to internal terminal states", () => {
     expect(
       mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_CONFIRMED",
+        payment: { status: "CONFIRMED" }
+      })
+    ).toBe("CONFIRMED");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
         event: "PAYMENT_RECEIVED",
         payment: { status: "RECEIVED" }
       })
@@ -45,7 +52,42 @@ describe("payment-state", () => {
 
     expect(
       mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_OVERDUE",
+        payment: { status: "OVERDUE" }
+      })
+    ).toBe("EXPIRED");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_REFUNDED",
+        payment: { status: "REFUNDED" }
+      })
+    ).toBe("REFUNDED");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED",
+        payment: { status: "REFUSED" }
+      })
+    ).toBe("FAILED");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
         event: "PAYMENT_CHARGEBACK_REQUESTED",
+        payment: { status: "CHARGEBACK" }
+      })
+    ).toBe("CHARGEBACK");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_CHARGEBACK_DISPUTE",
+        payment: { status: "CHARGEBACK" }
+      })
+    ).toBe("CHARGEBACK");
+
+    expect(
+      mapAsaasWebhookToPaymentStatus({
+        event: "PAYMENT_AWAITING_CHARGEBACK_REVERSAL",
         payment: { status: "CHARGEBACK" }
       })
     ).toBe("CHARGEBACK");

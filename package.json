@@ -4,11 +4,13 @@
   "private": true,
   "packageManager": "pnpm@9.12.1",
   "scripts": {
+    "asaas:webhook:sync": "bash scripts/sync-asaas-webhook.sh",
     "build": "pnpm -r build",
     "build:web": "bash scripts/build-landing-bundle.sh",
     "cdk:bootstrap": "bash scripts/cdk-bootstrap.sh",
     "dev:all-web": "bash scripts/dev-all-web-apps.sh",
     "deploy:backend": "bash scripts/deploy-backend.sh",
+    "deploy:backend:with-webhook": "bash scripts/deploy-backend-and-sync-asaas-webhook.sh",
     "deploy:platform": "bash scripts/deploy-platform.sh",
     "dev:web": "pnpm --filter @brimax/web dev",
     "deploy:landing:cert": "bash scripts/deploy-landing-certificate.sh",
