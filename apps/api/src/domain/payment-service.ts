@@ -13,7 +13,8 @@ import { hashValue, maskCpf, normalizeCpf, stableJsonHash } from "../lib/securit
 import { AsaasClient } from "../services/asaas/client";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { initialPaymentStatus, resolveGiftSelection } from "./payment-state";
-
+import { normalizePixExpiresAt } from "./pix-expiration";
+ 
 function buildDueDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -105,7 +106,7 @@ export class PaymentService {
       payment.pix = {
         copyPaste: pixQrCode.payload,
         qrCodeBase64: pixQrCode.encodedImage,
-        expiresAt: pixQrCode.expirationDate
+        expiresAt: normalizePixExpiresAt(pixQrCode.expirationDate, "asaas")
       };
     }
 
@@ -176,7 +177,7 @@ export class PaymentService {
       recoveredPayment.pix = {
         copyPaste: pixQrCode.payload,
         qrCodeBase64: pixQrCode.encodedImage,
-        expiresAt: pixQrCode.expirationDate
+        expiresAt: normalizePixExpiresAt(pixQrCode.expirationDate, "asaas")
       };
     }
 

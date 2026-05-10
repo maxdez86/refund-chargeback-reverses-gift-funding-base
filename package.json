@@ -25,6 +25,7 @@
     "opentofu:dns:apply": "bash scripts/landing-opentofu.sh edge-dns apply",
     "opentofu:dns:init": "bash scripts/landing-opentofu.sh edge-dns init",
     "opentofu:dns:plan": "bash scripts/landing-opentofu.sh edge-dns plan",
+    "reset:payments:test-data": "bash scripts/reset-payments-test-data.sh",
     "synth": "pnpm build:web && pnpm --filter @brimax/infra-cdk cdk synth",
     "test:payments:negative": "bash scripts/test-payments-negative.sh",
     "test:payments:pix": "bash scripts/test-payments-pix.sh",

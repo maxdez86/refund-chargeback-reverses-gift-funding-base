@@ -1,6 +1,7 @@
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus } from "./payment-state";
 import { AppError } from "../lib/errors";
+import { normalizeSettlementDate } from "./payment-settlement-date";
 
 type AsaasWebhookPayload = {
   event?: string;
@@ -51,8 +52,11 @@ export class WebhookProcessor {
     const applied = await this.repository.applyWebhookUpdate({
       paymentId: payment.paymentId,
       nextStatus,
-      confirmedAt: payload.payment?.confirmedDate ?? undefined,
-      receivedAt: payload.payment?.clientPaymentDate ?? payload.payment?.paymentDate ?? undefined,
+      confirmedOn: normalizeSettlementDate(payload.payment?.confirmedDate ?? undefined, "confirmedOn"),
+      receivedOn: normalizeSettlementDate(
+        payload.payment?.clientPaymentDate ?? payload.payment?.paymentDate ?? undefined,
+        "receivedOn"
+      ),
       asaasPaymentId: asaasPaymentId ?? payment.asaasPaymentId
     });
 

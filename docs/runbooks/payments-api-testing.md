@@ -18,7 +18,7 @@ ASAAS_ENV=production
 ASAAS_API_BASE_URL=https://api.asaas.com/v3
 ASAAS_API_KEY=<raw asaas production api key>
 ASAAS_WEBHOOK_TOKEN=<raw webhook token to be written by cdk>
-PAYMENTS_TEST_GIFT_ID=g-armario
+PAYMENTS_TEST_GIFT_ID=g-test-pix
 PAYMENTS_TEST_GIFT_QUANTITY=1
 PAYMENTS_TEST_PAYER_NAME=<real tester name>
 PAYMENTS_TEST_PAYER_EMAIL=<email you control>
@@ -34,7 +34,7 @@ Value sources:
 - `ASAAS_API_BASE_URL`: Asaas production API endpoint.
 - `ASAAS_API_KEY`: raw Asaas API key from the Asaas production dashboard.
 - `ASAAS_WEBHOOK_TOKEN`: raw token you generate and configure in Asaas for the production webhook endpoint.
-- `PAYMENTS_TEST_GIFT_*`: backend gift catalog. `g-armario` with quantity `1` keeps the PIX test at `R$50,00`.
+- `PAYMENTS_TEST_GIFT_*`: backend gift catalog. `g-test-pix` with quantity `1` keeps the PIX smoke test at `R$5,00`, which matches the current minimum accepted by Asaas for PIX charges.
 - `PAYMENTS_TEST_PAYER_*`: controlled real identity used for live payment testing.
 
 CDK will use the raw env vars to create or update these Secrets Manager entries during backend deployment:
@@ -169,6 +169,7 @@ PAYMENT_ID=<captured paymentId> bash scripts/test-payments-webhook.sh
 Expected result:
 
 - `GET /payments/{paymentId}` moves from `AWAITING_PAYMENT` to `CONFIRMED` or `RECEIVED`
+- `payment.confirmedOn` and `payment.receivedOn` appear as `YYYY-MM-DD` values when Asaas sends them
 
 If the webhook does not arrive:
 

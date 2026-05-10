@@ -32,6 +32,7 @@ function fractional(id: string, name: string, priceInBrl: number): PaymentGift {
 }
 
 export const PAYMENT_GIFTS: PaymentGift[] = [
+  single("g-test-pix", "PIX Teste", 5),
   single("g-toalhas-banho", "4 Toalhas de Banho", 176),
   fractional("g-armario", "Armário de Cozinha", 1749),
   single("g-aspirador", "Aspirador", 139),

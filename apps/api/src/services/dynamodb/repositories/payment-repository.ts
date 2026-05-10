@@ -244,8 +244,8 @@ export class PaymentRepository {
   async applyWebhookUpdate(input: {
     paymentId: string;
     nextStatus: PaymentStatus;
-    confirmedAt?: string;
-    receivedAt?: string;
+    confirmedOn?: string;
+    receivedOn?: string;
     asaasPaymentId: string;
   }) {
     const statusRank = PAYMENT_STATUS_RANK[input.nextStatus];
@@ -262,14 +262,14 @@ export class PaymentRepository {
       ":asaasPaymentId": input.asaasPaymentId
     };
 
-    if (input.confirmedAt) {
-      updateParts.push("confirmedAt = if_not_exists(confirmedAt, :confirmedAt)");
-      expressionAttributeValues[":confirmedAt"] = input.confirmedAt;
+    if (input.confirmedOn) {
+      updateParts.push("confirmedOn = if_not_exists(confirmedOn, :confirmedOn)");
+      expressionAttributeValues[":confirmedOn"] = input.confirmedOn;
     }
 
-    if (input.receivedAt) {
-      updateParts.push("receivedAt = if_not_exists(receivedAt, :receivedAt)");
-      expressionAttributeValues[":receivedAt"] = input.receivedAt;
+    if (input.receivedOn) {
+      updateParts.push("receivedOn = if_not_exists(receivedOn, :receivedOn)");
+      expressionAttributeValues[":receivedOn"] = input.receivedOn;
     }
 
     try {

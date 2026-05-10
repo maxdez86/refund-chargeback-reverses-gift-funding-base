@@ -29,6 +29,8 @@ const PHOTO_BASE =
 const giftImage = (filename: string) =>
   `${PHOTO_BASE}/gifts/${encodeURIComponent(filename)}`;
 
+const localGiftImage = (filename: string) => `/images/${filename}`;
+
 const single = (id: string, name: string, price: number, file: string): Gift => ({
   id,
   name,
@@ -57,6 +59,17 @@ const fractional = (id: string, name: string, price: number, file: string): Gift
 };
 
 const giftsData: Gift[] = [
+  {
+    id: "g-test-pix",
+    name: "PIX Teste",
+    image: localGiftImage("gifts-home.png"),
+    totalValue: 5,
+    fractional: false,
+    partValue: null,
+    totalParts: null,
+    partsFunded: null,
+    fullyFunded: false,
+  },
   single("g-toalhas-banho", "4 Toalhas de Banho", 176, "4 Toalhas De Banho_176.jpg"),
   fractional("g-armario", "Armário de Cozinha", 1749, "armario_cozinha_ 1749.webp"),
   single("g-aspirador", "Aspirador", 139, "aspirador_139.jpg"),

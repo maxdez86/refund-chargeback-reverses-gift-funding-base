@@ -30,8 +30,8 @@ while (( $(date +%s) < deadline )); do
   fi
 
   status="$(jq -r '.payment.status // empty' "${response_file}")"
-  confirmed_at="$(jq -r '.payment.confirmedAt // empty' "${response_file}")"
-  received_at="$(jq -r '.payment.receivedAt // empty' "${response_file}")"
+  confirmed_on="$(jq -r '.payment.confirmedOn // empty' "${response_file}")"
+  received_on="$(jq -r '.payment.receivedOn // empty' "${response_file}")"
   updated_at="$(jq -r '.payment.updatedAt // empty' "${response_file}")"
 
   printf 'Current status: %s (updatedAt=%s)\n' "${status}" "${updated_at}"
@@ -40,8 +40,8 @@ while (( $(date +%s) < deadline )); do
     printf '\nPayment webhook flow completed.\n'
     printf 'Payment ID: %s\n' "${PAYMENT_ID}"
     printf 'Status: %s\n' "${status}"
-    printf 'Confirmed At: %s\n' "${confirmed_at:-n/a}"
-    printf 'Received At: %s\n' "${received_at:-n/a}"
+    printf 'Confirmed On: %s\n' "${confirmed_on:-n/a}"
+    printf 'Received On: %s\n' "${received_on:-n/a}"
     rm -f "${response_file}"
     exit 0
   fi

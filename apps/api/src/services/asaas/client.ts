@@ -36,6 +36,11 @@ type RequestOptions = {
   query?: Record<string, string | undefined>;
 };
 
+type AsaasErrorItem = {
+  code?: string;
+  description?: string;
+};
+
 function parseSecretString(value: string) {
   if (!value) {
     return "";
@@ -47,6 +52,23 @@ function parseSecretString(value: string) {
   } catch {
     return value;
   }
+}
+
+function extractAsaasErrorMessage(parsed: Record<string, unknown>, responseStatus: number) {
+  const errors = Array.isArray(parsed.errors) ? (parsed.errors as AsaasErrorItem[]) : [];
+  const descriptions = errors
+    .map((error) => error.description?.trim())
+    .filter((description): description is string => Boolean(description));
+
+  if (descriptions.length > 0) {
+    return descriptions.join(" | ");
+  }
+
+  if (typeof parsed.message === "string" && parsed.message.trim()) {
+    return parsed.message;
+  }
+
+  return `Asaas request failed with status ${responseStatus}.`;
 }
 
 export class AsaasClient {
@@ -140,11 +162,12 @@ export class AsaasClient {
     const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
 
     if (!response.ok) {
-      const message =
-        String(parsed.errors ?? parsed.message ?? `Asaas request failed with status ${response.status}.`);
+      const message = extractAsaasErrorMessage(parsed, response.status);
       throw new AppError(message, 502);
     }
 
     return parsed as T;
   }
 }
+
+export { extractAsaasErrorMessage };

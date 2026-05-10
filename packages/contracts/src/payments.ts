@@ -40,7 +40,7 @@ export const PaymentGiftSummarySchema = z.object({
 export const PaymentPixDetailsSchema = z.object({
   copyPaste: z.string().min(1),
   qrCodeBase64: z.string().min(1),
-  expiresAt: z.string().datetime().optional()
+  expiresAt: z.string().datetime({ offset: true }).optional()
 });
 
 export const PaymentSummarySchema = z.object({
@@ -54,8 +54,8 @@ export const PaymentSummarySchema = z.object({
   pix: PaymentPixDetailsSchema.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  confirmedAt: z.string().datetime().optional(),
-  receivedAt: z.string().datetime().optional()
+  confirmedOn: z.string().date().optional(),
+  receivedOn: z.string().date().optional()
 });
 
 export const CreatePaymentResponseSchema = z.object({

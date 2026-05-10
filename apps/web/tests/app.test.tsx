@@ -18,7 +18,7 @@ describe("official web app", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Contribuir|Escolher presente/i })[0]);
 
     expect(
-      await screen.findByRole("heading", { name: /4 Toalhas de Banho|Armário de Cozinha/i })
+      await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirmar contribuição" }));
