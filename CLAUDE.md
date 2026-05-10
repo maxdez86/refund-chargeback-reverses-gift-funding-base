@@ -1,0 +1,81 @@
+# brimax-life — Claude Code guide
+
+AWS-first pnpm monorepo for the Brimax wedding platform. **Target date: 2026-12-06.**
+
+## Workspaces
+
+| Path | Role | Deep-dive |
+|---|---|---|
+| [apps/web](apps/web/) | Guest-facing React/Vite site (S3 + CloudFront) | [apps/web/CLAUDE.md](apps/web/CLAUDE.md) |
+| [apps/api](apps/api/) | Lambda handlers + domain logic (HTTP API + webhooks) | [apps/api/CLAUDE.md](apps/api/CLAUDE.md) |
+| [packages/contracts](packages/contracts/src/) | Shared Zod schemas: `admin`, `guest`, `payments`, `registry`, `rsvp`, `webhooks` | — |
+| [packages/config](packages/config/src/) | Stage helpers: `resolveStage`, `resourceName`, `stageNamePrefix`, `isProductionStage` | — |
+| [infra/cdk](infra/cdk/) | AWS CDK stacks (TypeScript) | [infra/cdk/CLAUDE.md](infra/cdk/CLAUDE.md) |
+| [infra/opentofu](infra/opentofu/) | Cloudflare DNS — `certificate-validation`, `edge-dns`, `api-dns` | — |
+| [tests/e2e](tests/e2e/) | End-to-end coverage (planned) | — |
+
+## Command cheatsheet
+
+All scripts live in [package.json](package.json) and wrap shell scripts in [scripts/](scripts/).
+
+```bash
+pnpm install                 # bootstrap workspace
+pnpm dev:all-web             # run apps/web (logs in .tmp/dev-all-web-apps/)
+pnpm dev:web                 # apps/web only (port 5173)
+pnpm build:web               # production bundle → apps/web/dist
+pnpm build                   # tsc -b across all workspaces
+pnpm lint                    # eslint .
+pnpm typecheck               # tsc --noEmit (recursive)
+pnpm test                    # vitest (recursive)
+pnpm synth                   # build:web + cdk synth (validates stacks)
+
+# Deploy (each script reads STAGE env or CDK -c stage)
+pnpm deploy:platform         # PlatformStack
+pnpm deploy:backend          # Data + App + Observability (needs ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN)
+pnpm deploy:landing:cert     # CertificateStack
+pnpm wait:landing:cert       # poll ACM until ISSUED
+pnpm deploy:landing:edge     # EdgeStack (CloudFront)
+
+# OpenTofu (Cloudflare DNS) — every module has init / plan / apply
+pnpm opentofu:cert:{init,plan,apply}      # certificate-validation
+pnpm opentofu:dns:{init,plan,apply}       # edge-dns (root + www)
+pnpm opentofu:api-dns:{init,plan,apply}   # api-dns (api.brimax.life)
+
+# Payments smoke tests
+pnpm test:payments:pix
+pnpm test:payments:webhook
+pnpm test:payments:negative
+```
+
+## Conventions that matter
+
+**Stages.** Default stage is `prod` (bare resource names). Setting `STAGE=dev` (or CDK `-c stage=dev`) prepends `dev-`. Always go through `resolveStage()` and `resourceName()` from `@brimax/config` — never string-concatenate a stage prefix.
+
+**DNS / TLS split.** AWS resources (ACM, CloudFront, API Gateway, Lambda) are managed by **CDK**. Cloudflare DNS records are managed by **OpenTofu**. Never add Cloudflare logic to CDK and never duplicate a DNS record across both.
+
+**Shared types are the source of truth.** Both apps import Zod schemas from `@brimax/contracts`. When a request/response shape changes, edit `packages/contracts/src/<area>.ts` first; both apps pick it up.
+
+**DynamoDB single-table design.** One table; key-builder lives in [apps/api/src/services/dynamodb/key-builder.ts](apps/api/src/services/dynamodb/key-builder.ts). Don't propose adding a new table without flagging the design implication.
+
+**Secrets.** `.env` lives at repo root, is gitignored, and is also blocked by `.claudeignore`. Never echo its contents back. Asaas credentials flow through Secrets Manager — CDK reads `ASAAS_API_KEY` / `ASAAS_WEBHOOK_TOKEN` env vars at deploy time and writes them to a managed secret.
+
+**Code style.** TypeScript strict; Zod for runtime validation at boundaries; Vitest for tests; functional React (no class components); `@/` alias in `apps/web`, relative imports in `apps/api`.
+
+**Dev logs.** `pnpm dev:all-web` writes to [.tmp/dev-all-web-apps/](.tmp/dev-all-web-apps/) — tail those files instead of restarting the server.
+
+## Where to read more
+
+- [docs/architecture/overview.md](docs/architecture/overview.md) — AWS topology, single-table design rationale, Cloudflare/AWS split.
+- [docs/runbooks/bootstrapping.md](docs/runbooks/bootstrapping.md) — first-time landing deploy, two-terminal cert dance.
+- [docs/runbooks/deploy.md](docs/runbooks/deploy.md) — prerequisites and stage selection.
+- [docs/runbooks/payments-api-testing.md](docs/runbooks/payments-api-testing.md) — production payment validation flow.
+- [docs/vendors/](docs/vendors/) — Cloudflare and vendor-specific notes.
+
+## Don't read / don't touch
+
+- [docs/experimentation/](docs/experimentation/) — abandoned landing-page variants (199 MB with their own `node_modules`).
+- [install-opentofu.sh](install-opentofu.sh) — vendor binary installer (50 KB).
+- `pnpm-lock.yaml` — generated, 300 KB.
+- `cdk.out/`, `.terraform/`, `.opentofu/`, `*.tfstate*`, `dist/`, `node_modules/` — build/state artifacts.
+
+These are also listed in [.claudeignore](.claudeignore).
