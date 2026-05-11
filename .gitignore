@@ -54,3 +54,26 @@ Thumbs.db
 
 # === One-off vendor exports (data lives in IaC) ===
 DNS_Configuration.csv
+
+# === Secrets / keys (defense in depth) ===
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# === AI tool artifacts ===
+.codex
+.aider*
+.cursor/
+.continue/
+.windsurf/
+
+# === Lint / format caches ===
+.eslintcache
+.prettiercache
+.stylelintcache
