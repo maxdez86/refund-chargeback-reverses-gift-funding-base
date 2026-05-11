@@ -145,6 +145,12 @@ In Asaas production webhook settings:
 
 ## Hosted checkout production API runbook
 
+The `POST /payments` API accepts three `paymentMethod` values:
+
+- `HOSTED` — Asaas hosted checkout shows **both** PIX and credit card. Use this from the frontend's primary "Presentear" button. The stored `paymentMethod` on the payment record remains `HOSTED`; the guest's actual choice is visible in the Asaas dashboard.
+- `PIX` — Asaas hosted checkout shows **only** PIX.
+- `CREDIT_CARD` — Asaas hosted checkout shows **only** credit card.
+
 Create a hosted checkout payment:
 
 ```bash
@@ -153,18 +159,24 @@ bash scripts/test-payments-checkout.sh
 
 This script:
 
+- Reads `PAYMENTS_TEST_PAYMENT_METHOD` (defaults to `PIX`) and forwards it as `paymentMethod` in the request body.
 - Calls `POST /payments`
 - Saves request and response artifacts to `.tmp/payments-tests/...`
 - Verifies `201`, `ok=true`, `CREATED`, `paymentId`, and hosted checkout metadata fields
 - Calls `GET /payments/{paymentId}` immediately and verifies the returned state
 
-For the PIX-hosted path specifically, you can still use:
+Three shortcut wrappers exist:
 
 ```bash
-bash scripts/test-payments-pix.sh
+bash scripts/test-payments-pix.sh        # PAYMENTS_TEST_PAYMENT_METHOD=PIX
+bash scripts/test-payments-hosted.sh     # PAYMENTS_TEST_PAYMENT_METHOD=HOSTED  (PIX + credit card)
+# CREDIT_CARD has no wrapper — run with PAYMENTS_TEST_PAYMENT_METHOD=CREDIT_CARD bash scripts/test-payments-checkout.sh
 ```
 
-That wrapper forces `PAYMENTS_TEST_PAYMENT_METHOD=PIX` and reuses the hosted checkout smoke script.
+Open the printed `checkout.url` and **verify that the Asaas hosted page offers the expected payment options**:
+
+- For `HOSTED`: **exactly two options — PIX and credit card.** If boleto, debit card, or anything else appears, stop and re-check the Asaas Checkout configuration in the Asaas dashboard. The API contract limits `billingTypes`, but Asaas account-level toggles can still add or remove methods regardless of what we send.
+- For `PIX` or `CREDIT_CARD`: only that single method.
 
 Complete the payment manually using the printed `checkout.url` value.
 
