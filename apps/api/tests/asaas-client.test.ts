@@ -31,12 +31,30 @@ describe("extractAsaasErrorMessage", () => {
   });
 
   it("builds the public checkout url when Asaas only returns the checkout id", () => {
-    const client = Object.create(AsaasClient.prototype) as AsaasClient & { apiBaseUrl: string };
-    client.apiBaseUrl = "https://api-sandbox.asaas.com/v3";
+    const client = Object.create(AsaasClient.prototype) as AsaasClient & {
+      checkoutBaseUrl: string;
+    };
+    client.checkoutBaseUrl = "https://www.asaas.com/checkoutSession/show";
 
-    expect(client.buildCheckoutUrl({ id: "checkout_123" })).toBe("https://api-sandbox.asaas.com/c/checkout_123");
-    expect(client.buildCheckoutUrl({ id: "checkout_123", url: "https://www.asaas.com/c/checkout_123" })).toBe(
-      "https://www.asaas.com/c/checkout_123"
+    expect(client.buildCheckoutUrl({ id: "checkout_123" })).toBe(
+      "https://www.asaas.com/checkoutSession/show/checkout_123"
+    );
+    expect(
+      client.buildCheckoutUrl({
+        id: "checkout_123",
+        url: "https://www.asaas.com/checkoutSession/show/checkout_123"
+      })
+    ).toBe("https://www.asaas.com/checkoutSession/show/checkout_123");
+  });
+
+  it("trims trailing slashes from checkoutBaseUrl", () => {
+    const client = Object.create(AsaasClient.prototype) as AsaasClient & {
+      checkoutBaseUrl: string;
+    };
+    client.checkoutBaseUrl = "https://www.asaas.com/checkoutSession/show/";
+
+    expect(client.buildCheckoutUrl({ id: "abc" })).toBe(
+      "https://www.asaas.com/checkoutSession/show/abc"
     );
   });
 });

@@ -94,6 +94,7 @@ function extractAsaasErrorMessage(parsed: Record<string, unknown>, responseStatu
 
 export class AsaasClient {
   private readonly apiBaseUrl = getEnv().asaasApiBaseUrl;
+  private readonly checkoutBaseUrl = getEnv().asaasCheckoutBaseUrl;
   private readonly apiSecretArn = getEnv().asaasApiSecretArn;
 
   async findCustomerByCpf(cpfCnpj: string) {
@@ -168,7 +169,7 @@ export class AsaasClient {
       return checkout.url;
     }
 
-    return `${this.apiBaseUrl.replace(/\/v3\/?$/, "")}/c/${checkout.id}`;
+    return `${this.checkoutBaseUrl.replace(/\/+$/, "")}/${checkout.id}`;
   }
 
   private async request<T>({ method = "GET", path, body, query }: RequestOptions): Promise<T> {
