@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PaymentMethodSchema = z.enum(["PIX", "CREDIT_CARD"]);
+export const PaymentMethodSchema = z.enum(["HOSTED", "PIX", "CREDIT_CARD"]);
 export const PaymentStatusSchema = z.enum([
   "CREATED",
   "AWAITING_PAYMENT",

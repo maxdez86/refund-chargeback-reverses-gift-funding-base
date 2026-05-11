@@ -104,9 +104,13 @@ export class PaymentService {
     const paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
     const customer = await this.findOrCreateCustomer(parsed, normalizedCpf, paymentId);
     const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
+    const billingTypes: ("PIX" | "CREDIT_CARD")[] =
+      parsed.paymentMethod === "HOSTED"
+        ? ["PIX", "CREDIT_CARD"]
+        : [parsed.paymentMethod];
     const asaasCheckout = await this.asaasClient.createCheckout({
       customer: customer.id,
-      billingTypes: [parsed.paymentMethod],
+      billingTypes,
       callback: buildCheckoutCallbackUrls(paymentId),
       chargeTypes: ["DETACHED"],
       items: [

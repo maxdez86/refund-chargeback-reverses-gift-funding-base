@@ -70,6 +70,52 @@ describe("PaymentService", () => {
     expect(repository.completeCreatePayment).toHaveBeenCalledWith("idem-test-pix", result.payment);
   });
 
+  it("sends both billingTypes to Asaas when paymentMethod is HOSTED", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: true,
+        reservation: {
+          paymentId: "payment-test-hosted-1"
+        }
+      }),
+      putPayment: vi.fn().mockResolvedValue(undefined),
+      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getPayment: vi.fn()
+    };
+    const asaasClient = {
+      findCustomerByCpf: vi.fn().mockResolvedValue({ id: "customer-hosted-1" }),
+      createCustomer: vi.fn(),
+      createCheckout: vi.fn().mockResolvedValue({
+        id: "checkout-hosted-1"
+      }),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-hosted-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    const result = await service.createPayment(
+      {
+        giftId: "g-test-pix",
+        paymentMethod: "HOSTED",
+        payer: {
+          cpf: "123.456.789-09",
+          email: "test@example.com",
+          name: "Test Guest"
+        }
+      },
+      "idem-test-hosted"
+    );
+
+    expect(asaasClient.createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingTypes: ["PIX", "CREDIT_CARD"],
+        chargeTypes: ["DETACHED"]
+      })
+    );
+    expect(result.payment.paymentMethod).toBe("HOSTED");
+    expect(result.payment.checkout?.sessionId).toBe("checkout-hosted-1");
+  });
+
   it("returns the existing payment when the same idempotency key is replayed", async () => {
     const existingPayment = {
       paymentId: "payment-1",
