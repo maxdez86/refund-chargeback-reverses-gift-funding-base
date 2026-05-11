@@ -29,10 +29,13 @@ type StoredPayment = PaymentSummary & {
   payerName: string;
 };
 
+const RAW_WEBHOOK_PAYLOAD_MAX_BYTES = 350 * 1024;
+
 type StoredWebhookEvent = {
   eventId: string;
   eventType: string;
   payload: string;
+  payloadTruncated?: boolean;
   asaasPaymentId?: string;
   asaasCheckoutId?: string;
   externalReference?: string;
@@ -212,6 +215,24 @@ export class PaymentRepository {
     ttlInSeconds?: number;
   }) {
     const ttlInSeconds = input.ttlInSeconds ?? 30 * 24 * 60 * 60;
+    const payloadByteLength = Buffer.byteLength(input.payload, "utf8");
+    const truncated = payloadByteLength > RAW_WEBHOOK_PAYLOAD_MAX_BYTES;
+    const storedPayload = truncated
+      ? Buffer.from(input.payload, "utf8")
+          .subarray(0, RAW_WEBHOOK_PAYLOAD_MAX_BYTES)
+          .toString("utf8")
+      : input.payload;
+
+    if (truncated) {
+      console.error(
+        JSON.stringify({
+          metric: "WEBHOOK_PAYLOAD_TRUNCATED",
+          eventId: input.eventId,
+          originalBytes: payloadByteLength,
+          storedBytes: RAW_WEBHOOK_PAYLOAD_MAX_BYTES
+        })
+      );
+    }
 
     try {
       await this.documentClient.send(
@@ -223,7 +244,8 @@ export class PaymentRepository {
             provider: "asaas",
             eventId: input.eventId,
             eventType: input.eventType,
-            payload: input.payload,
+            payload: storedPayload,
+            payloadTruncated: truncated,
             asaasPaymentId: input.asaasPaymentId,
             asaasCheckoutId: input.asaasCheckoutId,
             externalReference: input.externalReference,

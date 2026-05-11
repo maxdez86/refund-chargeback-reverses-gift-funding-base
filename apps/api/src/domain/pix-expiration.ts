@@ -4,8 +4,8 @@ const ASAAS_LOCAL_DATETIME_REGEX =
   /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2}) (?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})$/;
 const SAO_PAULO_OFFSET = "-03:00";
 
-function logNormalizationFailure(source: "asaas" | "stored", value: string) {
-  console.warn(JSON.stringify({ metric: "PIX_EXPIRATION_NORMALIZATION_FAILED", source, value }));
+function logNormalizationError(source: "asaas" | "stored", value: string) {
+  console.error(JSON.stringify({ metric: "PIX_EXPIRATION_NORMALIZATION_FAILED", source, value }));
 }
 
 export function normalizePixExpiresAt(rawValue: string | undefined, source: "asaas" | "stored") {
@@ -26,7 +26,7 @@ export function normalizePixExpiresAt(rawValue: string | undefined, source: "asa
   const match = ASAAS_LOCAL_DATETIME_REGEX.exec(value);
 
   if (!match?.groups) {
-    logNormalizationFailure(source, rawValue);
+    logNormalizationError(source, rawValue);
     return undefined;
   }
 
@@ -34,7 +34,7 @@ export function normalizePixExpiresAt(rawValue: string | undefined, source: "asa
   const normalized = `${year}-${month}-${day}T${hour}:${minute}:${second}${SAO_PAULO_OFFSET}`;
 
   if (Number.isNaN(Date.parse(normalized))) {
-    logNormalizationFailure(source, rawValue);
+    logNormalizationError(source, rawValue);
     return undefined;
   }
 

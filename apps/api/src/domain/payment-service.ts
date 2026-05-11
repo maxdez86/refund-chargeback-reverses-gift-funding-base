@@ -184,7 +184,45 @@ export class PaymentService {
       return PaymentSummarySchema.parse(paymentSnapshot);
     }
 
-    return null;
+    const existingAsaasPayments = await this.asaasClient.listPaymentsByExternalReference(paymentId);
+    const existingAsaas = existingAsaasPayments[0];
+
+    if (!existingAsaas) {
+      return null;
+    }
+
+    const amountCents = Math.round(existingAsaas.value * 100);
+
+    if (amountCents <= 0) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const recovered: PaymentSummary = {
+      paymentId,
+      paymentMethod: existingAsaas.billingType,
+      status: initialPaymentStatus(existingAsaas.billingType),
+      amountCents,
+      currency: "BRL",
+      gift: {
+        id: "recovered",
+        name: existingAsaas.description ?? "Recovered payment",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents
+      },
+      checkout: existingAsaas.checkoutSession
+        ? {
+            sessionId: existingAsaas.checkoutSession,
+            url: this.asaasClient.buildCheckoutUrl({ id: existingAsaas.checkoutSession })
+          }
+        : undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    return PaymentSummarySchema.parse(recovered);
   }
 
   private async findOrCreateCustomer(

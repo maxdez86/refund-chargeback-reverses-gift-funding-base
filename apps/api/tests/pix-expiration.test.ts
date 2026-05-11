@@ -17,10 +17,10 @@ describe("normalizePixExpiresAt", () => {
   });
 
   it("logs and omits malformed values", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     expect(normalizePixExpiresAt("not-a-date", "asaas")).toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       JSON.stringify({
         metric: "PIX_EXPIRATION_NORMALIZATION_FAILED",
         source: "asaas",
@@ -28,6 +28,6 @@ describe("normalizePixExpiresAt", () => {
       })
     );
 
-    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

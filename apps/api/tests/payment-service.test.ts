@@ -207,4 +207,93 @@ describe("PaymentService", () => {
     expect(result.payment.paymentId).toBe("payment-recovered-1");
     expect(result.payment.checkout?.sessionId).toBe("checkout-1");
   });
+
+  it("recovers from Asaas when both the projection row and the snapshot are missing", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: false,
+        reservation: {
+          fingerprint: "same",
+          paymentId: "payment-asaas-recovered-1",
+          status: "IN_PROGRESS"
+        }
+      }),
+      getPayment: vi.fn().mockResolvedValue(null)
+    };
+    const asaasClient = {
+      listPaymentsByExternalReference: vi.fn().mockResolvedValue([
+        {
+          id: "asaas-payment-1",
+          billingType: "PIX",
+          status: "PENDING",
+          value: 5,
+          checkoutSession: "checkout-recovery-1",
+          description: "PIX Teste",
+          externalReference: "payment-asaas-recovered-1"
+        }
+      ]),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-recovery-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+    const result = await service.createPayment(
+      {
+        giftId: "g-test-pix",
+        paymentMethod: "PIX",
+        payer: {
+          cpf: "123.456.789-09",
+          email: "test@example.com",
+          name: "Test Guest"
+        }
+      },
+      "idem-asaas-recovered"
+    );
+
+    expect(asaasClient.listPaymentsByExternalReference).toHaveBeenCalledWith("payment-asaas-recovered-1");
+    expect(asaasClient.buildCheckoutUrl).toHaveBeenCalledWith({ id: "checkout-recovery-1" });
+    expect(result.payment.paymentId).toBe("payment-asaas-recovered-1");
+    expect(result.payment.paymentMethod).toBe("PIX");
+    expect(result.payment.status).toBe("CREATED");
+    expect(result.payment.amountCents).toBe(500);
+    expect(result.payment.checkout).toEqual({
+      sessionId: "checkout-recovery-1",
+      url: "https://www.asaas.com/c/checkout-recovery-1"
+    });
+    expect(result.payment.gift.id).toBe("recovered");
+    expect(result.payment.gift.name).toBe("PIX Teste");
+  });
+
+  it("falls through to 409 when neither projection, snapshot, nor Asaas record exists", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: false,
+        reservation: {
+          fingerprint: "same",
+          paymentId: "payment-orphan-1",
+          status: "IN_PROGRESS"
+        }
+      }),
+      getPayment: vi.fn().mockResolvedValue(null)
+    };
+    const asaasClient = {
+      listPaymentsByExternalReference: vi.fn().mockResolvedValue([])
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    await expect(
+      service.createPayment(
+        {
+          giftId: "g-test-pix",
+          paymentMethod: "PIX",
+          payer: {
+            cpf: "123.456.789-09",
+            email: "test@example.com",
+            name: "Test Guest"
+          }
+        },
+        "idem-orphan"
+      )
+    ).rejects.toThrow(/could not be recovered safely/);
+  });
 });

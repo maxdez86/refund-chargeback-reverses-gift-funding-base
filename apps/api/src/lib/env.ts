@@ -1,0 +1,42 @@
+type Env = {
+  adminExportToken: string;
+  asaasApiBaseUrl: string;
+  asaasCheckoutBaseUrl: string;
+  asaasApiSecretArn: string;
+  asaasWebhookSecretArn: string;
+  hostedCheckoutSuccessUrl: string;
+  webhookQueueUrl: string;
+  weddingTableName: string;
+};
+
+let cachedEnv: Env | null = null;
+
+function required(name: string) {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`Missing required environment variable ${name}.`);
+  }
+
+  return value;
+}
+
+export function getEnv(): Env {
+  if (cachedEnv) {
+    return cachedEnv;
+  }
+
+  cachedEnv = {
+    adminExportToken: process.env.ADMIN_EXPORT_TOKEN ?? "",
+    asaasApiBaseUrl: process.env.ASAAS_API_BASE_URL ?? "https://api-sandbox.asaas.com/v3",
+    asaasCheckoutBaseUrl:
+      process.env.ASAAS_CHECKOUT_BASE_URL ?? "https://www.asaas.com/checkoutSession/show",
+    asaasApiSecretArn: process.env.ASAAS_API_SECRET_ARN ?? "",
+    asaasWebhookSecretArn: process.env.ASAAS_WEBHOOK_SECRET_ARN ?? "",
+    hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
+    webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",
+    weddingTableName: required("WEDDING_TABLE_NAME")
+  };
+
+  return cachedEnv;
+}

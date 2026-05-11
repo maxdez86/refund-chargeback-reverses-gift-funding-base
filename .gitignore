@@ -37,6 +37,10 @@ infra/cdk/lib/constructs/*
 !infra/cdk/lib/constructs/website/
 infra/cdk/lib/constructs/website/*
 !infra/cdk/lib/constructs/website/static-site-construct.ts
+!apps/api/src/lib/
+!apps/api/src/lib/**
+!apps/web/src/lib/
+!apps/web/src/lib/**
 lib64/
 parts/
 sdist/
