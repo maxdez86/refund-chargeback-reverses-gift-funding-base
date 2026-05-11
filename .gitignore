@@ -51,3 +51,6 @@ crash.log
 Thumbs.db
 *.swp
 *.swo
+
+# === One-off vendor exports (data lives in IaC) ===
+DNS_Configuration.csv
