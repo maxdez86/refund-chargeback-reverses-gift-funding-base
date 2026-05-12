@@ -1,15 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Minus, Plus, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus, Check, ShieldCheck } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
-import {
-  PaymentPayerSchema,
-  type CreatePaymentRequest,
-} from "@brimax/contracts";
+import { type CreatePaymentRequest } from "@brimax/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
+import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 
 type Gift = {
   id: string;
@@ -265,34 +263,10 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
 }
 
 const PayerFormSchema = z.object({
-  name: PaymentPayerSchema.shape.name,
-  email: PaymentPayerSchema.shape.email,
-  cpf: PaymentPayerSchema.shape.cpf,
-  phone: z
-    .string()
-    .max(20)
-    .refine(
-      (v) => v === "" || (v.length >= 8 && v.length <= 20),
-      "Telefone deve ter entre 8 e 20 dígitos"
-    ),
+  payerEmail: z.string().email("Informe um e-mail válido.").max(255),
 });
 
 type PayerFormValues = z.infer<typeof PayerFormSchema>;
-
-function maskCpf(input: string): string {
-  const digits = input.replace(/\D/g, "").slice(0, 11);
-  const parts = [
-    digits.slice(0, 3),
-    digits.slice(3, 6),
-    digits.slice(6, 9),
-    digits.slice(9, 11),
-  ];
-  let out = parts[0];
-  if (parts[1]) out += "." + parts[1];
-  if (parts[2]) out += "." + parts[2];
-  if (parts[3]) out += "-" + parts[3];
-  return out;
-}
 
 function GiftDialog({
   gift,
@@ -304,20 +278,20 @@ function GiftDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [quantity, setQuantity] = useState(1);
-  const [step, setStep] = useState<"select" | "payer">("select");
+  const [step, setStep] = useState<"select" | "confirm">("select");
   const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<PayerFormValues>({
     resolver: zodResolver(PayerFormSchema),
-    defaultValues: { name: "", email: "", cpf: "", phone: "" },
-    mode: "onBlur",
+    defaultValues: { payerEmail: "" },
+    mode: "onChange",
   });
 
   useEffect(() => {
     setQuantity(1);
     setStep("select");
     setSubmitting(false);
-    form.reset({ name: "", email: "", cpf: "", phone: "" });
+    form.reset({ payerEmail: "" });
   }, [gift?.id, open, form]);
 
   if (!gift) return null;
@@ -345,24 +319,23 @@ function GiftDialog({
       const payload: CreatePaymentRequest = {
         giftId: gift.id,
         paymentMethod: "HOSTED",
-        payer: {
-          name: values.name.trim(),
-          email: values.email.trim(),
-          cpf: values.cpf.trim(),
-          ...(values.phone.trim() ? { phone: values.phone.trim() } : {}),
-        },
+        payerEmail: values.payerEmail.trim(),
         ...(gift.fractional ? { quantity } : {}),
       };
       const payment = await createPayment(payload);
       if (!payment.checkout?.url) {
         throw new PaymentApiError("Checkout indisponível. Tente novamente.");
       }
+      window.localStorage.setItem(
+        LAST_PAYMENT_ID_STORAGE_KEY,
+        JSON.stringify({ paymentId: payment.paymentId, createdAt: Date.now() })
+      );
       window.location.href = payment.checkout.url;
     } catch (err) {
       const message =
         err instanceof PaymentApiError
           ? err.message
-          : "Não foi possível iniciar o pagamento. Tente novamente.";
+          : "Não conseguimos iniciar o pagamento. Tente novamente em alguns segundos.";
       toast.error(message);
       setSubmitting(false);
     }
@@ -380,7 +353,7 @@ function GiftDialog({
               ? gift.fractional
                 ? "Escolha quantas cotas você gostaria de presentear."
                 : "Confirme abaixo para sinalizar este presente."
-              : "Preencha seus dados para finalizar o pagamento."}
+              : "Informe apenas seu e-mail antes de seguir para a Asaas."}
           </DialogDescription>
         </DialogHeader>
 
@@ -494,7 +467,7 @@ function GiftDialog({
               <Button
                 type="button"
                 className="rounded-full flex-1"
-                onClick={() => setStep("payer")}
+                onClick={() => setStep("confirm")}
               >
                 Continuar
               </Button>
@@ -507,100 +480,55 @@ function GiftDialog({
               className="space-y-4"
               noValidate
             >
-              <div className="flex items-center justify-between text-sm pb-2 border-b border-border/60">
-                <span className="text-muted-foreground">Total a pagar</span>
-                <span className="font-serif text-xl text-foreground">
-                  {formatBRL(contribution)}
-                </span>
+              <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/30 p-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Total a pagar</span>
+                  <span className="font-serif text-xl text-foreground">
+                    {formatBRL(contribution)}
+                  </span>
+                </div>
+                {gift.fractional && (
+                  <p className="text-sm text-muted-foreground">
+                    {quantity} {quantity === 1 ? "cota" : "cotas"} de {formatBRL(partValue)}
+                  </p>
+                )}
               </div>
 
               <FormField
                 control={form.control}
-                name="name"
+                name="payerEmail"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nome completo</FormLabel>
-                    <FormControl>
-                      <Input
-                        autoComplete="name"
-                        placeholder="Seu nome"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>E-mail</FormLabel>
+                    <FormLabel>Seu e-mail</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
+                        inputMode="email"
                         autoComplete="email"
                         placeholder="voce@exemplo.com"
                         disabled={submitting}
                         {...field}
                       />
                     </FormControl>
+                    <p className="text-sm text-muted-foreground">
+                      Usamos só para te enviar a confirmação do presente.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="cpf"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>CPF</FormLabel>
-                    <FormControl>
-                      <Input
-                        inputMode="numeric"
-                        autoComplete="off"
-                        placeholder="000.000.000-00"
-                        disabled={submitting}
-                        value={field.value}
-                        onChange={(e) => field.onChange(maskCpf(e.target.value))}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <p className="text-sm text-muted-foreground">
+                CPF, nome e telefone são pedidos só na próxima tela, pela Asaas — pagamento
+                seguro com PIX ou cartão.
+              </p>
 
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Telefone{" "}
-                      <span className="text-xs text-muted-foreground font-normal">
-                        (opcional)
-                      </span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="tel"
-                        autoComplete="tel"
-                        placeholder="(11) 91234-5678"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
+                <span>
+                  Pagamento processado pela Asaas. Conexão segura HTTPS.
+                </span>
+              </div>
 
               <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                 <Button
@@ -615,15 +543,15 @@ function GiftDialog({
                 <Button
                   type="submit"
                   className="rounded-full flex-1"
-                  disabled={submitting}
+                  disabled={submitting || !form.formState.isValid}
                 >
                   {submitting ? (
                     <>
                       <Spinner className="mr-2" />
-                      Redirecionando…
+                      Redirecionando para a Asaas…
                     </>
                   ) : (
-                    "Confirmar e pagar"
+                    "Ir para o pagamento"
                   )}
                 </Button>
               </div>

@@ -2,16 +2,18 @@ import { randomUUID } from "node:crypto";
 import {
   CreatePaymentResponseSchema,
   CreatePaymentRequestSchema,
+  PaymentPayerSchema,
   PaymentSummarySchema,
-  type CreatePaymentRequest,
+  type PaymentMethod,
   type PaymentSummary
 } from "@brimax/contracts";
 import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { AppError } from "../lib/errors";
-import { hashValue, maskCpf, normalizeCpf, stableJsonHash } from "../lib/security";
+import { stableJsonHash } from "../lib/security";
 import { AsaasClient } from "../services/asaas/client";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
-import { initialPaymentStatus, resolveGiftSelection } from "./payment-state";
+import { initialPaymentStatus, resolveGiftSelection, type ResolvedGiftSelection } from "./payment-state";
+import type { CreateCheckoutInput } from "../services/asaas/client";
 
 function toBrlDecimal(valueInCents: number) {
   return valueInCents / 100;
@@ -19,6 +21,19 @@ function toBrlDecimal(valueInCents: number) {
 
 const DEFAULT_SITE_BASE_URL = "https://brimax.life";
 const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
+
+const LegacyCreatePaymentRequestSchema = CreatePaymentRequestSchema.extend({
+  payer: PaymentPayerSchema
+}).omit({
+  payerEmail: true
+});
+
+type NormalizedCreatePaymentRequest = {
+  giftId: string;
+  paymentMethod: PaymentMethod;
+  payerEmail: string;
+  quantity?: number;
+};
 
 function getSiteBaseUrl() {
   return process.env.PAYMENTS_SITE_BASE_URL?.trim() || DEFAULT_SITE_BASE_URL;
@@ -55,8 +70,8 @@ export class PaymentService {
     private readonly asaasClient = new AsaasClient()
   ) {}
 
-  async createPayment(request: CreatePaymentRequest, idempotencyKeyHeader?: string) {
-    const parsed = CreatePaymentRequestSchema.parse(request);
+  async createPayment(request: unknown, idempotencyKeyHeader?: string) {
+    const parsed = this.normalizeCreatePaymentRequest(request);
     const gift = PAYMENT_GIFTS_BY_ID.get(parsed.giftId);
 
     if (!gift) {
@@ -64,18 +79,12 @@ export class PaymentService {
     }
 
     const giftSelection = resolveGiftSelection(gift, parsed.quantity);
-    const normalizedCpf = normalizeCpf(parsed.payer.cpf);
     const idempotencyKey = idempotencyKeyHeader?.trim() || randomUUID();
     const fingerprint = stableJsonHash({
       giftId: parsed.giftId,
       paymentMethod: parsed.paymentMethod,
       quantity: giftSelection.quantity,
-      payer: {
-        cpf: normalizedCpf,
-        email: parsed.payer.email.trim().toLowerCase(),
-        name: parsed.payer.name.trim(),
-        phone: parsed.payer.phone?.trim()
-      }
+      payerEmail: parsed.payerEmail
     });
 
     const reservedPaymentId = randomUUID();
@@ -102,26 +111,18 @@ export class PaymentService {
     }
 
     const paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
-    const customer = await this.findOrCreateCustomer(parsed, normalizedCpf, paymentId);
     const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
     const billingTypes: ("PIX" | "CREDIT_CARD")[] =
       parsed.paymentMethod === "HOSTED"
         ? ["PIX", "CREDIT_CARD"]
         : [parsed.paymentMethod];
-    const asaasCheckout = await this.asaasClient.createCheckout({
-      customer: customer.id,
+    const asaasCheckout = await this.createHostedCheckout({
       billingTypes,
-      callback: buildCheckoutCallbackUrls(paymentId),
-      chargeTypes: ["DETACHED"],
-      items: [
-        {
-          name: gift.name,
-          description: `Brimax payment ${paymentId}`,
-          quantity: giftSelection.quantity,
-          value: toBrlDecimal(giftSelection.amountCents)
-        }
-      ],
-      minutesToExpire: checkoutExpirationMinutes
+      checkoutExpirationMinutes,
+      giftName: gift.name,
+      giftSelection,
+      payerEmail: parsed.payerEmail,
+      paymentId
     });
     const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
     const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
@@ -153,10 +154,7 @@ export class PaymentService {
     await this.repository.putPayment({
       ...payment,
       asaasCheckoutId: asaasCheckout.id,
-      payerCpfHash: hashValue(normalizedCpf),
-      payerCpfMasked: maskCpf(normalizedCpf),
-      payerEmail: parsed.payer.email.trim().toLowerCase(),
-      payerName: parsed.payer.name.trim()
+      payerEmail: parsed.payerEmail
     });
 
     await this.repository.completeCreatePayment(idempotencyKey, payment);
@@ -175,6 +173,70 @@ export class PaymentService {
     }
 
     return PaymentSummarySchema.parse(payment);
+  }
+
+  private normalizeCreatePaymentRequest(request: unknown): NormalizedCreatePaymentRequest {
+    const parsed = CreatePaymentRequestSchema.safeParse(request);
+
+    if (parsed.success) {
+      return {
+        ...parsed.data,
+        payerEmail: parsed.data.payerEmail.trim().toLowerCase()
+      };
+    }
+
+    const legacyParsed = LegacyCreatePaymentRequestSchema.parse(request);
+
+    return {
+      giftId: legacyParsed.giftId,
+      paymentMethod: legacyParsed.paymentMethod,
+      payerEmail: legacyParsed.payer.email.trim().toLowerCase(),
+      quantity: legacyParsed.quantity
+    };
+  }
+
+  private async createHostedCheckout(input: {
+    billingTypes: ("PIX" | "CREDIT_CARD")[];
+    checkoutExpirationMinutes: number;
+    giftName: string;
+    giftSelection: ResolvedGiftSelection;
+    payerEmail: string;
+    paymentId: string;
+  }) {
+    const checkoutInput: CreateCheckoutInput = {
+      billingTypes: input.billingTypes,
+      callback: buildCheckoutCallbackUrls(input.paymentId),
+      chargeTypes: ["DETACHED"],
+      customerData: {
+        email: input.payerEmail
+      },
+      externalReference: input.paymentId,
+      items: [
+        {
+          name: input.giftName,
+          description: `Brimax payment ${input.paymentId}`,
+          quantity: input.giftSelection.quantity,
+          value: toBrlDecimal(input.giftSelection.amountCents)
+        }
+      ],
+      minutesToExpire: input.checkoutExpirationMinutes
+    };
+
+    try {
+      return await this.asaasClient.createCheckout(checkoutInput);
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        /customerdata|customer data|unknown field|campo/i.test(error.message)
+      ) {
+        return this.asaasClient.createCheckout({
+          ...checkoutInput,
+          customerData: undefined
+        });
+      }
+
+      throw error;
+    }
   }
 
   private async resolveExistingPayment(paymentId: string, paymentSnapshot?: PaymentSummary) {
@@ -227,25 +289,5 @@ export class PaymentService {
     };
 
     return PaymentSummarySchema.parse(recovered);
-  }
-
-  private async findOrCreateCustomer(
-    request: CreatePaymentRequest,
-    normalizedCpf: string,
-    paymentId: string
-  ) {
-    const existing = await this.asaasClient.findCustomerByCpf(normalizedCpf);
-
-    if (existing) {
-      return existing;
-    }
-
-    return this.asaasClient.createCustomer({
-      name: request.payer.name.trim(),
-      email: request.payer.email.trim().toLowerCase(),
-      cpfCnpj: normalizedCpf,
-      mobilePhone: request.payer.phone?.trim(),
-      externalReference: paymentId
-    });
   }
 }

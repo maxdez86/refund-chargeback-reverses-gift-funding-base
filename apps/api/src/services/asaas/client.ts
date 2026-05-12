@@ -45,7 +45,6 @@ type AsaasCheckoutBillingType = "PIX" | "CREDIT_CARD";
 type AsaasCheckoutChargeType = "DETACHED";
 
 type CreateCheckoutInput = {
-  customer: string;
   billingTypes: AsaasCheckoutBillingType[];
   chargeTypes: AsaasCheckoutChargeType[];
   callback: {
@@ -53,6 +52,10 @@ type CreateCheckoutInput = {
     cancelUrl: string;
     expiredUrl: string;
   };
+  customerData?: {
+    email: string;
+  };
+  externalReference: string;
   items: Array<{
     name: string;
     description: string;
@@ -120,21 +123,6 @@ export class AsaasClient {
         ...input,
         notificationDisabled: true
       }
-    });
-  }
-
-  async createPayment(input: {
-    customer: string;
-    billingType: "PIX" | "CREDIT_CARD";
-    value: number;
-    dueDate: string;
-    description: string;
-    externalReference: string;
-  }) {
-    return this.request<AsaasPayment>({
-      method: "POST",
-      path: "/payments",
-      body: input
     });
   }
 

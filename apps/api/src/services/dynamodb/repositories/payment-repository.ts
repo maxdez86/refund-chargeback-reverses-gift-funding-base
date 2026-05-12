@@ -23,10 +23,7 @@ type StoredPayment = PaymentSummary & {
   asaasPaymentId?: string;
   asaasCheckoutId?: string;
   externalReference?: string;
-  payerCpfHash: string;
-  payerCpfMasked: string;
-  payerEmail: string;
-  payerName: string;
+  payerEmail?: string;
 };
 
 const RAW_WEBHOOK_PAYLOAD_MAX_BYTES = 350 * 1024;

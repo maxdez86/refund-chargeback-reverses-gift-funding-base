@@ -25,7 +25,7 @@ export const CreatePaymentRequestSchema = z.object({
   giftId: z.string().min(1),
   quantity: z.number().int().positive().max(100).optional(),
   paymentMethod: PaymentMethodSchema,
-  payer: PaymentPayerSchema
+  payerEmail: z.string().email().max(255)
 });
 
 export const PaymentGiftSummarySchema = z.object({

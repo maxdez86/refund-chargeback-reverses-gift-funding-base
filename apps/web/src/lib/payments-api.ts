@@ -1,5 +1,6 @@
 import {
   CreatePaymentResponseSchema,
+  GetPaymentResponseSchema,
   type CreatePaymentRequest,
   type PaymentSummary,
 } from "@brimax/contracts";
@@ -40,6 +41,32 @@ export async function createPayment(
   }
 
   const parsed = CreatePaymentResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new PaymentApiError(
+      "Resposta inválida do servidor de pagamentos."
+    );
+  }
+
+  return parsed.data.payment;
+}
+
+export async function getPayment(paymentId: string): Promise<PaymentSummary> {
+  if (!API_URL) {
+    throw new PaymentApiError(
+      "API URL não configurada (VITE_API_URL)."
+    );
+  }
+
+  const response = await fetch(`${API_URL}/payments/${encodeURIComponent(paymentId)}`);
+  const text = await response.text();
+  const body: unknown = text ? safeJsonParse(text) : null;
+
+  if (!response.ok) {
+    const message = extractErrorMessage(body) ?? `HTTP ${response.status}`;
+    throw new PaymentApiError(message, response.status);
+  }
+
+  const parsed = GetPaymentResponseSchema.safeParse(body);
   if (!parsed.success) {
     throw new PaymentApiError(
       "Resposta inválida do servidor de pagamentos."

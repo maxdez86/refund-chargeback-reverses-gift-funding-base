@@ -21,13 +21,10 @@ describe("official web app", () => {
       await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar contribuição" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
 
-    expect(
-      await screen.findByText(
-        /Obrigado pelo seu interesse! O link para a lista completa estará disponível em breve./i
-      )
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Seu e-mail")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeDisabled();
   });
 
   it("resolves an RSVP group and supports ambiguous search results", async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AppError } from "../src/lib/errors";
 import { PaymentService } from "../src/domain/payment-service";
 
 describe("PaymentService", () => {
@@ -15,8 +16,6 @@ describe("PaymentService", () => {
       getPayment: vi.fn()
     };
     const asaasClient = {
-      findCustomerByCpf: vi.fn().mockResolvedValue({ id: "customer-1" }),
-      createCustomer: vi.fn(),
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-1"
       }),
@@ -29,11 +28,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-test-pix",
         paymentMethod: "PIX",
-        payer: {
-          cpf: "123.456.789-09",
-          email: "test@example.com",
-          name: "Test Guest"
-        }
+        payerEmail: "test@example.com"
       },
       "idem-test-pix"
     );
@@ -42,7 +37,10 @@ describe("PaymentService", () => {
       expect.objectContaining({
         billingTypes: ["PIX"],
         chargeTypes: ["DETACHED"],
-        customer: "customer-1",
+        customerData: {
+          email: "test@example.com"
+        },
+        externalReference: result.payment.paymentId,
         items: [
           expect.objectContaining({
             name: "PIX Teste",
@@ -83,8 +81,6 @@ describe("PaymentService", () => {
       getPayment: vi.fn()
     };
     const asaasClient = {
-      findCustomerByCpf: vi.fn().mockResolvedValue({ id: "customer-hosted-1" }),
-      createCustomer: vi.fn(),
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-hosted-1"
       }),
@@ -97,11 +93,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-test-pix",
         paymentMethod: "HOSTED",
-        payer: {
-          cpf: "123.456.789-09",
-          email: "test@example.com",
-          name: "Test Guest"
-        }
+        payerEmail: "test@example.com"
       },
       "idem-test-hosted"
     );
@@ -156,11 +148,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-toalhas-banho",
         paymentMethod: "PIX",
-        payer: {
-          cpf: "123.456.789-09",
-          email: "test@example.com",
-          name: "Test Guest"
-        }
+        payerEmail: "test@example.com"
       },
       "idem-1"
     );
@@ -241,11 +229,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-test-pix",
         paymentMethod: "PIX",
-        payer: {
-          cpf: "123.456.789-09",
-          email: "test@example.com",
-          name: "Test Guest"
-        }
+        payerEmail: "test@example.com"
       },
       "idem-recovered"
     );
@@ -286,11 +270,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-test-pix",
         paymentMethod: "PIX",
-        payer: {
-          cpf: "123.456.789-09",
-          email: "test@example.com",
-          name: "Test Guest"
-        }
+        payerEmail: "test@example.com"
       },
       "idem-asaas-recovered"
     );
@@ -332,14 +312,103 @@ describe("PaymentService", () => {
         {
           giftId: "g-test-pix",
           paymentMethod: "PIX",
-          payer: {
-            cpf: "123.456.789-09",
-            email: "test@example.com",
-            name: "Test Guest"
-          }
+          payerEmail: "test@example.com"
         },
         "idem-orphan"
       )
     ).rejects.toThrow(/could not be recovered safely/);
+  });
+
+  it("accepts the legacy payer payload during rollout and stores only payerEmail", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: true,
+        reservation: {
+          paymentId: "payment-legacy-rollout-1"
+        }
+      }),
+      putPayment: vi.fn().mockResolvedValue(undefined),
+      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getPayment: vi.fn()
+    };
+    const asaasClient = {
+      createCheckout: vi.fn().mockResolvedValue({
+        id: "checkout-legacy-rollout-1"
+      }),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-legacy-rollout-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    await service.createPayment(
+      {
+        giftId: "g-test-pix",
+        paymentMethod: "PIX",
+        payer: {
+          cpf: "123.456.789-09",
+          email: "legacy@example.com",
+          name: "Legacy Guest"
+        }
+      },
+      "idem-legacy-rollout"
+    );
+
+    expect(repository.putPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payerEmail: "legacy@example.com"
+      })
+    );
+    expect(repository.putPayment.mock.calls[0][0]).not.toHaveProperty("payerCpfHash");
+    expect(repository.putPayment.mock.calls[0][0]).not.toHaveProperty("payerName");
+  });
+
+  it("retries checkout creation without customerData when Asaas rejects the field", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: true,
+        reservation: {
+          paymentId: "payment-customerdata-fallback-1"
+        }
+      }),
+      putPayment: vi.fn().mockResolvedValue(undefined),
+      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getPayment: vi.fn()
+    };
+    const asaasClient = {
+      createCheckout: vi
+        .fn()
+        .mockRejectedValueOnce(new AppError("Unknown field customerData", 502))
+        .mockResolvedValueOnce({
+          id: "checkout-fallback-1"
+        }),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-fallback-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    await service.createPayment(
+      {
+        giftId: "g-test-pix",
+        paymentMethod: "PIX",
+        payerEmail: "test@example.com"
+      },
+      "idem-customerdata-fallback"
+    );
+
+    expect(asaasClient.createCheckout).toHaveBeenCalledTimes(2);
+    expect(asaasClient.createCheckout).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        customerData: {
+          email: "test@example.com"
+        }
+      })
+    );
+    expect(asaasClient.createCheckout).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        customerData: undefined
+      })
+    );
   });
 });
