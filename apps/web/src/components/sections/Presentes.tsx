@@ -2,6 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Minus, Plus, Check } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import { z } from "zod";
+import {
+  PaymentPayerSchema,
+  type CreatePaymentRequest,
+} from "@brimax/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,6 +18,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { createPayment, PaymentApiError } from "@/lib/payments-api";
 
 type Gift = {
   id: string;
@@ -245,6 +264,36 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
   );
 }
 
+const PayerFormSchema = z.object({
+  name: PaymentPayerSchema.shape.name,
+  email: PaymentPayerSchema.shape.email,
+  cpf: PaymentPayerSchema.shape.cpf,
+  phone: z
+    .string()
+    .max(20)
+    .refine(
+      (v) => v === "" || (v.length >= 8 && v.length <= 20),
+      "Telefone deve ter entre 8 e 20 dígitos"
+    ),
+});
+
+type PayerFormValues = z.infer<typeof PayerFormSchema>;
+
+function maskCpf(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 11);
+  const parts = [
+    digits.slice(0, 3),
+    digits.slice(3, 6),
+    digits.slice(6, 9),
+    digits.slice(9, 11),
+  ];
+  let out = parts[0];
+  if (parts[1]) out += "." + parts[1];
+  if (parts[2]) out += "." + parts[2];
+  if (parts[3]) out += "-" + parts[3];
+  return out;
+}
+
 function GiftDialog({
   gift,
   open,
@@ -255,12 +304,21 @@ function GiftDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [quantity, setQuantity] = useState(1);
-  const [confirmed, setConfirmed] = useState(false);
+  const [step, setStep] = useState<"select" | "payer">("select");
+  const [submitting, setSubmitting] = useState(false);
+
+  const form = useForm<PayerFormValues>({
+    resolver: zodResolver(PayerFormSchema),
+    defaultValues: { name: "", email: "", cpf: "", phone: "" },
+    mode: "onBlur",
+  });
 
   useEffect(() => {
     setQuantity(1);
-    setConfirmed(false);
-  }, [gift?.id, open]);
+    setStep("select");
+    setSubmitting(false);
+    form.reset({ name: "", email: "", cpf: "", phone: "" });
+  }, [gift?.id, open, form]);
 
   if (!gift) return null;
 
@@ -276,41 +334,57 @@ function GiftDialog({
   const inc = () =>
     setQuantity((q) => Math.min(remainingParts || 1, q + 1));
 
+  const handleOpenChange = (next: boolean) => {
+    if (submitting && !next) return;
+    onOpenChange(next);
+  };
+
+  const onSubmit = async (values: PayerFormValues) => {
+    setSubmitting(true);
+    try {
+      const payload: CreatePaymentRequest = {
+        giftId: gift.id,
+        paymentMethod: "HOSTED",
+        payer: {
+          name: values.name.trim(),
+          email: values.email.trim(),
+          cpf: values.cpf.trim(),
+          ...(values.phone.trim() ? { phone: values.phone.trim() } : {}),
+        },
+        ...(gift.fractional ? { quantity } : {}),
+      };
+      const payment = await createPayment(payload);
+      if (!payment.checkout?.url) {
+        throw new PaymentApiError("Checkout indisponível. Tente novamente.");
+      }
+      window.location.href = payment.checkout.url;
+    } catch (err) {
+      const message =
+        err instanceof PaymentApiError
+          ? err.message
+          : "Não foi possível iniciar o pagamento. Tente novamente.";
+      toast.error(message);
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg bg-background rounded-2xl">
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl text-foreground">
             {gift.name}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {gift.fractional
-              ? "Escolha quantas cotas você gostaria de presentear."
-              : "Confirme abaixo para sinalizar este presente."}
+            {step === "select"
+              ? gift.fractional
+                ? "Escolha quantas cotas você gostaria de presentear."
+                : "Confirme abaixo para sinalizar este presente."
+              : "Preencha seus dados para finalizar o pagamento."}
           </DialogDescription>
         </DialogHeader>
 
-        {confirmed ? (
-          <div className="py-6 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-full bg-secondary/60 flex items-center justify-center">
-              <Check className="h-6 w-6 text-foreground" aria-hidden="true" />
-            </div>
-            <h4 className="font-serif text-xl text-foreground">
-              Obrigado pelo seu carinho!
-            </h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Obrigado pelo seu interesse! O link para a lista completa estará
-              disponível em breve.
-            </p>
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() => onOpenChange(false)}
-            >
-              Fechar
-            </Button>
-          </div>
-        ) : (
+        {step === "select" ? (
           <div className="space-y-5">
             <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
               <img
@@ -420,12 +494,141 @@ function GiftDialog({
               <Button
                 type="button"
                 className="rounded-full flex-1"
-                onClick={() => setConfirmed(true)}
+                onClick={() => setStep("payer")}
               >
-                Confirmar contribuição
+                Continuar
               </Button>
             </div>
           </div>
+        ) : (
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-4"
+              noValidate
+            >
+              <div className="flex items-center justify-between text-sm pb-2 border-b border-border/60">
+                <span className="text-muted-foreground">Total a pagar</span>
+                <span className="font-serif text-xl text-foreground">
+                  {formatBRL(contribution)}
+                </span>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome completo</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete="name"
+                        placeholder="Seu nome"
+                        disabled={submitting}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>E-mail</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        placeholder="voce@exemplo.com"
+                        disabled={submitting}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cpf"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>CPF</FormLabel>
+                    <FormControl>
+                      <Input
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="000.000.000-00"
+                        disabled={submitting}
+                        value={field.value}
+                        onChange={(e) => field.onChange(maskCpf(e.target.value))}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Telefone{" "}
+                      <span className="text-xs text-muted-foreground font-normal">
+                        (opcional)
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="(11) 91234-5678"
+                        disabled={submitting}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full flex-1"
+                  onClick={() => setStep("select")}
+                  disabled={submitting}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  type="submit"
+                  className="rounded-full flex-1"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Spinner className="mr-2" />
+                      Redirecionando…
+                    </>
+                  ) : (
+                    "Confirmar e pagar"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
         )}
       </DialogContent>
     </Dialog>

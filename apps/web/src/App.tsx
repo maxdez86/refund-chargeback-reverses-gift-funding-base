@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import { Navigation } from "@/components/Navigation";
+import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
 import { Hero } from "@/components/sections/Hero";
 import { Countdown } from "@/components/sections/Countdown";
 import { Story } from "@/components/sections/Story";
@@ -56,6 +57,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
+        <PaymentConfirmationDialog />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
