@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Minus, Plus, Check, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Minus, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { type CreatePaymentRequest, type Gift as GiftResource } from "@brimax/contracts";
 import { Button } from "@/components/ui/button";
@@ -202,12 +202,10 @@ function GiftDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [quantity, setQuantity] = useState(1);
-  const [step, setStep] = useState<"select" | "confirm">("select");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setQuantity(1);
-    setStep("select");
     setSubmitting(false);
   }, [gift?.id, open]);
 
@@ -296,181 +294,136 @@ function GiftDialog({
             {gift.name}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {step === "select"
-              ? gift.fractional
-                ? "Escolha quantas cotas você gostaria de presentear."
-                : "Confirme abaixo para sinalizar este presente."
-              : "Confira o valor e siga para o pagamento na Asaas."}
+            {gift.fractional
+              ? "Escolha quantas cotas você gostaria de presentear e siga para o pagamento."
+              : "Confira o valor e siga para o pagamento."}
           </DialogDescription>
         </DialogHeader>
 
-        {step === "select" ? (
-          <div className="space-y-5">
-            <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
-              <img
-                src={gift.image}
-                alt={gift.name}
-                className="w-full h-full object-cover"
-              />
-            </div>
+        <div className="space-y-5">
+          <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
+            <img
+              src={gift.image}
+              alt={gift.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
 
-            {gift.fractional && (
-              <>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Cada cota</span>
-                  <span className="font-medium text-foreground">
-                    {formatBRL(partValue)}
+          {gift.fractional && (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Cada cota</span>
+                <span className="font-medium text-foreground">
+                  {formatBRL(partValue)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Disponível</span>
+                <span className="font-medium text-foreground">
+                  {remainingParts}{" "}
+                  {remainingParts === 1 ? "cota" : "cotas"}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <ProgressBar percent={percent} />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{percent}% arrecadado</span>
+                  <span>
+                    {formatBRL((gift.partsFunded ?? 0) * partValue)} de{" "}
+                    {formatBRL(gift.totalValue)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Disponível</span>
-                  <span className="font-medium text-foreground">
-                    {remainingParts}{" "}
-                    {remainingParts === 1 ? "cota" : "cotas"}
-                  </span>
-                </div>
+              </div>
 
-                <div className="space-y-2">
-                  <ProgressBar percent={percent} />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{percent}% arrecadado</span>
-                    <span>
-                      {formatBRL((gift.partsFunded ?? 0) * partValue)} de{" "}
-                      {formatBRL(gift.totalValue)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label
-                    htmlFor="qty"
-                    className="text-sm font-medium text-foreground block"
+              <div className="space-y-3">
+                <label
+                  htmlFor="qty"
+                  className="text-sm font-medium text-foreground block"
+                >
+                  Quantidade de cotas
+                </label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-10 w-10"
+                    onClick={dec}
+                    disabled={quantity <= 1}
+                    aria-label="Diminuir cotas"
                   >
-                    Quantidade de cotas
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="rounded-full h-10 w-10"
-                      onClick={dec}
-                      disabled={quantity <= 1}
-                      aria-label="Diminuir cotas"
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span
-                      id="qty"
-                      role="status"
-                      aria-live="polite"
-                      className="inline-flex h-10 w-16 items-center justify-center rounded-xl border border-border bg-background text-center font-medium text-foreground"
-                    >
-                      {quantity}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="rounded-full h-10 w-10"
-                      onClick={inc}
-                      disabled={quantity >= remainingParts}
-                      aria-label="Aumentar cotas"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                  <span className="text-sm text-muted-foreground">
-                    Sua contribuição
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span
+                    id="qty"
+                    role="status"
+                    aria-live="polite"
+                    className="inline-flex h-10 w-16 items-center justify-center rounded-xl border border-border bg-background text-center font-medium text-foreground"
+                  >
+                    {quantity}
                   </span>
-                  <span className="font-serif text-2xl text-foreground">
-                    {formatBRL(contribution)}
-                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="rounded-full h-10 w-10"
+                    onClick={inc}
+                    disabled={quantity >= remainingParts}
+                    aria-label="Aumentar cotas"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
-              </>
-            )}
+              </div>
 
-            {!gift.fractional && (
               <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                <span className="text-sm text-muted-foreground">Valor</span>
+                <span className="text-sm text-muted-foreground">
+                  Sua contribuição
+                </span>
                 <span className="font-serif text-2xl text-foreground">
-                  {formatBRL(gift.totalValue)}
+                  {formatBRL(contribution)}
                 </span>
               </div>
-            )}
+            </>
+          )}
 
-            <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full flex-1"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                className="rounded-full flex-1"
-                onClick={() => setStep("confirm")}
-              >
-                Continuar
-              </Button>
+          {!gift.fractional && (
+            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+              <span className="text-sm text-muted-foreground">Valor</span>
+              <span className="font-serif text-2xl text-foreground">
+                {formatBRL(gift.totalValue)}
+              </span>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-              <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/30 p-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Total a pagar</span>
-                  <span className="font-serif text-xl text-foreground">
-                    {formatBRL(contribution)}
-                  </span>
-                </div>
-                {gift.fractional && (
-                  <p className="text-sm text-muted-foreground">
-                    {quantity} {quantity === 1 ? "cota" : "cotas"} de {formatBRL(partValue)}
-                  </p>
-                )}
-              </div>
+          )}
 
-              <div className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
-                <span>
-                  Pagamento seguro via Asaas.
-                </span>
-              </div>
-
-              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-full flex-1"
-                  onClick={() => setStep("select")}
-                  disabled={submitting}
-                >
-                  Voltar
-                </Button>
-                <Button
-                  type="button"
-                  className="rounded-full flex-1"
-                  disabled={submitting}
-                  onClick={() => void onSubmit()}
-                >
-                  {submitting ? (
-                    <>
-                      <Spinner className="mr-2" />
-                      Redirecionando para a Asaas…
-                    </>
-                  ) : (
-                    "Ir para o pagamento"
-                  )}
-                </Button>
-              </div>
+          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full flex-1"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="rounded-full flex-1"
+              disabled={submitting}
+              onClick={() => void onSubmit()}
+            >
+              {submitting ? (
+                <>
+                  <Spinner className="mr-2" />
+                  Redirecionando para a Asaas…
+                </>
+              ) : (
+                "Ir para o pagamento"
+              )}
+            </Button>
           </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -492,19 +445,32 @@ export function Presentes() {
   });
   const [prevEnabled, setPrevEnabled] = useState(false);
   const [nextEnabled, setNextEnabled] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [activeGift, setActiveGift] = useState<Gift | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
-  const scrollTo = useCallback((i: number) => emblaApi && emblaApi.scrollTo(i), [emblaApi]);
+
+  const scrollToPrev = useCallback(() => {
+    const el = document.querySelector("#fornecedores");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
+  const scrollToNext = useCallback(() => {
+    const el = document.querySelector("#rsvp");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
 
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
     setPrevEnabled(emblaApi.canScrollPrev());
     setNextEnabled(emblaApi.canScrollNext());
-    setSelectedIndex(emblaApi.selectedScrollSnap());
   }, [emblaApi]);
 
   useEffect(() => {
@@ -530,12 +496,20 @@ export function Presentes() {
     const root = emblaApi.rootNode();
     let lastFire = 0;
     const onWheel = (e: WheelEvent) => {
+      const cardEl = root.querySelector<HTMLElement>("[data-presentes-card]");
+      if (!cardEl) return;
+      const band = cardEl.getBoundingClientRect();
+      if (e.clientY < band.top || e.clientY > band.bottom) return;
+
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (Math.abs(delta) < 4) return;
+
+      e.preventDefault();
+
       const goingNext = delta > 0;
       if (goingNext && !emblaApi.canScrollNext()) return;
       if (!goingNext && !emblaApi.canScrollPrev()) return;
-      e.preventDefault();
+
       const now = Date.now();
       if (now - lastFire < 220) return;
       lastFire = now;
@@ -554,9 +528,9 @@ export function Presentes() {
   return (
     <section
       id="presentes"
-      className="py-16 md:py-20 bg-[#fbf7f0] border-t border-border/30 overflow-hidden"
+      className="py-4 md:py-6 bg-[#fbf7f0] border-t border-border/30 overflow-hidden"
     >
-      <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
+      <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -564,10 +538,22 @@ export function Presentes() {
           transition={{ duration: 0.8 }}
           className="max-w-xl"
         >
-          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-6">
-            Se você quiser nos<br />presentear
+          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground">
+            Se você quiser nos presentear
           </h2>
         </motion.div>
+
+        <div className="hidden md:flex absolute inset-x-0 bottom-0 justify-center pointer-events-none">
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            onClick={scrollToPrev}
+            aria-label="Rolar para a seção anterior"
+          >
+            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+          </Button>
+        </div>
 
         <div className="hidden md:flex items-center gap-3">
           <Button
@@ -617,6 +603,7 @@ export function Presentes() {
             {sorted.map((gift, index) => (
               <motion.div
                 key={gift.id}
+                data-presentes-card
                 className="flex-[0_0_82%] md:flex-[0_0_42%] lg:flex-[0_0_28%] min-w-0 flex"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -631,26 +618,16 @@ export function Presentes() {
         )}
       </div>
 
-      <div
-        className="container mx-auto px-6 mt-2 flex justify-center gap-2"
-        role="tablist"
-        aria-label="Progresso da lista de presentes"
-      >
-        {sorted.map((g, i) => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => scrollTo(i)}
-            aria-label={`Ir para ${g.name}`}
-            aria-selected={selectedIndex === i}
-            role="tab"
-            className={`h-2 rounded-full transition-all duration-300 ${
-              selectedIndex === i
-                ? "w-8 bg-foreground"
-                : "w-2 bg-foreground/25 hover:bg-foreground/50"
-            }`}
-          />
-        ))}
+      <div className="container mx-auto px-6 mt-0 flex justify-center">
+        <Button
+          variant="outline"
+          size="icon"
+          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          onClick={scrollToNext}
+          aria-label="Rolar para a próxima seção"
+        >
+          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+        </Button>
       </div>
 
       <GiftDialog

@@ -3,8 +3,8 @@ import { Film } from "lucide-react";
 
 export function PreWedding() {
   return (
-    <section id="pre-wedding" className="py-24 md:py-32 bg-secondary/50 overflow-hidden">
-      <div className="container mx-auto px-6 mb-12 flex flex-col items-center text-center">
+    <section id="pre-wedding" className="py-6 md:py-8 bg-secondary/50 overflow-hidden">
+      <div className="container mx-auto px-6 mb-4 flex flex-col items-center text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -12,7 +12,7 @@ export function PreWedding() {
           transition={{ duration: 0.8 }}
           className="max-w-2xl"
         >
-          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-6">
+          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground">
             Pré-Wedding
           </h2>
         </motion.div>
