@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Minus, Plus, Check, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { type CreatePaymentRequest } from "@brimax/contracts";
+import { type CreatePaymentRequest, type Gift as GiftResource } from "@brimax/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { getGifts, giftsQueryKey } from "@/lib/gifts-api";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
@@ -29,80 +31,19 @@ type Gift = {
   fullyFunded: boolean;
 };
 
-const PHOTO_BASE =
-  "https://raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures";
-
-const giftImage = (filename: string) =>
-  `${PHOTO_BASE}/gifts/${encodeURIComponent(filename)}`;
-
-const localGiftImage = (filename: string) => `/images/${filename}`;
-
-const single = (id: string, name: string, price: number, file: string): Gift => ({
-  id,
-  name,
-  image: giftImage(file),
-  totalValue: price,
-  fractional: false,
-  partValue: null,
-  totalParts: null,
-  partsFunded: null,
-  fullyFunded: false,
-});
-
-const fractional = (id: string, name: string, price: number, file: string): Gift => {
-  const partValue = 50;
+function toGiftView(gift: GiftResource): Gift {
   return {
-    id,
-    name,
-    image: giftImage(file),
-    totalValue: price,
-    fractional: true,
-    partValue,
-    totalParts: Math.ceil(price / partValue),
-    partsFunded: 0,
-    fullyFunded: false,
+    id: gift.id,
+    name: gift.name,
+    image: gift.imageUrl,
+    totalValue: gift.totalValueCents / 100,
+    fractional: gift.fractional,
+    partValue: gift.partValueCents ? gift.partValueCents / 100 : null,
+    totalParts: gift.totalParts,
+    partsFunded: gift.partsFunded,
+    fullyFunded: gift.fullyFunded
   };
-};
-
-const giftsData: Gift[] = [
-  {
-    id: "g-test-pix",
-    name: "PIX Teste",
-    image: localGiftImage("gifts-home.png"),
-    totalValue: 5,
-    fractional: false,
-    partValue: null,
-    totalParts: null,
-    partsFunded: null,
-    fullyFunded: false,
-  },
-  single("g-toalhas-banho", "4 Toalhas de Banho", 176, "4 Toalhas De Banho_176.jpg"),
-  fractional("g-armario", "Armário de Cozinha", 1749, "armario_cozinha_ 1749.webp"),
-  single("g-aspirador", "Aspirador", 139, "aspirador_139.jpg"),
-  single("g-balde", "Balde Retrátil 10L", 69, "Balde 10l Retrátil_69.webp"),
-  single("g-batedeira", "Batedeira", 79, "Batedeira_79.jpg"),
-  fractional("g-cama", "Cama", 1199, "cama_1199.webp"),
-  single("g-edredom", "Edredom King", 136, "edredom-king_136.webp"),
-  single("g-escorredor", "Escorredor de Louça", 100, "Escorredores de Louça_100.jpg"),
-  fractional("g-fogao", "Fogão", 1000, "fogao_1000.jpg"),
-  fractional("g-guarda-roupa", "Guarda-roupa", 3000, "Guarda-roupa_3000.jpg"),
-  single("g-ferramentas", "Jogo de Ferramentas", 99, "Jogo De Ferramentas_99.webp"),
-  fractional("g-pratos", "Jogo de Pratos 12 Peças", 331, "jogo_prato_12pecas_331.jpg"),
-  single("g-talheres", "Jogo de Talheres", 178, "jogo_talheres_178.jpg"),
-  single("g-xicaras", "Jogo de Xícaras", 188, "jogo_de_xicara_188.webp"),
-  single("g-toalhas-rosto", "Kit 4 Toalhas de Rosto", 65, "Kit 4 Toalhas De Rosto_65.jpg"),
-  fractional("g-lava-seca", "Lava e Seca 11kg", 2900, "Lava e Seca 11kg_2900.jpg"),
-  fractional("g-lava-loucas", "Lava-louças", 1900, "Lava-louças_1900.jpg"),
-  single("g-liquidificador", "Liquidificador", 94, "liquidificador_94.jpg"),
-  fractional("g-mesa", "Mesa de Jantar", 650, "mesa_650.webp"),
-  fractional("g-microondas", "Micro-ondas", 484, "microondas_484.jpg"),
-  single("g-processador", "Processador de Alimentos", 129, "processador_129.jpg"),
-  single("g-purificador", "Purificador de Água", 169, "purificador_agua_169.png"),
-  fractional("g-refrigerador", "Geladeira Brastemp", 2960, "Geladeira_Brastemp_2960.jpg"),
-  fractional("g-sofa", "Sofá", 1482, "sofa_ 1482.webp"),
-  single("g-steamer", "Steamer", 141, "steamer_141.jpg"),
-  single("g-travesseiros", "Travesseiros", 59, "travesseiros_59.jpg"),
-];
+}
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -536,7 +477,15 @@ function GiftDialog({
 }
 
 export function Presentes() {
-  const sorted = useMemo(() => sortGifts(giftsData), []);
+  const {
+    data: gifts = [],
+    error,
+    isLoading
+  } = useQuery({
+    queryKey: giftsQueryKey,
+    queryFn: getGifts
+  });
+  const sorted = useMemo(() => sortGifts(gifts.map(toGiftView)), [gifts]);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "start",
     skipSnaps: false,
@@ -645,6 +594,17 @@ export function Presentes() {
       </div>
 
       <div className="pl-6 md:pl-12 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
+        {isLoading ? (
+          <div className="flex min-h-[320px] items-center justify-center pr-6 md:pr-12 lg:pr-[max(1.5rem,calc((100vw-1280px)/2))]">
+            <Spinner className="h-8 w-8" />
+          </div>
+        ) : error ? (
+          <div className="pr-6 md:pr-12 lg:pr-[max(1.5rem,calc((100vw-1280px)/2))]">
+            <div className="rounded-2xl border border-border/40 bg-card px-6 py-10 text-center text-muted-foreground">
+              Não conseguimos carregar a lista de presentes agora. Tente novamente em alguns instantes.
+            </div>
+          </div>
+        ) : (
         <div
           className="overflow-hidden cursor-grab active:cursor-grabbing focus:outline-none"
           ref={emblaRef}
@@ -668,6 +628,7 @@ export function Presentes() {
             ))}
           </div>
         </div>
+        )}
       </div>
 
       <div

@@ -4,14 +4,17 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
   type DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
+import { PAYMENT_GIFTS_BY_ID, type PaymentGift } from "@brimax/config";
 import type { PaymentStatus, PaymentSummary } from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import {
+  giftStateKeys,
   asaasCheckoutLookupIndex,
   asaasPaymentLookupIndex,
   idempotencyKeys,
@@ -54,6 +57,14 @@ type StoredWebhookEvent = {
   asaasCheckoutId?: string;
   externalReference?: string;
   processedAt?: string;
+};
+
+export type StoredGiftState = {
+  giftId: string;
+  partsFunded: number;
+  fullyFunded: boolean;
+  updatedAt: string;
+  lastConfirmedPaymentId?: string;
 };
 
 type IdempotencyReservation = {
@@ -171,6 +182,101 @@ export class PaymentRepository {
       }
 
       throw error;
+    }
+  }
+
+  async resetGiftStateItems(gifts: PaymentGift[] = Array.from(PAYMENT_GIFTS_BY_ID.values())) {
+    const updatedAt = new Date().toISOString();
+
+    await Promise.all(
+      gifts.map((gift) =>
+        this.documentClient.send(
+          new PutCommand({
+            TableName: this.tableName,
+            Item: {
+              ...giftStateKeys(gift.id),
+              entityType: "GiftState",
+              giftId: gift.id,
+              partsFunded: 0,
+              fullyFunded: false,
+              updatedAt
+            }
+          })
+        )
+      )
+    );
+  }
+
+  async listGiftStates(): Promise<StoredGiftState[]> {
+    const items: StoredGiftState[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const response = await this.documentClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: "begins_with(PK, :giftPrefix) AND SK = :state",
+          ExpressionAttributeValues: {
+            ":giftPrefix": "GIFT#",
+            ":state": "STATE"
+          },
+          ExclusiveStartKey: exclusiveStartKey
+        })
+      );
+
+      items.push(...((response.Items as StoredGiftState[] | undefined) ?? []));
+      exclusiveStartKey = response.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return items;
+  }
+
+  async incrementGiftFunding(input: {
+    giftId: string;
+    paymentId: string;
+    quantity: number;
+  }) {
+    const gift = PAYMENT_GIFTS_BY_ID.get(input.giftId);
+
+    if (!gift) {
+      throw new AppError("Unknown gift id for funding update.", 400);
+    }
+
+    const nextUpdatedAt = new Date().toISOString();
+    const incrementResponse = await this.documentClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: giftStateKeys(input.giftId),
+        UpdateExpression:
+          "SET entityType = if_not_exists(entityType, :entityType), giftId = if_not_exists(giftId, :giftId), " +
+          "partsFunded = if_not_exists(partsFunded, :zero) + :incrementBy, " +
+          "updatedAt = :nextUpdatedAt, lastConfirmedPaymentId = :paymentId",
+        ExpressionAttributeValues: {
+          ":entityType": "GiftState",
+          ":giftId": input.giftId,
+          ":incrementBy": input.quantity,
+          ":nextUpdatedAt": nextUpdatedAt,
+          ":paymentId": input.paymentId,
+          ":zero": 0
+        },
+        ReturnValues: "ALL_NEW"
+      })
+    );
+
+    const nextPartsFunded = Number((incrementResponse.Attributes?.partsFunded as number | undefined) ?? 0);
+    const fullyFundedThreshold = gift.fractional ? gift.totalParts ?? 0 : 1;
+
+    if (nextPartsFunded >= fullyFundedThreshold) {
+      await this.documentClient.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: giftStateKeys(input.giftId),
+          UpdateExpression: "SET fullyFunded = :fullyFunded",
+          ExpressionAttributeValues: {
+            ":fullyFunded": true
+          }
+        })
+      );
     }
   }
 

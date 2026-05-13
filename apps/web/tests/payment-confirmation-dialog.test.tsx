@@ -1,6 +1,9 @@
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
+import { giftsQueryKey } from "@/lib/gifts-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 
 const getPaymentMock = vi.fn();
@@ -18,6 +21,22 @@ vi.mock("@/lib/payments-api", () => ({
 }));
 
 describe("PaymentConfirmationDialog", () => {
+  function renderDialog(extraContent?: ReactNode) {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    render(
+      <>
+        {extraContent}
+        <QueryClientProvider client={queryClient}>
+          <PaymentConfirmationDialog />
+        </QueryClientProvider>
+      </>
+    );
+
+    return { invalidateSpy };
+  }
+
   beforeEach(() => {
     getPaymentMock.mockReset();
     createPaymentMessageMock.mockReset();
@@ -71,7 +90,7 @@ describe("PaymentConfirmationDialog", () => {
 
     window.history.replaceState({}, "", "/?paymentId=payment-1&paymentStatus=success");
 
-    render(<PaymentConfirmationDialog />);
+    renderDialog();
 
     await waitFor(() => {
       expect(screen.getByText("Confirmando seu pagamento…")).toBeInTheDocument();
@@ -112,7 +131,7 @@ describe("PaymentConfirmationDialog", () => {
       JSON.stringify({ paymentId: "payment-recovery-1", createdAt: Date.now() })
     );
 
-    render(<PaymentConfirmationDialog />);
+    renderDialog();
 
     await waitFor(() => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
@@ -142,12 +161,7 @@ describe("PaymentConfirmationDialog", () => {
 
     window.history.replaceState({}, "", "/?paymentId=payment-close-1&paymentStatus=success");
 
-    render(
-      <>
-        <section id="presentes">Presentes</section>
-        <PaymentConfirmationDialog />
-      </>
-    );
+    const { invalidateSpy } = renderDialog(<section id="presentes">Presentes</section>);
 
     await waitFor(() => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
@@ -161,5 +175,6 @@ describe("PaymentConfirmationDialog", () => {
       expect(window.location.hash).toBe("#presentes");
     });
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: giftsQueryKey });
   });
 });

@@ -126,6 +126,14 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
+    const getGiftsFn = new nodejs.NodejsFunction(this, "GetGiftsFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/gifts-get/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
     const paymentMessageFn = new nodejs.NodejsFunction(this, "PaymentMessageFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-message/handler.ts"),
       environment: commonEnvironment,
@@ -159,6 +167,7 @@ export class AppStack extends cdk.Stack {
 
     props.table.grantReadWriteData(createPaymentFn);
     props.table.grantReadData(getPaymentFn);
+    props.table.grantReadData(getGiftsFn);
     props.table.grantReadWriteData(paymentMessageFn);
     props.table.grantReadWriteData(asaasWebhookFn);
     props.table.grantReadWriteData(webhookProcessorFn);
@@ -186,6 +195,11 @@ export class AppStack extends cdk.Stack {
       path: "/payments/{paymentId}",
       methods: [apigwv2.HttpMethod.GET],
       integration: new apigwv2Integrations.HttpLambdaIntegration("GetPaymentIntegration", getPaymentFn)
+    });
+    this.httpApi.addRoutes({
+      path: "/gifts",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("GetGiftsIntegration", getGiftsFn)
     });
     this.httpApi.addRoutes({
       path: "/payments/{paymentId}/message",

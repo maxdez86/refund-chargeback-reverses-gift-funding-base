@@ -1,4 +1,5 @@
 export * from "./admin";
+export * from "./gifts";
 export * from "./guest";
 export * from "./payments";
 export * from "./registry";

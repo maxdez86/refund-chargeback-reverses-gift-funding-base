@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   asaasPaymentLookupIndex,
+  giftStateKeys,
   idempotencyKeys,
   invitationKeys,
   paymentKeys,
@@ -31,6 +32,11 @@ describe("DynamoDB key builders", () => {
     expect(idempotencyKeys("idem_123")).toEqual({
       PK: "IDEMPOTENCY#idem_123",
       SK: "PAYMENT"
+    });
+
+    expect(giftStateKeys("g-test-pix")).toEqual({
+      PK: "GIFT#g-test-pix",
+      SK: "STATE"
     });
   });
 

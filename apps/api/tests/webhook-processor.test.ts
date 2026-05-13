@@ -25,7 +25,8 @@ describe("WebhookProcessor", () => {
         paymentId: "payment-1",
         status: "AWAITING_PAYMENT",
         asaasPaymentId: "pay_asaas_1",
-        asaasCheckoutId: "checkout_1"
+        asaasCheckoutId: "checkout_1",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
       getPayment: vi
@@ -37,7 +38,7 @@ describe("WebhookProcessor", () => {
           payerEmail: undefined,
           payerFirstName: undefined,
           customerProfileStatus: "PENDING",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
         })
         .mockResolvedValueOnce({
           paymentId: "payment-1",
@@ -46,9 +47,10 @@ describe("WebhookProcessor", () => {
           payerEmail: "maria@example.com",
           payerFirstName: "Maria",
           customerProfileStatus: "READY",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      incrementGiftFunding: vi.fn().mockResolvedValue(undefined),
       updatePaymentCustomerProfile: vi.fn().mockResolvedValue(undefined),
       acquireNotificationSend: vi.fn().mockResolvedValue(true),
       markNotificationSent: vi.fn().mockResolvedValue(undefined),
@@ -78,6 +80,11 @@ describe("WebhookProcessor", () => {
       receivedOn: "2026-05-10",
       asaasPaymentId: "pay_asaas_1",
       asaasCheckoutId: "checkout_1"
+    });
+    expect(repository.incrementGiftFunding).toHaveBeenCalledWith({
+      giftId: "g-test-pix",
+      paymentId: "payment-1",
+      quantity: 1
     });
     expect(asaasClient.getCustomerById).toHaveBeenCalledWith("cus_1");
     expect(repository.updatePaymentCustomerProfile).toHaveBeenCalledWith({
@@ -137,7 +144,8 @@ describe("WebhookProcessor", () => {
         paymentId: "payment-2",
         status: "PROCESSING",
         asaasPaymentId: "pay_asaas_2",
-        asaasCheckoutId: "checkout_2"
+        asaasCheckoutId: "checkout_2",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
       getPayment: vi
@@ -147,7 +155,7 @@ describe("WebhookProcessor", () => {
           status: "CONFIRMED",
           amountCents: 500,
           customerProfileStatus: "PENDING",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
         })
         .mockResolvedValueOnce({
           paymentId: "payment-2",
@@ -156,9 +164,10 @@ describe("WebhookProcessor", () => {
           payerEmail: "joao@example.com",
           payerFirstName: "João",
           customerProfileStatus: "READY",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      incrementGiftFunding: vi.fn().mockResolvedValue(undefined),
       updatePaymentCustomerProfile: vi.fn().mockResolvedValue(undefined),
       acquireNotificationSend: vi.fn().mockResolvedValue(true),
       markNotificationSent: vi.fn().mockResolvedValue(undefined),
@@ -205,7 +214,8 @@ describe("WebhookProcessor", () => {
       getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue({
         paymentId: "payment-3",
         status: "PROCESSING",
-        asaasPaymentId: "pay_asaas_3"
+        asaasPaymentId: "pay_asaas_3",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
       getPayment: vi.fn().mockResolvedValue({
@@ -215,9 +225,10 @@ describe("WebhookProcessor", () => {
         payerEmail: "ana@example.com",
         payerFirstName: "Ana",
         customerProfileStatus: "READY",
-        gift: { name: "PIX Teste" }
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      incrementGiftFunding: vi.fn(),
       updatePaymentCustomerProfile: vi.fn(),
       acquireNotificationSend: vi.fn().mockResolvedValue(false),
       markNotificationSent: vi.fn(),
@@ -236,6 +247,11 @@ describe("WebhookProcessor", () => {
     await processor.processEvent("event-3");
 
     expect(repository.updatePaymentCustomerProfile).not.toHaveBeenCalled();
+    expect(repository.incrementGiftFunding).toHaveBeenCalledWith({
+      giftId: "g-test-pix",
+      paymentId: "payment-3",
+      quantity: 1
+    });
     expect(asaasClient.getPaymentById).not.toHaveBeenCalled();
     expect(asaasClient.getCustomerById).not.toHaveBeenCalled();
     expect(emailService.sendEmail).not.toHaveBeenCalled();
@@ -259,7 +275,8 @@ describe("WebhookProcessor", () => {
       getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue({
         paymentId: "payment-4",
         status: "PROCESSING",
-        asaasPaymentId: "pay_asaas_4"
+        asaasPaymentId: "pay_asaas_4",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
       getPayment: vi
@@ -269,7 +286,7 @@ describe("WebhookProcessor", () => {
           status: "CONFIRMED",
           amountCents: 500,
           customerProfileStatus: "PENDING",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
         })
         .mockResolvedValueOnce({
           paymentId: "payment-4",
@@ -278,9 +295,10 @@ describe("WebhookProcessor", () => {
           payerEmail: "buyer@example.com",
           payerFirstName: "Buyer",
           customerProfileStatus: "READY",
-          gift: { name: "PIX Teste" }
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
         }),
       applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      incrementGiftFunding: vi.fn().mockResolvedValue(undefined),
       updatePaymentCustomerProfile: vi.fn().mockResolvedValue(undefined),
       acquireNotificationSend: vi.fn().mockResolvedValue(true),
       markNotificationSent: vi.fn(),
@@ -303,5 +321,58 @@ describe("WebhookProcessor", () => {
     await expect(processor.processEvent("event-4")).rejects.toThrow("sandbox rejection");
     expect(repository.releaseNotificationSend).toHaveBeenCalledWith("payment-4", "PAYER_CONFIRMATION");
     expect(repository.markNotificationSent).not.toHaveBeenCalled();
+  });
+
+  it("does not increment gift funding again when a confirmed payment later becomes received", async () => {
+    const repository = {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: "PAYMENT_RECEIVED",
+          payment: {
+            id: "pay_asaas_5",
+            customer: "cus_5",
+            externalReference: "payment-5",
+            status: "RECEIVED"
+          }
+        }),
+        asaasPaymentId: "pay_asaas_5",
+        externalReference: "payment-5"
+      }),
+      getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue({
+        paymentId: "payment-5",
+        status: "CONFIRMED",
+        asaasPaymentId: "pay_asaas_5",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+      }),
+      getPaymentByAsaasCheckoutId: vi.fn(),
+      getPayment: vi.fn().mockResolvedValue({
+        paymentId: "payment-5",
+        status: "RECEIVED",
+        amountCents: 500,
+        payerEmail: "maria@example.com",
+        payerFirstName: "Maria",
+        customerProfileStatus: "READY",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+      }),
+      applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      incrementGiftFunding: vi.fn(),
+      updatePaymentCustomerProfile: vi.fn(),
+      acquireNotificationSend: vi.fn().mockResolvedValue(false),
+      markNotificationSent: vi.fn(),
+      releaseNotificationSend: vi.fn(),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const asaasClient = {
+      getPaymentById: vi.fn(),
+      getCustomerById: vi.fn()
+    };
+    const emailService = {
+      sendEmail: vi.fn()
+    };
+
+    const processor = new WebhookProcessor(repository as never, asaasClient as never, emailService as never);
+    await processor.processEvent("event-5");
+
+    expect(repository.incrementGiftFunding).not.toHaveBeenCalled();
   });
 });

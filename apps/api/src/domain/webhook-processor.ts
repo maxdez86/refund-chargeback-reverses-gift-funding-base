@@ -101,6 +101,20 @@ export class WebhookProcessor {
       asaasCheckoutId: asaasCheckoutId ?? payment.asaasCheckoutId
     });
 
+    if (
+      applied &&
+      (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED") &&
+      payment.status !== "CONFIRMED" &&
+      payment.status !== "RECEIVED" &&
+      payment.gift?.id
+    ) {
+      await this.repository.incrementGiftFunding({
+        giftId: payment.gift.id,
+        paymentId: payment.paymentId,
+        quantity: payment.gift.quantity
+      });
+    }
+
     if (applied && (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")) {
       await this.enrichCustomerProfile({
         asaasCustomerIdFromPayload,

@@ -1,9 +1,42 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+const getGiftsMock = vi.fn();
+
+vi.mock("@/lib/gifts-api", () => ({
+  giftsQueryKey: ["gifts"],
+  getGifts: (...args: unknown[]) => getGiftsMock(...args)
+}));
+
 import App from "../src/App";
 
 describe("official web app", () => {
   beforeEach(() => {
+    getGiftsMock.mockReset().mockResolvedValue([
+      {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        imageUrl: "https://brimax.life/images/gifts-home.png",
+        fractional: false,
+        totalValueCents: 500,
+        partValueCents: null,
+        totalParts: null,
+        partsFunded: 0,
+        fullyFunded: false,
+        updatedAt: "2026-05-13T00:00:00.000Z"
+      },
+      {
+        id: "g-armario",
+        name: "Armário de Cozinha",
+        imageUrl: "https://example.com/armario.webp",
+        fractional: true,
+        totalValueCents: 174900,
+        partValueCents: 5000,
+        totalParts: 35,
+        partsFunded: 3,
+        fullyFunded: false,
+        updatedAt: "2026-05-13T00:00:00.000Z"
+      }
+    ]);
     window.history.replaceState({}, "", "/");
     window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
       callback(0);
@@ -25,7 +58,7 @@ describe("official web app", () => {
   it("opens the gift dialog flow", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Contribuir|Escolher presente/i })[0]);
+    fireEvent.click((await screen.findAllByRole("button", { name: /Contribuir|Escolher presente/i }))[0]);
 
     expect(
       await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
@@ -40,7 +73,7 @@ describe("official web app", () => {
   it("returns to #presentes when the gift modal closes", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Contribuir|Escolher presente/i })[0]);
+    fireEvent.click((await screen.findAllByRole("button", { name: /Contribuir|Escolher presente/i }))[0]);
 
     expect(
       await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
@@ -54,6 +87,28 @@ describe("official web app", () => {
       expect(window.location.hash).toBe("#presentes");
     });
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("renders funded gift state from the backend response", async () => {
+    getGiftsMock.mockResolvedValueOnce([
+      {
+        id: "g-armario",
+        name: "Armário de Cozinha",
+        imageUrl: "https://example.com/armario.webp",
+        fractional: true,
+        totalValueCents: 174900,
+        partValueCents: 5000,
+        totalParts: 35,
+        partsFunded: 34,
+        fullyFunded: false,
+        updatedAt: "2026-05-13T00:00:00.000Z"
+      }
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByText("1 cota restante")).toBeInTheDocument();
+    expect(screen.getByText("97%")).toBeInTheDocument();
   });
 
   it("resolves an RSVP group and supports ambiguous search results", async () => {

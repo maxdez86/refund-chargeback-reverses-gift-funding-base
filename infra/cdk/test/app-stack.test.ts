@@ -30,13 +30,16 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::SQS::Queue", 2);
     template.resourceCountIs("AWS::SecretsManager::Secret", 2);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
-    template.resourceCountIs("AWS::Lambda::Function", 6);
+    template.resourceCountIs("AWS::Lambda::Function", 7);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /payments/{paymentId}"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /gifts"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments/{paymentId}/message"

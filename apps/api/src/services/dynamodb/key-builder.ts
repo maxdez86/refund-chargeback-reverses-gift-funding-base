@@ -47,6 +47,13 @@ export function paymentKeys(paymentId: string) {
   };
 }
 
+export function giftStateKeys(giftId: string) {
+  return {
+    PK: `GIFT#${giftId}`,
+    SK: "STATE"
+  };
+}
+
 export function paymentMessageKeys(paymentId: string) {
   return {
     PK: `PAYMENT#${paymentId}`,
