@@ -1,11 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Minus, Plus, Check, ShieldCheck } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { z } from "zod";
 import { type CreatePaymentRequest } from "@brimax/contracts";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,15 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
@@ -262,12 +250,6 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
   );
 }
 
-const PayerFormSchema = z.object({
-  payerEmail: z.string().email("Informe um e-mail válido.").max(255),
-});
-
-type PayerFormValues = z.infer<typeof PayerFormSchema>;
-
 function GiftDialog({
   gift,
   open,
@@ -281,18 +263,11 @@ function GiftDialog({
   const [step, setStep] = useState<"select" | "confirm">("select");
   const [submitting, setSubmitting] = useState(false);
 
-  const form = useForm<PayerFormValues>({
-    resolver: zodResolver(PayerFormSchema),
-    defaultValues: { payerEmail: "" },
-    mode: "onChange",
-  });
-
   useEffect(() => {
     setQuantity(1);
     setStep("select");
     setSubmitting(false);
-    form.reset({ payerEmail: "" });
-  }, [gift?.id, open, form]);
+  }, [gift?.id, open]);
 
   if (!gift) return null;
 
@@ -313,13 +288,12 @@ function GiftDialog({
     onOpenChange(next);
   };
 
-  const onSubmit = async (values: PayerFormValues) => {
+  const onSubmit = async () => {
     setSubmitting(true);
     try {
       const payload: CreatePaymentRequest = {
         giftId: gift.id,
         paymentMethod: "HOSTED",
-        payerEmail: values.payerEmail.trim(),
         ...(gift.fractional ? { quantity } : {}),
       };
       const payment = await createPayment(payload);
@@ -353,7 +327,7 @@ function GiftDialog({
               ? gift.fractional
                 ? "Escolha quantas cotas você gostaria de presentear."
                 : "Confirme abaixo para sinalizar este presente."
-              : "Informe apenas seu e-mail antes de seguir para a Asaas."}
+              : "Confira o valor e siga para o pagamento na Asaas."}
           </DialogDescription>
         </DialogHeader>
 
@@ -474,12 +448,7 @@ function GiftDialog({
             </div>
           </div>
         ) : (
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-4"
-              noValidate
-            >
+          <div className="space-y-4">
               <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/30 p-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Total a pagar</span>
@@ -494,39 +463,10 @@ function GiftDialog({
                 )}
               </div>
 
-              <FormField
-                control={form.control}
-                name="payerEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Seu e-mail</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        placeholder="voce@exemplo.com"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <p className="text-sm text-muted-foreground">
-                      Usamos só para te enviar a confirmação do presente.
-                    </p>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <p className="text-sm text-muted-foreground">
-                CPF, nome e telefone são pedidos só na próxima tela, pela Asaas — pagamento
-                seguro com PIX ou cartão.
-              </p>
-
               <div className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background p-4 text-sm text-muted-foreground">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" aria-hidden="true" />
                 <span>
-                  Pagamento processado pela Asaas. Conexão segura HTTPS.
+                  Pagamento seguro via Asaas.
                 </span>
               </div>
 
@@ -541,9 +481,10 @@ function GiftDialog({
                   Voltar
                 </Button>
                 <Button
-                  type="submit"
+                  type="button"
                   className="rounded-full flex-1"
-                  disabled={submitting || !form.formState.isValid}
+                  disabled={submitting}
+                  onClick={() => void onSubmit()}
                 >
                   {submitting ? (
                     <>
@@ -555,8 +496,7 @@ function GiftDialog({
                   )}
                 </Button>
               </div>
-            </form>
-          </Form>
+          </div>
         )}
       </DialogContent>
     </Dialog>

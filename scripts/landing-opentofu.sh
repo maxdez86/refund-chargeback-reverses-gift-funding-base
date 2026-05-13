@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODULE_NAME="${1:?Expected module name (certificate-validation, edge-dns, or api-dns)}"
+MODULE_NAME="${1:?Expected module name (certificate-validation, edge-dns, api-dns, or ses-dns)}"
 ACTION="${2:?Expected action (init, validate, plan, apply)}"
 shift 2
 
@@ -53,6 +53,18 @@ case "${ACTION}" in
         -var "www_validation_record_name=${WWW_VALIDATION_RECORD_NAME}"
         -var "www_validation_record_type=${WWW_VALIDATION_RECORD_TYPE}"
         -var "www_validation_record_value=${WWW_VALIDATION_RECORD_VALUE}"
+      )
+    elif [[ "${MODULE_NAME}" == "ses-dns" ]]; then
+      # shellcheck disable=SC1091
+      source <(bash "$(dirname "$0")/export-ses-domain-dkim-records.sh")
+
+      VAR_ARGS+=(
+        -var "ses_dkim_record_name_1=${SES_DKIM_RECORD_NAME_1}"
+        -var "ses_dkim_record_value_1=${SES_DKIM_RECORD_VALUE_1}"
+        -var "ses_dkim_record_name_2=${SES_DKIM_RECORD_NAME_2}"
+        -var "ses_dkim_record_value_2=${SES_DKIM_RECORD_VALUE_2}"
+        -var "ses_dkim_record_name_3=${SES_DKIM_RECORD_NAME_3}"
+        -var "ses_dkim_record_value_3=${SES_DKIM_RECORD_VALUE_3}"
       )
     elif [[ "${MODULE_NAME}" == "edge-dns" ]]; then
       VAR_ARGS+=(

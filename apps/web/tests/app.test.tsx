@@ -23,8 +23,8 @@ describe("official web app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
 
-    expect(await screen.findByLabelText("Seu e-mail")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeDisabled();
+    expect(screen.queryByLabelText("Seu e-mail")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeEnabled();
   });
 
   it("resolves an RSVP group and supports ambiguous search results", async () => {

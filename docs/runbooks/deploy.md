@@ -71,6 +71,23 @@ The final branded webhook URL comes from `BrimaxAppStack` output `AsaasWebhookUr
 The branded public API base URL comes from `BrimaxAppStack` output `ApiCustomDomainUrl`.
 The raw `execute-api` hostname remains available only as a fallback/debug output and should not be used for normal production traffic.
 
+## SES Domain Verification
+
+To unlock SES production access, verify the `brimax.life` domain after the backend stack is deployed:
+
+```bash
+bash scripts/landing-opentofu.sh ses-dns init
+bash scripts/landing-opentofu.sh ses-dns apply
+aws sesv2 get-email-identity --region us-east-1 --email-identity brimax.life
+```
+
+Expected behavior:
+- `BrimaxAppStack` exposes the SES Easy DKIM CNAME tokens.
+- The `ses-dns` OpenTofu module creates those three DNS-only Cloudflare CNAMEs.
+- `aws sesv2 get-email-identity` eventually reports successful verification for `brimax.life`.
+
+Only request SES production access after domain verification is complete.
+
 ## Notes
 
 - The deploy scripts auto-load `.env`, so manual `source .env` is optional.

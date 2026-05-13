@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -14,6 +15,8 @@ import {
   asaasCheckoutLookupIndex,
   asaasPaymentLookupIndex,
   idempotencyKeys,
+  paymentMessageKeys,
+  paymentNotificationKeys,
   paymentKeys,
   webhookKeys
 } from "../key-builder";
@@ -22,8 +25,22 @@ import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
 type StoredPayment = PaymentSummary & {
   asaasPaymentId?: string;
   asaasCheckoutId?: string;
+  checkoutPrefillMode?: "CUSTOMER_DATA_EMAIL" | "NO_PREFILL";
+  asaasCustomerId?: string;
+  customerProfileStatus?: "PENDING" | "READY" | "FAILED";
+  payerName?: string;
   externalReference?: string;
   payerEmail?: string;
+  customerProfileUpdatedAt?: string;
+};
+
+type StoredPaymentMessage = {
+  paymentId: string;
+  body: string;
+  submittedAt: string;
+  payerEmail?: string;
+  payerName?: string;
+  giftName: string;
 };
 
 const RAW_WEBHOOK_PAYLOAD_MAX_BYTES = 350 * 1024;
@@ -157,6 +174,60 @@ export class PaymentRepository {
     }
   }
 
+  async updatePaymentCustomerProfile(input: {
+    paymentId: string;
+    asaasCustomerId?: string;
+    payerEmail?: string;
+    payerFirstName?: string;
+    payerName?: string;
+    customerProfileStatus: "PENDING" | "READY" | "FAILED";
+  }) {
+    const expressionAttributeNames: Record<string, string> = {
+      "#updatedAt": "updatedAt",
+      "#customerProfileStatus": "customerProfileStatus"
+    };
+    const expressionAttributeValues: Record<string, unknown> = {
+      ":updatedAt": new Date().toISOString(),
+      ":customerProfileStatus": input.customerProfileStatus,
+      ":customerProfileUpdatedAt": new Date().toISOString()
+    };
+    const updates = [
+      "#updatedAt = :updatedAt",
+      "#customerProfileStatus = :customerProfileStatus",
+      "customerProfileUpdatedAt = :customerProfileUpdatedAt"
+    ];
+
+    if (input.asaasCustomerId) {
+      updates.push("asaasCustomerId = :asaasCustomerId");
+      expressionAttributeValues[":asaasCustomerId"] = input.asaasCustomerId;
+    }
+
+    if (input.payerEmail) {
+      updates.push("payerEmail = :payerEmail");
+      expressionAttributeValues[":payerEmail"] = input.payerEmail;
+    }
+
+    if (input.payerFirstName) {
+      updates.push("payerFirstName = :payerFirstName");
+      expressionAttributeValues[":payerFirstName"] = input.payerFirstName;
+    }
+
+    if (input.payerName) {
+      updates.push("payerName = :payerName");
+      expressionAttributeValues[":payerName"] = input.payerName;
+    }
+
+    await this.documentClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: paymentKeys(input.paymentId),
+        UpdateExpression: `SET ${updates.join(", ")}`,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues
+      })
+    );
+  }
+
   async getPayment(paymentId: string): Promise<StoredPayment | null> {
     const response = await this.documentClient.send(
       new GetCommand({
@@ -166,6 +237,146 @@ export class PaymentRepository {
     );
 
     return (response.Item as StoredPayment | undefined) ?? null;
+  }
+
+  async getPaymentMessage(paymentId: string): Promise<StoredPaymentMessage | null> {
+    const response = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: paymentMessageKeys(paymentId)
+      })
+    );
+
+    return (response.Item as StoredPaymentMessage | undefined) ?? null;
+  }
+
+  async putPaymentMessage(message: StoredPaymentMessage) {
+    try {
+      await this.documentClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            ...paymentMessageKeys(message.paymentId),
+            entityType: "PaymentMessage",
+            ...message
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  async putNotificationIfNew(input: {
+    paymentId: string;
+    type: string;
+    payload: Record<string, unknown>;
+  }) {
+    try {
+      await this.documentClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            ...paymentNotificationKeys(input.paymentId, input.type),
+            entityType: "PaymentNotification",
+            paymentId: input.paymentId,
+            notificationType: input.type,
+            createdAt: new Date().toISOString(),
+            ...input.payload
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  async acquireNotificationSend(input: {
+    paymentId: string;
+    type: string;
+    payload: Record<string, unknown>;
+  }) {
+    try {
+      await this.documentClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            ...paymentNotificationKeys(input.paymentId, input.type),
+            entityType: "PaymentNotification",
+            paymentId: input.paymentId,
+            notificationType: input.type,
+            status: "PENDING",
+            createdAt: new Date().toISOString(),
+            ...input.payload
+          },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  async markNotificationSent(input: {
+    paymentId: string;
+    type: string;
+    payload?: Record<string, unknown>;
+  }) {
+    const expressionAttributeValues: Record<string, unknown> = {
+      ":status": "SENT",
+      ":sentAt": new Date().toISOString()
+    };
+    const updates = ["#status = :status", "sentAt = :sentAt"];
+
+    if (input.payload) {
+      for (const [key, value] of Object.entries(input.payload)) {
+        const valueKey = `:${key}`;
+        updates.push(`${key} = ${valueKey}`);
+        expressionAttributeValues[valueKey] = value;
+      }
+    }
+
+    await this.documentClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: paymentNotificationKeys(input.paymentId, input.type),
+        ConditionExpression: "attribute_exists(PK)",
+        UpdateExpression: `SET ${updates.join(", ")}`,
+        ExpressionAttributeNames: {
+          "#status": "status"
+        },
+        ExpressionAttributeValues: expressionAttributeValues
+      })
+    );
+  }
+
+  async releaseNotificationSend(paymentId: string, type: string) {
+    await this.documentClient.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: paymentNotificationKeys(paymentId, type)
+      })
+    );
   }
 
   async getPaymentByAsaasPaymentId(asaasPaymentId: string): Promise<StoredPayment | null> {

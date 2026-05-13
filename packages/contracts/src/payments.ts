@@ -24,8 +24,7 @@ export const PaymentPayerSchema = z.object({
 export const CreatePaymentRequestSchema = z.object({
   giftId: z.string().min(1),
   quantity: z.number().int().positive().max(100).optional(),
-  paymentMethod: PaymentMethodSchema,
-  payerEmail: z.string().email().max(255)
+  paymentMethod: PaymentMethodSchema
 });
 
 export const PaymentGiftSummarySchema = z.object({
@@ -54,7 +53,28 @@ export const PaymentSummarySchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   confirmedOn: z.string().date().optional(),
-  receivedOn: z.string().date().optional()
+  receivedOn: z.string().date().optional(),
+  payerEmail: z.string().email().max(255).optional(),
+  payerFirstName: z.string().min(1).max(120).optional(),
+  customerProfileStatus: z.enum(["PENDING", "READY", "FAILED"]).optional()
+});
+
+export const CreatePaymentMessageRequestSchema = z.object({
+  body: z.string().trim().min(1).max(500)
+});
+
+export const PaymentMessageSchema = z.object({
+  paymentId: z.string().min(1),
+  body: z.string().min(1).max(500),
+  submittedAt: z.string().datetime(),
+  payerEmail: z.string().email().max(255).optional(),
+  payerName: z.string().min(1).max(120).optional(),
+  giftName: z.string().min(1)
+});
+
+export const CreatePaymentMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  message: PaymentMessageSchema
 });
 
 export const CreatePaymentResponseSchema = z.object({
@@ -76,3 +96,6 @@ export type PaymentCheckout = z.infer<typeof PaymentCheckoutSchema>;
 export type PaymentSummary = z.infer<typeof PaymentSummarySchema>;
 export type CreatePaymentResponse = z.infer<typeof CreatePaymentResponseSchema>;
 export type GetPaymentResponse = z.infer<typeof GetPaymentResponseSchema>;
+export type CreatePaymentMessageRequest = z.infer<typeof CreatePaymentMessageRequestSchema>;
+export type PaymentMessage = z.infer<typeof PaymentMessageSchema>;
+export type CreatePaymentMessageResponse = z.infer<typeof CreatePaymentMessageResponseSchema>;

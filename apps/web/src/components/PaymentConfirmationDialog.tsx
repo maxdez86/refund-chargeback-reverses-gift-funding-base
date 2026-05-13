@@ -9,8 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { LAST_PAYMENT_ID_MAX_AGE_MS, LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
-import { getPayment, PaymentApiError } from "@/lib/payments-api";
+import { createPaymentMessage, getPayment, PaymentApiError } from "@/lib/payments-api";
 
 type UrlVariant = "success" | "cancel" | "expired" | "unknown";
 type DialogVariant = "success" | "pending" | "cancel" | "expired" | "error" | "unknown";
@@ -59,6 +60,20 @@ const COPY: Record<DialogVariant, DialogCopy> = {
     icon: "x",
   },
 };
+
+function toDisplayNameCase(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase("pt-BR") + part.slice(1))
+    .join(" ");
+}
 
 function resolveUrlVariant(status: string | null): UrlVariant | null {
   if (!status) return null;
@@ -163,7 +178,13 @@ function shouldPoll(urlVariant: UrlVariant | null, open: boolean, payment?: Paym
     return false;
   }
 
-  return getVariantFromBackendStatus(payment.status) === "pending";
+  return (
+    getVariantFromBackendStatus(payment.status) === "pending" ||
+    (
+      getVariantFromBackendStatus(payment.status) === "success" &&
+      payment.customerProfileStatus !== "READY"
+    )
+  );
 }
 
 export function PaymentConfirmationDialog() {
@@ -171,6 +192,9 @@ export function PaymentConfirmationDialog() {
   const [payment, setPayment] = useState<PaymentSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [messageBody, setMessageBody] = useState("");
+  const [messageSubmitting, setMessageSubmitting] = useState(false);
+  const [messageSent, setMessageSent] = useState(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -180,6 +204,15 @@ export function PaymentConfirmationDialog() {
     window.addEventListener("popstate", refresh);
     return () => window.removeEventListener("popstate", refresh);
   }, []);
+
+  useEffect(() => {
+    if (!state.open) {
+      setMessageBody("");
+      setMessageSubmitting(false);
+      setMessageSent(false);
+      setFetchError(null);
+    }
+  }, [state.open]);
 
   useEffect(() => {
     if (!state.open || !state.paymentId) {
@@ -273,6 +306,16 @@ export function PaymentConfirmationDialog() {
     return state.urlVariant ?? "unknown";
   }, [fetchError, loading, payment?.status, state.paymentId, state.urlVariant]);
 
+  const successBody = useMemo(() => {
+    const firstName = toDisplayNameCase(payment?.payerFirstName);
+
+    if (firstName) {
+      return `${firstName}, sua contribuição foi confirmada. Muito obrigado pelo seu carinho e por fazer parte do nosso dia. — Brida & Max`;
+    }
+
+    return COPY.success.body;
+  }, [payment?.payerFirstName]);
+
   useEffect(() => {
     if (!visibleVariant) {
       return;
@@ -289,6 +332,29 @@ export function PaymentConfirmationDialog() {
     setState({ paymentId: null, urlVariant: null, open: false });
     setPayment(null);
     setFetchError(null);
+  };
+
+  const handleMessageSubmit = async () => {
+    if (!state.paymentId || !messageBody.trim() || messageSubmitting || messageSent) {
+      return;
+    }
+
+    setMessageSubmitting(true);
+
+    try {
+      await createPaymentMessage(state.paymentId, {
+        body: messageBody.trim()
+      });
+      setMessageSent(true);
+    } catch (error) {
+      const message =
+        error instanceof PaymentApiError
+          ? error.message
+          : "Não foi possível enviar sua mensagem.";
+      setFetchError(message);
+    } finally {
+      setMessageSubmitting(false);
+    }
   };
 
   if (!state.paymentId || !visibleVariant) return null;
@@ -318,12 +384,54 @@ export function PaymentConfirmationDialog() {
             {copy.title}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-center leading-relaxed">
-            {copy.body}
+            {visibleVariant === "success" ? successBody : copy.body}
           </DialogDescription>
         </DialogHeader>
 
         {fetchError && visibleVariant === "unknown" && (
           <p className="text-sm text-center text-muted-foreground">{fetchError}</p>
+        )}
+
+        {fetchError && visibleVariant === "success" && (
+          <p className="text-sm text-center text-muted-foreground">{fetchError}</p>
+        )}
+
+        {visibleVariant === "success" && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground text-center">
+                Quer deixar uma mensagem para Brida & Max?
+              </p>
+              <Textarea
+                value={messageBody}
+                onChange={(event) => setMessageBody(event.target.value)}
+                placeholder="Escreva uma mensagem carinhosa..."
+                disabled={messageSubmitting || messageSent}
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {messageBody.length}/500
+              </p>
+            </div>
+
+            {messageSent ? (
+              <p className="text-sm text-center text-muted-foreground">
+                Mensagem enviada com sucesso.
+              </p>
+            ) : (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full px-6"
+                  disabled={messageSubmitting || !messageBody.trim()}
+                  onClick={() => void handleMessageSubmit()}
+                >
+                  {messageSubmitting ? "Enviando..." : "Enviar mensagem"}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="flex justify-center pt-2">

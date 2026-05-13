@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   CreatePaymentResponseSchema,
   CreatePaymentRequestSchema,
-  PaymentPayerSchema,
   PaymentSummarySchema,
   type PaymentMethod,
   type PaymentSummary
@@ -22,16 +21,9 @@ function toBrlDecimal(valueInCents: number) {
 const DEFAULT_SITE_BASE_URL = "https://brimax.life";
 const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
 
-const LegacyCreatePaymentRequestSchema = CreatePaymentRequestSchema.extend({
-  payer: PaymentPayerSchema
-}).omit({
-  payerEmail: true
-});
-
 type NormalizedCreatePaymentRequest = {
   giftId: string;
   paymentMethod: PaymentMethod;
-  payerEmail: string;
   quantity?: number;
 };
 
@@ -83,8 +75,7 @@ export class PaymentService {
     const fingerprint = stableJsonHash({
       giftId: parsed.giftId,
       paymentMethod: parsed.paymentMethod,
-      quantity: giftSelection.quantity,
-      payerEmail: parsed.payerEmail
+      quantity: giftSelection.quantity
     });
 
     const reservedPaymentId = randomUUID();
@@ -121,7 +112,6 @@ export class PaymentService {
       checkoutExpirationMinutes,
       giftName: gift.name,
       giftSelection,
-      payerEmail: parsed.payerEmail,
       paymentId
     });
     const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
@@ -148,13 +138,13 @@ export class PaymentService {
         expiresAt: checkoutExpiresAt
       },
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      customerProfileStatus: "PENDING"
     };
 
     await this.repository.putPayment({
       ...payment,
-      asaasCheckoutId: asaasCheckout.id,
-      payerEmail: parsed.payerEmail
+      asaasCheckoutId: asaasCheckout.id
     });
 
     await this.repository.completeCreatePayment(idempotencyKey, payment);
@@ -179,20 +169,10 @@ export class PaymentService {
     const parsed = CreatePaymentRequestSchema.safeParse(request);
 
     if (parsed.success) {
-      return {
-        ...parsed.data,
-        payerEmail: parsed.data.payerEmail.trim().toLowerCase()
-      };
+      return parsed.data;
     }
 
-    const legacyParsed = LegacyCreatePaymentRequestSchema.parse(request);
-
-    return {
-      giftId: legacyParsed.giftId,
-      paymentMethod: legacyParsed.paymentMethod,
-      payerEmail: legacyParsed.payer.email.trim().toLowerCase(),
-      quantity: legacyParsed.quantity
-    };
+    return CreatePaymentRequestSchema.parse(request);
   }
 
   private async createHostedCheckout(input: {
@@ -200,16 +180,12 @@ export class PaymentService {
     checkoutExpirationMinutes: number;
     giftName: string;
     giftSelection: ResolvedGiftSelection;
-    payerEmail: string;
     paymentId: string;
   }) {
     const checkoutInput: CreateCheckoutInput = {
       billingTypes: input.billingTypes,
       callback: buildCheckoutCallbackUrls(input.paymentId),
       chargeTypes: ["DETACHED"],
-      customerData: {
-        email: input.payerEmail
-      },
       externalReference: input.paymentId,
       items: [
         {
@@ -221,22 +197,7 @@ export class PaymentService {
       ],
       minutesToExpire: input.checkoutExpirationMinutes
     };
-
-    try {
-      return await this.asaasClient.createCheckout(checkoutInput);
-    } catch (error) {
-      if (
-        error instanceof AppError &&
-        /customerdata|customer data|unknown field|campo/i.test(error.message)
-      ) {
-        return this.asaasClient.createCheckout({
-          ...checkoutInput,
-          customerData: undefined
-        });
-      }
-
-      throw error;
-    }
+    return this.asaasClient.createCheckout(checkoutInput);
   }
 
   private async resolveExistingPayment(paymentId: string, paymentSnapshot?: PaymentSummary) {

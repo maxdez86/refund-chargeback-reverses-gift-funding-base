@@ -9,6 +9,7 @@
     "./functions/invitation-get/handler": "./src/functions/invitation-get/handler.ts",
     "./functions/payments-create/handler": "./src/functions/payments-create/handler.ts",
     "./functions/payments-get/handler": "./src/functions/payments-get/handler.ts",
+    "./functions/payments-message/handler": "./src/functions/payments-message/handler.ts",
     "./functions/rsvp/handler": "./src/functions/rsvp/handler.ts",
     "./functions/stripe-webhook/handler": "./src/functions/stripe-webhook/handler.ts",
     "./functions/whatsapp-webhook/handler": "./src/functions/whatsapp-webhook/handler.ts"
@@ -22,6 +23,7 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.790.0",
     "@aws-sdk/client-secrets-manager": "^3.924.0",
+    "@aws-sdk/client-sesv2": "^3.924.0",
     "@aws-sdk/client-sqs": "^3.924.0",
     "@aws-sdk/lib-dynamodb": "^3.790.0",
     "@brimax/config": "workspace:*",

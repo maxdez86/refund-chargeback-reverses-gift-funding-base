@@ -4,11 +4,14 @@ import { getSecretValue } from "../secrets-manager/secret-cache";
 
 type AsaasCustomer = {
   id: string;
+  name?: string;
+  email?: string;
 };
 
 type AsaasPayment = {
   id: string;
   billingType: "PIX" | "CREDIT_CARD";
+  customer?: string;
   status: string;
   value: number;
   invoiceUrl?: string;
@@ -141,6 +144,18 @@ export class AsaasClient {
     });
 
     return response.data ?? [];
+  }
+
+  async getPaymentById(paymentId: string) {
+    return this.request<AsaasPayment>({
+      path: `/payments/${paymentId}`
+    });
+  }
+
+  async getCustomerById(customerId: string) {
+    return this.request<AsaasCustomer>({
+      path: `/customers/${customerId}`
+    });
   }
 
   async listPaymentsByCheckoutSession(checkoutSession: string) {

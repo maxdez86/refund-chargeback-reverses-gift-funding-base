@@ -29,13 +29,17 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
     template.resourceCountIs("AWS::SQS::Queue", 2);
     template.resourceCountIs("AWS::SecretsManager::Secret", 2);
-    template.resourceCountIs("AWS::Lambda::Function", 5);
+    template.resourceCountIs("AWS::SES::EmailIdentity", 2);
+    template.resourceCountIs("AWS::Lambda::Function", 6);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /payments/{paymentId}"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /payments/{paymentId}/message"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /webhooks/asaas"
@@ -53,6 +57,15 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::SecretsManager::Secret", {
       Name: "/dev/brimax/asaas/webhook-token",
       SecretString: "{\"token\":\"asaas-webhook-token-test\"}"
+    });
+    template.hasResourceProperties("AWS::SES::EmailIdentity", {
+      EmailIdentity: "casamento@brimax.life"
+    });
+    template.hasResourceProperties("AWS::SES::EmailIdentity", {
+      EmailIdentity: "brimax.life",
+      DkimSigningAttributes: {
+        NextSigningKeyLength: "RSA_2048_BIT"
+      }
     });
 
     template.hasResourceProperties("AWS::Logs::MetricFilter", {
@@ -76,6 +89,14 @@ describe("AppStack", () => {
     template.hasOutput("RawExecuteApiUrl", {});
     template.hasOutput("ApiCustomDomainRegionalTarget", {});
     template.hasOutput("ApiCustomDomainRegionalHostedZoneId", {});
+    template.hasOutput("SesSenderEmailIdentity", {});
+    template.hasOutput("SesSenderDomainIdentity", {});
+    template.hasOutput("SesDkimDnsTokenName1", {});
+    template.hasOutput("SesDkimDnsTokenValue1", {});
+    template.hasOutput("SesDkimDnsTokenName2", {});
+    template.hasOutput("SesDkimDnsTokenValue2", {});
+    template.hasOutput("SesDkimDnsTokenName3", {});
+    template.hasOutput("SesDkimDnsTokenValue3", {});
 
     expect(template.toJSON()).toBeDefined();
   });

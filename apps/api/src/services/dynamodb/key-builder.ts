@@ -47,6 +47,20 @@ export function paymentKeys(paymentId: string) {
   };
 }
 
+export function paymentMessageKeys(paymentId: string) {
+  return {
+    PK: `PAYMENT#${paymentId}`,
+    SK: "MESSAGE"
+  };
+}
+
+export function paymentNotificationKeys(paymentId: string, type: string) {
+  return {
+    PK: `PAYMENT#${paymentId}`,
+    SK: `NOTIFICATION#${type}`
+  };
+}
+
 export function idempotencyKeys(idempotencyKey: string) {
   return {
     PK: `IDEMPOTENCY#${idempotencyKey}`,

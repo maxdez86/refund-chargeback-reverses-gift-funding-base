@@ -5,10 +5,12 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
+import * as ses from "aws-cdk-lib/aws-ses";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { type AppStage } from "@brimax/config";
@@ -30,6 +32,8 @@ export class AppStack extends cdk.Stack {
     super(scope, id, props);
 
     const projectRoot = path.resolve(__dirname, "../../../../");
+    const senderDomainIdentity = "brimax.life";
+    const senderEmailIdentity = "casamento@brimax.life";
     const asaasApiSecret = new secretsmanager.Secret(this, "AsaasApiSecret", {
       secretName: `/${props.stage}/brimax/asaas/api-key`,
       secretStringValue: cdk.SecretValue.unsafePlainText(
@@ -51,6 +55,15 @@ export class AppStack extends cdk.Stack {
         maxReceiveCount: 5
       },
       visibilityTimeout: cdk.Duration.seconds(90)
+    });
+    const senderDomain = new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
+      emailIdentity: senderDomainIdentity,
+      dkimSigningAttributes: {
+        nextSigningKeyLength: "RSA_2048_BIT"
+      }
+    });
+    const senderIdentity = new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
+      emailIdentity: senderEmailIdentity
     });
 
     this.httpApi = new apigwv2.HttpApi(this, "PublicHttpApi", {
@@ -91,6 +104,7 @@ export class AppStack extends cdk.Stack {
           : "https://sandbox.asaas.com/checkoutSession/show",
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
+      EMAIL_FROM: senderEmailIdentity,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       WEDDING_TABLE_NAME: props.table.tableName
     };
@@ -105,6 +119,14 @@ export class AppStack extends cdk.Stack {
     });
     const getPaymentFn = new nodejs.NodejsFunction(this, "GetPaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-get/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const paymentMessageFn = new nodejs.NodejsFunction(this, "PaymentMessageFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/payments-message/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
@@ -136,12 +158,20 @@ export class AppStack extends cdk.Stack {
 
     props.table.grantReadWriteData(createPaymentFn);
     props.table.grantReadData(getPaymentFn);
+    props.table.grantReadWriteData(paymentMessageFn);
     props.table.grantReadWriteData(asaasWebhookFn);
     props.table.grantReadWriteData(webhookProcessorFn);
     webhookQueue.grantSendMessages(asaasWebhookFn);
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
     asaasApiSecret.grantRead(createPaymentFn);
+    asaasApiSecret.grantRead(webhookProcessorFn);
     asaasWebhookSecret.grantRead(asaasWebhookFn);
+    const sesSendPolicy = new iam.PolicyStatement({
+      actions: ["ses:SendEmail", "ses:SendRawEmail"],
+      resources: ["*"]
+    });
+    paymentMessageFn.addToRolePolicy(sesSendPolicy);
+    webhookProcessorFn.addToRolePolicy(sesSendPolicy);
 
     this.httpApi.addRoutes({
       path: "/payments",
@@ -155,6 +185,14 @@ export class AppStack extends cdk.Stack {
       path: "/payments/{paymentId}",
       methods: [apigwv2.HttpMethod.GET],
       integration: new apigwv2Integrations.HttpLambdaIntegration("GetPaymentIntegration", getPaymentFn)
+    });
+    this.httpApi.addRoutes({
+      path: "/payments/{paymentId}/message",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "PaymentMessageIntegration",
+        paymentMessageFn
+      )
     });
     this.httpApi.addRoutes({
       path: "/webhooks/asaas",
@@ -230,6 +268,35 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "AsaasWebhookSecretArn", {
       value: asaasWebhookSecret.secretArn
+    });
+
+    new cdk.CfnOutput(this, "SesSenderEmailIdentity", {
+      description: "SES sender identity created by CloudFormation. Verification still requires clicking the SES email link once.",
+      value: senderIdentity.emailIdentity
+    });
+
+    new cdk.CfnOutput(this, "SesSenderDomainIdentity", {
+      description: "SES domain identity used to unlock production access after DKIM DNS verification.",
+      value: senderDomain.emailIdentity
+    });
+
+    new cdk.CfnOutput(this, "SesDkimDnsTokenName1", {
+      value: senderDomain.attrDkimDnsTokenName1
+    });
+    new cdk.CfnOutput(this, "SesDkimDnsTokenValue1", {
+      value: senderDomain.attrDkimDnsTokenValue1
+    });
+    new cdk.CfnOutput(this, "SesDkimDnsTokenName2", {
+      value: senderDomain.attrDkimDnsTokenName2
+    });
+    new cdk.CfnOutput(this, "SesDkimDnsTokenValue2", {
+      value: senderDomain.attrDkimDnsTokenValue2
+    });
+    new cdk.CfnOutput(this, "SesDkimDnsTokenName3", {
+      value: senderDomain.attrDkimDnsTokenName3
+    });
+    new cdk.CfnOutput(this, "SesDkimDnsTokenValue3", {
+      value: senderDomain.attrDkimDnsTokenValue3
     });
   }
 

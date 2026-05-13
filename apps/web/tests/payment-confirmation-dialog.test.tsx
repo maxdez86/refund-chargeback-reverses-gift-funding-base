@@ -4,6 +4,7 @@ import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialo
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 
 const getPaymentMock = vi.fn();
+const createPaymentMessageMock = vi.fn();
 
 vi.mock("@/lib/payments-api", () => ({
   PaymentApiError: class PaymentApiError extends Error {
@@ -13,11 +14,13 @@ vi.mock("@/lib/payments-api", () => ({
     }
   },
   getPayment: (...args: unknown[]) => getPaymentMock(...args),
+  createPaymentMessage: (...args: unknown[]) => createPaymentMessageMock(...args),
 }));
 
 describe("PaymentConfirmationDialog", () => {
   beforeEach(() => {
     getPaymentMock.mockReset();
+    createPaymentMessageMock.mockReset();
     window.localStorage.clear();
     window.history.replaceState({}, "", "/");
   });
@@ -57,6 +60,8 @@ describe("PaymentConfirmationDialog", () => {
         },
         createdAt: "2026-05-12T00:00:00.000Z",
         updatedAt: "2026-05-12T00:00:05.000Z",
+        customerProfileStatus: "READY",
+        payerFirstName: "MARIA",
       });
 
     window.history.replaceState({}, "", "/?paymentId=payment-1&paymentStatus=success");
@@ -74,6 +79,7 @@ describe("PaymentConfirmationDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
     });
+    expect(screen.getByText(/Maria, sua contribuição foi confirmada/i)).toBeInTheDocument();
   }, 10_000);
 
   it("recovers the last payment from localStorage on cold load", async () => {
@@ -93,6 +99,7 @@ describe("PaymentConfirmationDialog", () => {
       },
       createdAt: "2026-05-12T00:00:00.000Z",
       updatedAt: "2026-05-12T00:00:05.000Z",
+      customerProfileStatus: "READY",
     });
 
     window.localStorage.setItem(

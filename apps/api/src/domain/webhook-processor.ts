@@ -2,11 +2,14 @@ import { PaymentRepository } from "../services/dynamodb/repositories/payment-rep
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
 import { normalizeSettlementDate } from "./payment-settlement-date";
+import { AsaasClient } from "../services/asaas/client";
+import { EmailService } from "../services/email/client";
 
 type AsaasWebhookPayload = {
   event?: string;
   payment?: {
     id?: string;
+    customer?: string;
     checkoutSession?: string;
     status?: string;
     externalReference?: string;
@@ -19,8 +22,35 @@ type AsaasWebhookPayload = {
   externalReference?: string;
 };
 
+function getFirstName(fullName: string | undefined) {
+  if (!fullName) {
+    return undefined;
+  }
+
+  const first = fullName.trim().split(/\s+/)[0];
+  return first || undefined;
+}
+
+function toDisplayNameCase(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase("pt-BR") + part.slice(1))
+    .join(" ");
+}
+
 export class WebhookProcessor {
-  constructor(private readonly repository = new PaymentRepository()) {}
+  constructor(
+    private readonly repository = new PaymentRepository(),
+    private readonly asaasClient = new AsaasClient(),
+    private readonly emailService = new EmailService()
+  ) {}
 
   async processEvent(eventId: string) {
     const storedEvent = await this.repository.getWebhookEvent(eventId);
@@ -37,6 +67,7 @@ export class WebhookProcessor {
     const asaasPaymentId = payload.payment?.id ?? storedEvent.asaasPaymentId;
     const asaasCheckoutId = payload.payment?.checkoutSession ?? storedEvent.asaasCheckoutId;
     const externalReference = payload.payment?.externalReference ?? storedEvent.externalReference;
+    const asaasCustomerIdFromPayload = payload.payment?.customer;
 
     if (!asaasPaymentId && !asaasCheckoutId && !externalReference) {
       throw new AppError("Webhook payload does not contain a payment reference.", 400);
@@ -70,8 +101,118 @@ export class WebhookProcessor {
       asaasCheckoutId: asaasCheckoutId ?? payment.asaasCheckoutId
     });
 
+    if (applied && (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")) {
+      await this.enrichCustomerProfile({
+        asaasCustomerIdFromPayload,
+        asaasPaymentId: asaasPaymentId ?? payment.asaasPaymentId,
+        paymentId: payment.paymentId
+      });
+    }
+
     await this.repository.markWebhookProcessed(eventId, applied ? "updated" : "ignored_stale");
 
     return { duplicate: false, updated: applied };
+  }
+
+  private async enrichCustomerProfile(input: {
+    asaasCustomerIdFromPayload?: string;
+    asaasPaymentId?: string;
+    paymentId: string;
+  }) {
+    const currentPayment = await this.repository.getPayment(input.paymentId);
+
+    if (!currentPayment) {
+      throw new AppError("Payment not found during customer enrichment.", 404);
+    }
+
+    if (
+      currentPayment.customerProfileStatus === "READY" &&
+      currentPayment.payerEmail &&
+      currentPayment.payerFirstName
+    ) {
+      await this.sendPayerConfirmationEmailIfNeeded(currentPayment);
+      return;
+    }
+
+    let asaasCustomerId = input.asaasCustomerIdFromPayload ?? currentPayment.asaasCustomerId;
+
+    if (!asaasCustomerId && input.asaasPaymentId) {
+      const asaasPayment = await this.asaasClient.getPaymentById(input.asaasPaymentId);
+      asaasCustomerId = asaasPayment.customer;
+    }
+
+    if (!asaasCustomerId) {
+      await this.repository.updatePaymentCustomerProfile({
+        paymentId: input.paymentId,
+        customerProfileStatus: "FAILED"
+      });
+      return;
+    }
+
+    const customer = await this.asaasClient.getCustomerById(asaasCustomerId);
+    const payerName = toDisplayNameCase(customer.name);
+    const payerEmail = customer.email?.trim().toLowerCase();
+    const payerFirstName = toDisplayNameCase(getFirstName(payerName));
+
+    await this.repository.updatePaymentCustomerProfile({
+      paymentId: input.paymentId,
+      asaasCustomerId,
+      payerEmail,
+      payerFirstName,
+      payerName,
+      customerProfileStatus: payerEmail && payerFirstName ? "READY" : "FAILED"
+    });
+
+    const enrichedPayment = await this.repository.getPayment(input.paymentId);
+    if (enrichedPayment) {
+      await this.sendPayerConfirmationEmailIfNeeded(enrichedPayment);
+    }
+  }
+
+  private async sendPayerConfirmationEmailIfNeeded(payment: Awaited<ReturnType<PaymentRepository["getPayment"]>>) {
+    if (!payment?.payerEmail || !payment.payerFirstName) {
+      return;
+    }
+
+    const accepted = await this.repository.acquireNotificationSend({
+      paymentId: payment.paymentId,
+      type: "PAYER_CONFIRMATION",
+      payload: {
+        payerEmail: payment.payerEmail
+      }
+    });
+
+    if (!accepted) {
+      return;
+    }
+
+    const amount = (payment.amountCents / 100).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL"
+    });
+
+    try {
+      await this.emailService.sendEmail({
+        to: payment.payerEmail,
+        subject: `${payment.payerFirstName}, recebemos seu presente`,
+        text:
+          `Oi, ${payment.payerFirstName}!\n\n` +
+          `Recebemos seu presente para Brida & Max.\n` +
+          `Presente: ${payment.gift.name}\n` +
+          `Valor: ${amount}\n` +
+          `\n` +
+          `Obrigado por fazer parte desse momento.\n`
+      });
+      await this.repository.markNotificationSent({
+        paymentId: payment.paymentId,
+        type: "PAYER_CONFIRMATION",
+        payload: {
+          payerEmail: payment.payerEmail
+        }
+      });
+    } catch (error) {
+      await this.repository.releaseNotificationSend(payment.paymentId, "PAYER_CONFIRMATION");
+      throw error;
+    }
   }
 }
