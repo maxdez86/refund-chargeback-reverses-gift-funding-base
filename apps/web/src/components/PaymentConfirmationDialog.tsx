@@ -12,6 +12,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LAST_PAYMENT_ID_MAX_AGE_MS, LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 import { createPaymentMessage, getPayment, PaymentApiError } from "@/lib/payments-api";
+import { returnToPresentes } from "@/lib/presentes-return";
 
 type UrlVariant = "success" | "cancel" | "expired" | "unknown";
 type DialogVariant = "success" | "pending" | "cancel" | "expired" | "error" | "unknown";
@@ -328,10 +329,10 @@ export function PaymentConfirmationDialog() {
 
   const handleOpenChange = (open: boolean) => {
     if (open) return;
-    window.history.replaceState({}, "", window.location.pathname);
     setState({ paymentId: null, urlVariant: null, open: false });
     setPayment(null);
     setFetchError(null);
+    returnToPresentes({ clearPaymentParams: true });
   };
 
   const handleMessageSubmit = async () => {

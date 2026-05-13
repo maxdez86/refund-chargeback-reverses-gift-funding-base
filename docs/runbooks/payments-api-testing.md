@@ -199,6 +199,43 @@ If the webhook does not arrive:
 4. Re-send the event from Asaas.
 5. Check CloudWatch logs for `AsaasWebhookFunction` and `AsaasWebhookProcessorFunction`.
 
+## Create-payment latency verification
+
+Use this procedure before and after the performance deploy so the comparison is repeatable.
+
+Generate a sample of `10-20` `POST /payments` calls with the existing hosted checkout script:
+
+```bash
+bash scripts/test-payments-hosted.sh
+```
+
+For each sample window, capture these metrics:
+
+- Lambda `CreatePaymentFunction` `Duration`
+- Lambda cold-start `Init Duration` from the function `REPORT` log lines
+- API Gateway `Latency`
+- API Gateway `IntegrationLatency`
+- structured logs with:
+  - `metric: "PAYMENT_CREATE_TIMING"`
+  - `metric: "PAYMENT_CREATE_SERVICE_TIMING"`
+  - `metric: "ASAAS_REQUEST_TIMING"`
+  - `metric: "PAYMENT_REDIRECT_TIMING"`
+
+Recommended manual comparison flow:
+
+1. Run the hosted checkout script `10-20` times in the target environment.
+2. In CloudWatch Logs for `CreatePaymentFunction`, filter for `PAYMENT_CREATE_TIMING` and compare `durationMs` across the sample.
+3. In the same log group, review `REPORT` lines to estimate cold-start frequency and `Init Duration`.
+4. Review `PAYMENT_CREATE_SERVICE_TIMING` to see whether the time is concentrated in:
+   - request normalization
+   - idempotency reservation write
+   - Asaas checkout creation
+   - payment persistence write
+   - idempotency completion update
+5. Review `ASAAS_REQUEST_TIMING` to compare `/checkouts` duration and whether `secretCacheHit` is mostly `true` after warm-up.
+6. In the browser console during manual checkout tests, capture `PAYMENT_REDIRECT_TIMING` and compare `requestDurationMs` and `redirectStartDelayMs`.
+7. Record p50 and p95 before deploy, then repeat the same steps after deploy and compare the two samples.
+
 ## Negative and resilience tests
 
 Run:

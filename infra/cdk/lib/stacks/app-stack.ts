@@ -113,6 +113,7 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-create/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
+      memorySize: 1024,
       projectRoot,
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15)

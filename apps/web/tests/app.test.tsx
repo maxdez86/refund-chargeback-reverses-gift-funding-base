@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 
 describe("official web app", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/");
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+
   it("renders the migrated brimax landing page sections", () => {
     render(<App />);
 
@@ -25,6 +35,25 @@ describe("official web app", () => {
 
     expect(screen.queryByLabelText("Seu e-mail")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeEnabled();
+  });
+
+  it("returns to #presentes when the gift modal closes", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Contribuir|Escolher presente/i })[0]);
+
+    expect(
+      await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+      expect(window.location.search).toBe("");
+      expect(window.location.hash).toBe("#presentes");
+    });
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
   });
 
   it("resolves an RSVP group and supports ambiguous search results", async () => {

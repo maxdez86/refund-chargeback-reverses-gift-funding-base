@@ -27,6 +27,22 @@ type NormalizedCreatePaymentRequest = {
   quantity?: number;
 };
 
+type CreatePaymentTimingContext = {
+  giftId?: string;
+  idempotencyKeyPresent: boolean;
+  paymentId?: string;
+  paymentMethod?: string;
+};
+
+type CreatePaymentTimings = {
+  asaasCheckoutMs?: number;
+  idempotencyCompleteMs?: number;
+  normalizeRequestMs?: number;
+  persistPaymentMs?: number;
+  reservePaymentMs?: number;
+  totalDurationMs?: number;
+};
+
 function getSiteBaseUrl() {
   return process.env.PAYMENTS_SITE_BASE_URL?.trim() || DEFAULT_SITE_BASE_URL;
 }
@@ -63,96 +79,130 @@ export class PaymentService {
   ) {}
 
   async createPayment(request: unknown, idempotencyKeyHeader?: string) {
-    const parsed = this.normalizeCreatePaymentRequest(request);
-    const gift = PAYMENT_GIFTS_BY_ID.get(parsed.giftId);
+    const requestContext = this.extractRequestContext(request, idempotencyKeyHeader);
+    const timings: CreatePaymentTimings = {};
+    const totalStartedAt = Date.now();
+    let paymentId: string | undefined;
 
-    if (!gift) {
-      throw new AppError("Unknown gift id.", 400);
-    }
+    try {
+      const normalizeStartedAt = Date.now();
+      const parsed = this.normalizeCreatePaymentRequest(request);
+      timings.normalizeRequestMs = Date.now() - normalizeStartedAt;
+      requestContext.giftId = parsed.giftId;
+      requestContext.paymentMethod = parsed.paymentMethod;
 
-    const giftSelection = resolveGiftSelection(gift, parsed.quantity);
-    const idempotencyKey = idempotencyKeyHeader?.trim() || randomUUID();
-    const fingerprint = stableJsonHash({
-      giftId: parsed.giftId,
-      paymentMethod: parsed.paymentMethod,
-      quantity: giftSelection.quantity
-    });
+      const gift = PAYMENT_GIFTS_BY_ID.get(parsed.giftId);
 
-    const reservedPaymentId = randomUUID();
-    const reservation = await this.repository.reserveCreatePayment(
-      idempotencyKey,
-      fingerprint,
-      reservedPaymentId
-    );
-
-    if (!reservation.accepted && reservation.reservation) {
-      const existing = await this.resolveExistingPayment(
-        reservation.reservation.paymentId,
-        reservation.reservation.paymentSnapshot
-      );
-
-      if (existing) {
-        return CreatePaymentResponseSchema.parse({
-          ok: true,
-          payment: existing
-        });
+      if (!gift) {
+        throw new AppError("Unknown gift id.", 400);
       }
 
-      throw new AppError("Existing idempotent payment could not be recovered safely.", 409);
+      const giftSelection = resolveGiftSelection(gift, parsed.quantity);
+      const idempotencyKey = idempotencyKeyHeader?.trim() || randomUUID();
+      const fingerprint = stableJsonHash({
+        giftId: parsed.giftId,
+        paymentMethod: parsed.paymentMethod,
+        quantity: giftSelection.quantity
+      });
+
+      const reservedPaymentId = randomUUID();
+      const reserveStartedAt = Date.now();
+      const reservation = await this.repository.reserveCreatePayment(
+        idempotencyKey,
+        fingerprint,
+        reservedPaymentId
+      );
+      timings.reservePaymentMs = Date.now() - reserveStartedAt;
+
+      if (!reservation.accepted && reservation.reservation) {
+        const existing = await this.resolveExistingPayment(
+          reservation.reservation.paymentId,
+          reservation.reservation.paymentSnapshot
+        );
+
+        if (existing) {
+          paymentId = existing.paymentId;
+          requestContext.paymentId = paymentId;
+          timings.totalDurationMs = Date.now() - totalStartedAt;
+          this.logCreatePaymentTiming("success", requestContext, timings);
+
+          return CreatePaymentResponseSchema.parse({
+            ok: true,
+            payment: existing
+          });
+        }
+
+        throw new AppError("Existing idempotent payment could not be recovered safely.", 409);
+      }
+
+      paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
+      requestContext.paymentId = paymentId;
+      const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
+      const billingTypes: ("PIX" | "CREDIT_CARD")[] =
+        parsed.paymentMethod === "HOSTED"
+          ? ["PIX", "CREDIT_CARD"]
+          : [parsed.paymentMethod];
+      const checkoutStartedAt = Date.now();
+      const asaasCheckout = await this.createHostedCheckout({
+        billingTypes,
+        checkoutExpirationMinutes,
+        giftName: gift.name,
+        giftSelection,
+        paymentId
+      });
+      timings.asaasCheckoutMs = Date.now() - checkoutStartedAt;
+      const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
+      const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
+
+      const now = new Date().toISOString();
+      const payment: PaymentSummary = {
+        paymentId,
+        paymentMethod: parsed.paymentMethod,
+        status: initialPaymentStatus(),
+        amountCents: giftSelection.amountCents,
+        currency: "BRL",
+        gift: {
+          id: gift.id,
+          name: gift.name,
+          fractional: gift.fractional,
+          quantity: giftSelection.quantity,
+          unitAmountCents: giftSelection.unitAmountCents,
+          amountCents: giftSelection.amountCents
+        },
+        checkout: {
+          sessionId: asaasCheckout.id,
+          url: checkoutUrl,
+          expiresAt: checkoutExpiresAt
+        },
+        createdAt: now,
+        updatedAt: now,
+        customerProfileStatus: "PENDING"
+      };
+
+      const persistStartedAt = Date.now();
+      await this.repository.putPayment({
+        ...payment,
+        asaasCheckoutId: asaasCheckout.id
+      });
+      timings.persistPaymentMs = Date.now() - persistStartedAt;
+
+      const idempotencyCompleteStartedAt = Date.now();
+      await this.repository.completeCreatePayment(idempotencyKey, payment);
+      timings.idempotencyCompleteMs = Date.now() - idempotencyCompleteStartedAt;
+
+      timings.totalDurationMs = Date.now() - totalStartedAt;
+      this.logCreatePaymentTiming("success", requestContext, timings);
+
+      return CreatePaymentResponseSchema.parse({
+        ok: true,
+        payment
+      });
+    } catch (error) {
+      requestContext.paymentId = requestContext.paymentId ?? paymentId;
+      timings.totalDurationMs = Date.now() - totalStartedAt;
+      this.logCreatePaymentTiming("failure", requestContext, timings, error);
+      throw error;
     }
-
-    const paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
-    const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
-    const billingTypes: ("PIX" | "CREDIT_CARD")[] =
-      parsed.paymentMethod === "HOSTED"
-        ? ["PIX", "CREDIT_CARD"]
-        : [parsed.paymentMethod];
-    const asaasCheckout = await this.createHostedCheckout({
-      billingTypes,
-      checkoutExpirationMinutes,
-      giftName: gift.name,
-      giftSelection,
-      paymentId
-    });
-    const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
-    const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
-
-    const now = new Date().toISOString();
-    const payment: PaymentSummary = {
-      paymentId,
-      paymentMethod: parsed.paymentMethod,
-      status: initialPaymentStatus(parsed.paymentMethod),
-      amountCents: giftSelection.amountCents,
-      currency: "BRL",
-      gift: {
-        id: gift.id,
-        name: gift.name,
-        fractional: gift.fractional,
-        quantity: giftSelection.quantity,
-        unitAmountCents: giftSelection.unitAmountCents,
-        amountCents: giftSelection.amountCents
-      },
-      checkout: {
-        sessionId: asaasCheckout.id,
-        url: checkoutUrl,
-        expiresAt: checkoutExpiresAt
-      },
-      createdAt: now,
-      updatedAt: now,
-      customerProfileStatus: "PENDING"
-    };
-
-    await this.repository.putPayment({
-      ...payment,
-      asaasCheckoutId: asaasCheckout.id
-    });
-
-    await this.repository.completeCreatePayment(idempotencyKey, payment);
-
-    return CreatePaymentResponseSchema.parse({
-      ok: true,
-      payment
-    });
   }
 
   async getPayment(paymentId: string) {
@@ -166,12 +216,6 @@ export class PaymentService {
   }
 
   private normalizeCreatePaymentRequest(request: unknown): NormalizedCreatePaymentRequest {
-    const parsed = CreatePaymentRequestSchema.safeParse(request);
-
-    if (parsed.success) {
-      return parsed.data;
-    }
-
     return CreatePaymentRequestSchema.parse(request);
   }
 
@@ -228,7 +272,7 @@ export class PaymentService {
     const recovered: PaymentSummary = {
       paymentId,
       paymentMethod: existingAsaas.billingType,
-      status: initialPaymentStatus(existingAsaas.billingType),
+      status: initialPaymentStatus(),
       amountCents,
       currency: "BRL",
       gift: {
@@ -250,5 +294,44 @@ export class PaymentService {
     };
 
     return PaymentSummarySchema.parse(recovered);
+  }
+
+  private extractRequestContext(
+    request: unknown,
+    idempotencyKeyHeader?: string
+  ): CreatePaymentTimingContext {
+    const input =
+      typeof request === "object" && request !== null ? (request as Record<string, unknown>) : undefined;
+
+    return {
+      giftId: typeof input?.giftId === "string" ? input.giftId : undefined,
+      idempotencyKeyPresent: Boolean(idempotencyKeyHeader?.trim()),
+      paymentMethod: typeof input?.paymentMethod === "string" ? input.paymentMethod : undefined
+    };
+  }
+
+  private logCreatePaymentTiming(
+    outcome: "success" | "failure",
+    context: CreatePaymentTimingContext,
+    timings: CreatePaymentTimings,
+    error?: unknown
+  ) {
+    console.info(
+      JSON.stringify({
+        metric: "PAYMENT_CREATE_SERVICE_TIMING",
+        outcome,
+        paymentId: context.paymentId,
+        idempotencyKeyPresent: context.idempotencyKeyPresent,
+        giftId: context.giftId,
+        paymentMethod: context.paymentMethod,
+        durationMs: timings.totalDurationMs,
+        normalizeRequestMs: timings.normalizeRequestMs,
+        reservePaymentMs: timings.reservePaymentMs,
+        asaasCheckoutMs: timings.asaasCheckoutMs,
+        persistPaymentMs: timings.persistPaymentMs,
+        idempotencyCompleteMs: timings.idempotencyCompleteMs,
+        errorMessage: error instanceof Error ? error.message : undefined
+      })
+    );
   }
 }

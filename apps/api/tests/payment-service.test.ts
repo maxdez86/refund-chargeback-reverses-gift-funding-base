@@ -3,6 +3,7 @@ import { PaymentService } from "../src/domain/payment-service";
 
 describe("PaymentService", () => {
   it("creates a hosted PIX checkout without collecting payer data", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const repository = {
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: true,
@@ -55,6 +56,13 @@ describe("PaymentService", () => {
         customerProfileStatus: "PENDING"
       })
     );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"metric\":\"PAYMENT_CREATE_SERVICE_TIMING\"")
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"outcome\":\"success\"")
+    );
+    infoSpy.mockRestore();
   });
 
   it("sends both billingTypes to Asaas when paymentMethod is HOSTED", async () => {
@@ -278,6 +286,7 @@ describe("PaymentService", () => {
   });
 
   it("fails with 409 when neither projection, snapshot, nor Asaas record exists", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const repository = {
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: false,
@@ -304,5 +313,12 @@ describe("PaymentService", () => {
         "idem-orphan"
       )
     ).rejects.toThrow(/could not be recovered safely/);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"metric\":\"PAYMENT_CREATE_SERVICE_TIMING\"")
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"outcome\":\"failure\"")
+    );
+    infoSpy.mockRestore();
   });
 });

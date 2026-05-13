@@ -1,6 +1,6 @@
 import { getEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { getSecretValue } from "../secrets-manager/secret-cache";
+import { getSecretValueWithMetadata } from "../secrets-manager/secret-cache";
 
 type AsaasCustomer = {
   id: string;
@@ -176,7 +176,9 @@ export class AsaasClient {
   }
 
   private async request<T>({ method = "GET", path, body, query }: RequestOptions): Promise<T> {
-    const apiKey = parseSecretString(await getSecretValue(this.apiSecretArn));
+    const startedAt = Date.now();
+    const { cacheHit, value: secretValue } = await getSecretValueWithMetadata(this.apiSecretArn);
+    const apiKey = parseSecretString(secretValue);
 
     if (!apiKey) {
       throw new AppError("Asaas API secret is empty.", 500);
@@ -192,25 +194,39 @@ export class AsaasClient {
       }
     }
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        access_token: apiKey
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          access_token: apiKey
+        },
+        body: body ? JSON.stringify(body) : undefined
+      });
 
-    const text = await response.text();
-    const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      const text = await response.text();
+      const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
 
-    if (!response.ok) {
-      const message = extractAsaasErrorMessage(parsed, response.status);
-      throw new AppError(message, 502);
+      if (!response.ok) {
+        const message = extractAsaasErrorMessage(parsed, response.status);
+        throw new AppError(message, 502);
+      }
+
+      return parsed as T;
+    } finally {
+      if (path === "/checkouts") {
+        console.info(
+          JSON.stringify({
+            metric: "ASAAS_REQUEST_TIMING",
+            asaasPath: path,
+            durationMs: Date.now() - startedAt,
+            method,
+            secretCacheHit: cacheHit
+          })
+        );
+      }
     }
-
-    return parsed as T;
   }
 }
 

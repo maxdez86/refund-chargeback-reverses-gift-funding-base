@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
@@ -23,6 +23,11 @@ describe("PaymentConfirmationDialog", () => {
     createPaymentMessageMock.mockReset();
     window.localStorage.clear();
     window.history.replaceState({}, "", "/");
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
   it("shows pending first for success redirects and flips to success after confirmation", async () => {
@@ -113,5 +118,48 @@ describe("PaymentConfirmationDialog", () => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
     });
     expect(screen.getByText(/payment-recovery-1/)).toBeInTheDocument();
+  });
+
+  it("removes payment params and returns to #presentes when the modal closes", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-close-1",
+      paymentMethod: "HOSTED",
+      status: "RECEIVED",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:05.000Z",
+      customerProfileStatus: "READY",
+    });
+
+    window.history.replaceState({}, "", "/?paymentId=payment-close-1&paymentStatus=success");
+
+    render(
+      <>
+        <section id="presentes">Presentes</section>
+        <PaymentConfirmationDialog />
+      </>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+      expect(window.location.search).toBe("");
+      expect(window.location.hash).toBe("#presentes");
+    });
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

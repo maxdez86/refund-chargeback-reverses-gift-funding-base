@@ -15,6 +15,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
+import { returnToPresentes } from "@/lib/presentes-return";
 
 type Gift = {
   id: string;
@@ -286,10 +287,15 @@ function GiftDialog({
   const handleOpenChange = (next: boolean) => {
     if (submitting && !next) return;
     onOpenChange(next);
+    if (!next) {
+      returnToPresentes();
+    }
   };
 
   const onSubmit = async () => {
     setSubmitting(true);
+    const submitStartedAt = performance.now();
+    const clickStartedAt = Date.now();
     try {
       const payload: CreatePaymentRequest = {
         giftId: gift.id,
@@ -300,12 +306,38 @@ function GiftDialog({
       if (!payment.checkout?.url) {
         throw new PaymentApiError("Checkout indisponível. Tente novamente.");
       }
+      const requestResolvedAt = performance.now();
+      const redirectStartedAt = performance.now();
+      console.info(
+        JSON.stringify({
+          metric: "PAYMENT_REDIRECT_TIMING",
+          paymentId: payment.paymentId,
+          giftId: gift.id,
+          paymentMethod: payload.paymentMethod,
+          clickStartedAt,
+          requestDurationMs: Math.round(requestResolvedAt - submitStartedAt),
+          redirectStartDelayMs: Math.round(redirectStartedAt - submitStartedAt)
+        })
+      );
       window.localStorage.setItem(
         LAST_PAYMENT_ID_STORAGE_KEY,
         JSON.stringify({ paymentId: payment.paymentId, createdAt: Date.now() })
       );
       window.location.href = payment.checkout.url;
     } catch (err) {
+      console.info(
+        JSON.stringify({
+          metric: "PAYMENT_REDIRECT_TIMING",
+          paymentId: null,
+          giftId: gift.id,
+          paymentMethod: "HOSTED",
+          clickStartedAt,
+          requestDurationMs: Math.round(performance.now() - submitStartedAt),
+          redirectStartDelayMs: null,
+          outcome: "failure",
+          errorMessage: err instanceof Error ? err.message : "unknown"
+        })
+      );
       const message =
         err instanceof PaymentApiError
           ? err.message

@@ -81,6 +81,7 @@ describe("AppStack", () => {
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
+      MemorySize: 1024,
       Runtime: "nodejs20.x"
     });
     template.hasOutput("AsaasWebhookUrl", {});

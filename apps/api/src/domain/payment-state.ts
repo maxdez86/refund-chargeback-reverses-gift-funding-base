@@ -1,5 +1,5 @@
 import type { PaymentGift } from "@brimax/config";
-import type { PaymentMethod, PaymentStatus } from "@brimax/contracts";
+import type { PaymentStatus } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
 
 const ALLOWED_STATUS_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
@@ -66,7 +66,7 @@ export function resolveGiftSelection(gift: PaymentGift, quantity: number | undef
   };
 }
 
-export function initialPaymentStatus(paymentMethod: PaymentMethod): PaymentStatus {
+export function initialPaymentStatus(): PaymentStatus {
   return "CREATED";
 }
 
