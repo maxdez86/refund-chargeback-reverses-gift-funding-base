@@ -1,8 +1,48 @@
 # Payments API Testing
 
-Production-first runbook for validating the backend payment flow before any frontend integration.
+This runbook validates the production backend payment flow before frontend integration.
 
-## Required local `.env` values
+## Quick Run
+
+Use this as the standard repeated validation flow after the environment is already deployed.
+
+1. Confirm `.env` is ready with the required production payment test values.
+2. If you need a fresh backend deploy, run:
+
+   ```bash
+   pnpm deploy:backend
+   ```
+
+3. Load the payment test environment and verify the managed secrets contract:
+
+   ```bash
+   source scripts/payments-env.sh
+   require_payments_test_env
+   verify_payments_secret_contract
+   ```
+
+4. Create a PIX hosted checkout payment:
+
+   ```bash
+   bash scripts/test-payments-pix.sh
+   ```
+
+5. Open the printed `checkout.url` and complete the payment manually.
+6. Poll for webhook-driven confirmation using the printed `paymentId`:
+
+   ```bash
+   PAYMENT_ID=<captured paymentId> bash scripts/test-payments-webhook.sh
+   ```
+
+7. Run the negative and resilience checks:
+
+   ```bash
+   bash scripts/test-payments-negative.sh
+   ```
+
+## Before You Test
+
+### Required local `.env` values
 
 Set or confirm these values in `.env`:
 
@@ -29,15 +69,15 @@ PAYMENTS_TEST_PAYER_PHONE=<optional phone>
 Value sources:
 
 - `AWS_PROFILE`, `AWS_REGION`: local AWS CLI configuration for the production account.
-- `ROOT_DOMAIN`, `STAGE`: same deploy convention used by the existing repo scripts.
+- `ROOT_DOMAIN`, `STAGE`: standard deploy convention used by the repo scripts.
 - `PAYMENTS_*_STACK_NAME`: production CDK stack names.
 - `ASAAS_API_BASE_URL`: Asaas production API endpoint.
 - `ASAAS_API_KEY`: raw Asaas API key from the Asaas production dashboard.
 - `ASAAS_WEBHOOK_TOKEN`: raw token you generate and configure in Asaas for the production webhook endpoint.
-- `PAYMENTS_TEST_GIFT_*`: backend gift catalog. `g-test-pix` with quantity `1` keeps the PIX smoke test at `R$5,00`, which matches the current minimum accepted by Asaas for PIX charges.
+- `PAYMENTS_TEST_GIFT_*`: backend gift catalog values. `g-test-pix` with quantity `1` keeps the PIX smoke test at `R$5,00`, which matches the current minimum accepted by Asaas for PIX charges.
 - `PAYMENTS_TEST_PAYER_*`: controlled real identity used for live payment testing.
 
-CDK will use the raw env vars to create or update these Secrets Manager entries during backend deployment:
+CDK uses the raw Asaas env vars during backend deployment to create or update these Secrets Manager entries:
 
 - `/prod/brimax/asaas/api-key`
 - `/prod/brimax/asaas/webhook-token`
@@ -47,7 +87,7 @@ The deployed payload shapes are:
 - `{"apiKey":"<ASAAS_API_KEY>"}`
 - `{"token":"<ASAAS_WEBHOOK_TOKEN>"}`
 
-## Pre-flight
+### Pre-flight
 
 Confirm the following before running live tests:
 
@@ -57,61 +97,21 @@ aws sts get-caller-identity
 jq --version
 ```
 
-## API domain prerequisites
+## Deployment Prerequisites
 
-The payment API now uses `https://api.brimax.life` as its public base URL and webhook host.
+Before live payment tests:
 
-Before production payment tests, make sure the API domain rollout has been completed:
+- the backend must already be deployed
+- `https://api.brimax.life` must already resolve and reach the API
+- the branded webhook URL must already exist
 
-1. Deploy the certificate stack.
-2. Apply the certificate validation DNS records through OpenTofu.
-3. Wait for ACM issuance.
-4. Deploy the backend so API Gateway attaches the custom domain.
-5. Apply the API DNS record in Cloudflare.
+For recurring production deploys, use [deploy.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/deploy.md:1).
 
-The exact commands are listed below.
+For first-time certificate issuance, DNS wiring, or platform bring-up, use [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1).
 
-## Backend and API domain deploy with IaC-managed secrets
+`ASAAS_API_KEY` and `ASAAS_WEBHOOK_TOKEN` must be present before `pnpm deploy:backend` because the backend deploy writes the managed payment secrets.
 
-Deploy the certificate stack first:
-
-```bash
-bash scripts/deploy-landing-certificate.sh
-bash scripts/landing-opentofu.sh certificate-validation init
-bash scripts/landing-opentofu.sh certificate-validation apply
-pnpm wait:landing:cert
-```
-
-Then deploy the backend stacks:
-
-```bash
-bash scripts/deploy-backend.sh
-```
-
-This deploys:
-
-- `BrimaxDataStack`
-- `BrimaxAppStack`
-- `BrimaxObservabilityStack`
-
-It does not deploy:
-
-- `BrimaxEdgeStack`
-- `BrimaxCertificateStack`
-- `BrimaxPlatformStack`
-
-The deploy script requires `ASAAS_API_KEY` and `ASAAS_WEBHOOK_TOKEN` and passes them into CDK so the payment secrets are fully managed as infrastructure.
-
-Then apply the API DNS record:
-
-```bash
-bash scripts/landing-opentofu.sh api-dns init
-bash scripts/landing-opentofu.sh api-dns apply
-```
-
-The `api-dns` module creates a DNS-only Cloudflare CNAME for `api.brimax.life` that points at the API Gateway regional custom-domain target.
-
-## Resolve deployed API values, verify secrets, and confirm the branded webhook
+## Resolve Deployed Values
 
 Load the payment test environment:
 
@@ -134,53 +134,54 @@ The script resolves these values from CloudFormation outputs:
 
 `PAYMENTS_API_URL` is the production base URL and should resolve to `https://api.brimax.life`.
 
+`PAYMENTS_WEBHOOK_URL` is the branded production webhook target that should be used in Asaas.
+
 `PAYMENTS_EXECUTE_API_URL` is also loaded for fallback diagnostics, but it is intentionally the raw API Gateway hostname and should not be used as the normal production endpoint or Asaas webhook target.
 
-## Confirm Asaas webhook configuration
+## Configure Asaas Webhook
 
 In Asaas production webhook settings:
 
-- Set the webhook URL to `https://api.brimax.life/webhooks/asaas`
-- Set the webhook token to the same raw value used in `ASAAS_WEBHOOK_TOKEN`
+- set the webhook URL to `https://api.brimax.life/webhooks/asaas`
+- set the webhook token to the same raw value used in `ASAAS_WEBHOOK_TOKEN`
 
-## Hosted checkout production API runbook
+The branded webhook host is the intended production target.
+
+## Happy-Path Checkout Tests
 
 The `POST /payments` API accepts three `paymentMethod` values:
 
-- `HOSTED` — Asaas hosted checkout shows **both** PIX and credit card. Use this from the frontend's primary "Presentear" button. The stored `paymentMethod` on the payment record remains `HOSTED`; the guest's actual choice is visible in the Asaas dashboard.
-- `PIX` — Asaas hosted checkout shows **only** PIX.
-- `CREDIT_CARD` — Asaas hosted checkout shows **only** credit card.
+- `HOSTED` - Asaas hosted checkout shows both PIX and credit card. Use this from the frontend's primary "Presentear" button. The stored `paymentMethod` on the payment record remains `HOSTED`; the guest's actual choice is visible in the Asaas dashboard.
+- `PIX` - Asaas hosted checkout shows only PIX.
+- `CREDIT_CARD` - Asaas hosted checkout shows only credit card.
 
-Create a hosted checkout payment:
-
-```bash
-bash scripts/test-payments-checkout.sh
-```
-
-This script:
-
-- Reads `PAYMENTS_TEST_PAYMENT_METHOD` (defaults to `PIX`) and forwards it as `paymentMethod` in the request body.
-- Calls `POST /payments`
-- Saves request and response artifacts to `.tmp/payments-tests/...`
-- Verifies `201`, `ok=true`, `CREATED`, `paymentId`, and hosted checkout metadata fields
-- Calls `GET /payments/{paymentId}` immediately and verifies the returned state
-
-Three shortcut wrappers exist:
+Create checkout payments with these scripts:
 
 ```bash
-bash scripts/test-payments-pix.sh        # PAYMENTS_TEST_PAYMENT_METHOD=PIX
-bash scripts/test-payments-hosted.sh     # PAYMENTS_TEST_PAYMENT_METHOD=HOSTED  (PIX + credit card)
-# CREDIT_CARD has no wrapper — run with PAYMENTS_TEST_PAYMENT_METHOD=CREDIT_CARD bash scripts/test-payments-checkout.sh
+bash scripts/test-payments-pix.sh
+bash scripts/test-payments-hosted.sh
+PAYMENTS_TEST_PAYMENT_METHOD=CREDIT_CARD bash scripts/test-payments-checkout.sh
 ```
 
-Open the printed `checkout.url` and **verify that the Asaas hosted page offers the expected payment options**:
+`test-payments-checkout.sh`:
 
-- For `HOSTED`: **exactly two options — PIX and credit card.** If boleto, debit card, or anything else appears, stop and re-check the Asaas Checkout configuration in the Asaas dashboard. The API contract limits `billingTypes`, but Asaas account-level toggles can still add or remove methods regardless of what we send.
-- For `PIX` or `CREDIT_CARD`: only that single method.
+- reads `PAYMENTS_TEST_PAYMENT_METHOD` and defaults to `PIX`
+- calls `POST /payments`
+- saves request and response artifacts to `.tmp/payments-tests/...`
+- verifies `201`, `ok=true`, `CREATED`, `paymentId`, and hosted checkout metadata fields
+- calls `GET /payments/{paymentId}` immediately and verifies the returned state
 
-Complete the payment manually using the printed `checkout.url` value.
+Open the printed `checkout.url` and verify that the Asaas hosted page offers the expected payment options:
 
-Then verify webhook-driven state changes:
+- for `HOSTED`: exactly two options, PIX and credit card
+- for `PIX`: only PIX
+- for `CREDIT_CARD`: only credit card
+
+If boleto, debit card, or anything else appears for `HOSTED`, stop and re-check the Asaas Checkout configuration in the Asaas dashboard.
+
+## Webhook Validation
+
+After completing the hosted checkout manually, verify webhook-driven state changes:
 
 ```bash
 PAYMENT_ID=<captured paymentId> bash scripts/test-payments-webhook.sh
@@ -193,17 +194,33 @@ Expected result:
 
 If the webhook does not arrive:
 
-1. Inspect webhook delivery in the Asaas production dashboard.
+1. Check webhook delivery in the Asaas production dashboard.
 2. Confirm the webhook URL matches `${PAYMENTS_WEBHOOK_URL}`.
 3. Confirm the webhook token configured in Asaas matches `ASAAS_WEBHOOK_TOKEN`.
 4. Re-send the event from Asaas.
 5. Check CloudWatch logs for `AsaasWebhookFunction` and `AsaasWebhookProcessorFunction`.
 
-## Create-payment latency verification
+## Negative And Resilience Tests
 
-Use this procedure before and after the performance deploy so the comparison is repeatable.
+Run:
 
-Generate a sample of `10-20` `POST /payments` calls with the existing hosted checkout script:
+```bash
+bash scripts/test-payments-negative.sh
+```
+
+This covers:
+
+- invalid `giftId` returns `400`
+- same payload with the same idempotency key returns the same `paymentId`
+- different payload with the same idempotency key returns `409`
+- invalid webhook token returns `403`
+- same webhook body submitted twice returns `duplicate=true` on the second request
+
+## Performance Verification
+
+Use this optional workflow before and after a performance deploy so the comparison is repeatable.
+
+Generate a sample of `10-20` `POST /payments` calls with the hosted checkout script:
 
 ```bash
 bash scripts/test-payments-hosted.sh
@@ -221,61 +238,29 @@ For each sample window, capture these metrics:
   - `metric: "ASAAS_REQUEST_TIMING"`
   - `metric: "PAYMENT_REDIRECT_TIMING"`
 
-Recommended manual comparison flow:
+Recommended comparison flow:
 
 1. Run the hosted checkout script `10-20` times in the target environment.
 2. In CloudWatch Logs for `CreatePaymentFunction`, filter for `PAYMENT_CREATE_TIMING` and compare `durationMs` across the sample.
 3. In the same log group, review `REPORT` lines to estimate cold-start frequency and `Init Duration`.
-4. Review `PAYMENT_CREATE_SERVICE_TIMING` to see whether the time is concentrated in:
-   - request normalization
-   - idempotency reservation write
-   - Asaas checkout creation
-   - payment persistence write
-   - idempotency completion update
+4. Review `PAYMENT_CREATE_SERVICE_TIMING` to see whether time is concentrated in request normalization, idempotency reservation write, Asaas checkout creation, payment persistence write, or idempotency completion update.
 5. Review `ASAAS_REQUEST_TIMING` to compare `/checkouts` duration and whether `secretCacheHit` is mostly `true` after warm-up.
 6. In the browser console during manual checkout tests, capture `PAYMENT_REDIRECT_TIMING` and compare `requestDurationMs` and `redirectStartDelayMs`.
 7. Record p50 and p95 before deploy, then repeat the same steps after deploy and compare the two samples.
 
-## Negative and resilience tests
+## Manual Follow-Up Checks
 
-Run:
+- Card smoke test: create one `CREDIT_CARD` payment and verify `checkout.url` is returned and reachable.
+- DynamoDB verification: inspect the payment item and webhook event item to confirm status progression, `asaasCheckoutId`, `asaasPaymentId`, masked CPF persistence, and webhook retention fields.
+- Queue verification: confirm the main webhook queue drains and the DLQ remains empty.
+- Alarm verification: confirm the payment error alarms exist in CloudWatch.
+- Log verification: confirm these markers are present: `PAYMENT_CREATED`, `PAYMENT_CREATE_FAILED`, `WEBHOOK_AUTH_FAILED`, `WEBHOOK_DUPLICATE`, and `PAYMENT_STATE_TRANSITION`.
+- Replay behavior: re-send the same Asaas webhook and confirm there is no state regression.
+- Polling contract: confirm `GET /payments/{paymentId}` stays stable enough for the future frontend polling flow.
+- Custom domain check: confirm `https://api.brimax.life/payments/<paymentId>` reaches the API and that the execute-api hostname is no longer the documented public endpoint.
+- Rollback prep: document how to rotate `ASAAS_WEBHOOK_TOKEN`, redeploy the backend, or temporarily disable the Asaas webhook if the live test misbehaves.
 
-```bash
-bash scripts/test-payments-negative.sh
-```
+## Related Runbooks
 
-This covers:
-
-- Invalid `giftId` returns `400`
-- Same payload + same idempotency key returns the same `paymentId`
-- Different payload + same idempotency key returns `409`
-- Invalid webhook token returns `403`
-- Same webhook body submitted twice returns `duplicate=true` on the second request
-
-## Additional checks before frontend integration
-
-Manual checks still recommended after the scripts pass:
-
-- Card smoke test:
-  create one `CREDIT_CARD` payment and verify `checkout.url` is returned and reachable.
-- DynamoDB verification:
-  inspect the payment item and webhook event item to confirm status progression, `asaasCheckoutId` and `asaasPaymentId` lookup fields, masked CPF persistence, and webhook retention fields.
-- Queue verification:
-  confirm the main webhook queue drains and the DLQ remains empty.
-- Alarm verification:
-  confirm the payment error alarms exist in CloudWatch.
-- Log verification:
-  confirm these metrics/log markers are present:
-  `PAYMENT_CREATED`
-  `PAYMENT_CREATE_FAILED`
-  `WEBHOOK_AUTH_FAILED`
-  `WEBHOOK_DUPLICATE`
-  `PAYMENT_STATE_TRANSITION`
-- Replay behavior:
-  re-send the same Asaas webhook and confirm there is no state regression.
-- Polling contract:
-  confirm `GET /payments/{paymentId}` stays stable enough for the future frontend polling flow.
-- Custom domain check:
-  confirm `https://api.brimax.life/payments/<paymentId>` reaches the API and that the execute-api hostname is no longer the documented public endpoint.
-- Rollback prep:
-  document how to rotate `ASAAS_WEBHOOK_TOKEN`, redeploy the backend, or temporarily disable the Asaas webhook if the live test misbehaves.
+- [deploy.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/deploy.md:1)
+- [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1)

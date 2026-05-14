@@ -1,8 +1,10 @@
-# Bootstrapping
+# Bootstrap Runbook
 
-This runbook is for the **first production deploy** of the landing page to `brimax.life` and the API custom domain at `api.brimax.life`.
+Use this only for first-time environment setup and initial production bring-up.
 
-Use **two terminals** because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
+This runbook is for the first production deploy of the landing page to `brimax.life` and the API custom domain at `api.brimax.life`.
+
+Use two terminals because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
 
 This bootstrap also establishes the baseline edge hardening through IaC:
 - Cloudflare minimum TLS version `1.2`
@@ -43,7 +45,7 @@ Important:
 - The scripts auto-discover the certificate ARN during bootstrap, so you do not need to edit `.env` mid-run.
 - The scripts now auto-load `.env`, so you do not need `set -a`.
 
-## Terminal 1: CDK Bootstrap, AWS Bootstrap, And Certificate Request
+## Terminal 1: CDK Bootstrap, Platform Bootstrap, And Certificate Request
 
 From the repo root:
 
@@ -58,7 +60,7 @@ Expected behavior:
 - `pnpm deploy:platform` creates the OpenTofu backend bucket and lock table.
 - `pnpm build:web` assembles the production landing bundle for `apps/web`.
 - `pnpm deploy:landing:cert` starts `BrimaxCertificateStack` for both the website and API certificates.
-- This last command will **pause** while ACM waits for DNS validation.
+- This last command pauses while ACM waits for DNS validation.
 
 Leave Terminal 1 running.
 
@@ -69,8 +71,8 @@ Open a second terminal from the repo root. The OpenTofu scripts auto-load `.env`
 Initialize and apply the DNS validation module:
 
 ```bash
-bash scripts/landing-opentofu.sh certificate-validation init
-bash scripts/landing-opentofu.sh certificate-validation apply
+pnpm opentofu:cert:init
+pnpm opentofu:cert:apply
 ```
 
 Expected behavior:
@@ -97,7 +99,7 @@ pnpm deploy:landing:edge
 Deploy the backend with the API custom domain and IaC-managed payment secrets:
 
 ```bash
-bash scripts/deploy-backend.sh
+pnpm deploy:backend
 ```
 
 ## Final DNS Wiring
@@ -105,8 +107,8 @@ bash scripts/deploy-backend.sh
 In either terminal:
 
 ```bash
-bash scripts/landing-opentofu.sh edge-dns init
-bash scripts/landing-opentofu.sh edge-dns apply
+pnpm opentofu:dns:init
+pnpm opentofu:dns:apply
 ```
 
 This creates the Cloudflare DNS records that point:
@@ -118,8 +120,8 @@ CloudFront then redirects `www.brimax.life` to `brimax.life`.
 Apply the API DNS module:
 
 ```bash
-bash scripts/landing-opentofu.sh api-dns init
-bash scripts/landing-opentofu.sh api-dns apply
+pnpm opentofu:api-dns:init
+pnpm opentofu:api-dns:apply
 ```
 
 This creates the Cloudflare DNS record that points:
@@ -129,6 +131,23 @@ This same `edge-dns` apply also enforces:
 - `ssl = strict`
 - `always_use_https = on`
 - `min_tls_version = 1.2`
+
+## SES Domain Verification
+
+To unlock SES production access, verify the `brimax.life` domain after the backend stack is deployed:
+
+```bash
+bash scripts/landing-opentofu.sh ses-dns init
+bash scripts/landing-opentofu.sh ses-dns apply
+aws sesv2 get-email-identity --region us-east-1 --email-identity brimax.life
+```
+
+Expected behavior:
+- `BrimaxAppStack` exposes the SES Easy DKIM CNAME tokens.
+- The `ses-dns` OpenTofu module creates those three DNS-only Cloudflare CNAMEs.
+- `aws sesv2 get-email-identity` eventually reports successful verification for `brimax.life`.
+
+Only request SES production access after domain verification is complete.
 
 ## Full First-Time Command Sequence
 
@@ -141,18 +160,18 @@ pnpm build:web
 pnpm deploy:landing:cert
 pnpm wait:landing:cert
 pnpm deploy:landing:edge
-bash scripts/deploy-backend.sh
+pnpm deploy:backend
 ```
 
 ### Terminal 2
 
 ```bash
-bash scripts/landing-opentofu.sh certificate-validation init
-bash scripts/landing-opentofu.sh certificate-validation apply
-bash scripts/landing-opentofu.sh edge-dns init
-bash scripts/landing-opentofu.sh edge-dns apply
-bash scripts/landing-opentofu.sh api-dns init
-bash scripts/landing-opentofu.sh api-dns apply
+pnpm opentofu:cert:init
+pnpm opentofu:cert:apply
+pnpm opentofu:dns:init
+pnpm opentofu:dns:apply
+pnpm opentofu:api-dns:init
+pnpm opentofu:api-dns:apply
 ```
 
 ## Verification
