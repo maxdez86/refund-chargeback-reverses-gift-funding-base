@@ -13,9 +13,9 @@ export async function handler(event: APIGatewayProxyEventV2) {
       throw new AppError("Missing invitation code.", 400);
     }
 
-    const guestProfile = await service.getInvitation(invitationCode);
+    const invitation = await service.getInvitation(invitationCode);
 
-    return jsonResponse(200, guestProfile);
+    return jsonResponse(200, invitation);
   } catch (error) {
     if (error instanceof AppError) {
       return jsonResponse(error.statusCode, { message: error.message });

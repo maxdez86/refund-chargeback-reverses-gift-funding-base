@@ -158,6 +158,22 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30)
     });
+    const invitationGetFn = new nodejs.NodejsFunction(this, "InvitationGetFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const rsvpFn = new nodejs.NodejsFunction(this, "RsvpFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/rsvp/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
 
     webhookProcessorFn.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
@@ -171,6 +187,8 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(paymentMessageFn);
     props.table.grantReadWriteData(asaasWebhookFn);
     props.table.grantReadWriteData(webhookProcessorFn);
+    props.table.grantReadData(invitationGetFn);
+    props.table.grantReadWriteData(rsvpFn);
     webhookQueue.grantSendMessages(asaasWebhookFn);
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
     asaasApiSecret.grantRead(createPaymentFn);
@@ -216,6 +234,19 @@ export class AppStack extends cdk.Stack {
         "AsaasWebhookIntegration",
         asaasWebhookFn
       )
+    });
+    this.httpApi.addRoutes({
+      path: "/invitation/{code}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "InvitationGetIntegration",
+        invitationGetFn
+      )
+    });
+    this.httpApi.addRoutes({
+      path: "/rsvp",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("RsvpIntegration", rsvpFn)
     });
 
     this.addMetricFilters(createPaymentFn.logGroup, "create-payment");

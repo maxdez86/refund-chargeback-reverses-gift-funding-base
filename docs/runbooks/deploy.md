@@ -51,6 +51,7 @@ This is the standard post-bootstrap production sequence. It assumes the platform
 
    ```bash
    pnpm build:web
+   pnpm dev:all-web
    ```
 
 2. Deploy the landing page edge stack:

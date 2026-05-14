@@ -13,5 +13,22 @@ export const GuestProfileSchema = z.object({
   dietaryNotes: z.string().optional()
 });
 
+export const GuestSummarySchema = z.object({
+  guestId: z.string().min(1),
+  guestName: z.string().min(1),
+  allowedPlusOnes: z.number().int().nonnegative(),
+  rsvpStatus: RsvpStatusSchema,
+  dietaryNotes: z.string().optional()
+});
+
+export const HouseholdInvitationSchema = z.object({
+  invitationCode: z.string().min(4),
+  householdId: z.string().min(1),
+  householdName: z.string().min(1),
+  guests: z.array(GuestSummarySchema).min(1)
+});
+
 export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 export type GuestProfile = z.infer<typeof GuestProfileSchema>;
+export type GuestSummary = z.infer<typeof GuestSummarySchema>;
+export type HouseholdInvitation = z.infer<typeof HouseholdInvitationSchema>;

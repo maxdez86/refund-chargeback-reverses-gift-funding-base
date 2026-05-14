@@ -1,193 +1,134 @@
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, ArrowLeft, Check, AlertCircle, Mail } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Search, ArrowLeft, Check, AlertCircle, Mail, Loader2 } from "lucide-react";
+import type {
+  HouseholdInvitation,
+  RsvpSubmissionRequest,
+} from "@brimax/contracts";
+import {
+  RsvpApiError,
+  fetchInvitation,
+  normalizeInvitationCode,
+  submitRsvp,
+} from "@/lib/rsvp-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 
-type InvitationGroup = {
-  id: string;
-  primaryName: string;
-  guests: string[];
+type LookupState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "not-found" }
+  | { kind: "error"; message: string }
+  | { kind: "found"; invitation: HouseholdInvitation };
+
+type SubmittedState = {
+  invitation: HouseholdInvitation;
+  confirmations: { guestId: string; guestName: string; attending: boolean }[];
 };
 
-const invitationGroups: InvitationGroup[] = [
-  {
-    id: "grupo-amanda-cris",
-    primaryName: "Amanda e Chris",
-    guests: ["Amanda", "Chris"],
-  },
-  {
-    id: "grupo-fabi-fernando",
-    primaryName: "Fabi e Fernando",
-    guests: ["Fabi", "Fernando"],
-  },
-  {
-    id: "grupo-tami-marcos",
-    primaryName: "Tami e Marcos",
-    guests: ["Tami", "Marcos"],
-  },
-  {
-    id: "grupo-elis-son",
-    primaryName: "Elís e Son",
-    guests: ["Elís", "Son"],
-  },
-  {
-    id: "grupo-kelly-sa",
-    primaryName: "Kelly e Sá",
-    guests: ["Kelly", "Sá"],
-  },
-  {
-    id: "grupo-lila-welton",
-    primaryName: "Lila e Welton",
-    guests: ["Lila", "Welton"],
-  },
-  {
-    id: "grupo-nilza-cerqueira",
-    primaryName: "Nilza e Cerqueira",
-    guests: ["Nilza", "Cerqueira"],
-  },
-  {
-    id: "grupo-debora-nael",
-    primaryName: "Débora e Nael",
-    guests: ["Débora", "Nael"],
-  },
-  {
-    id: "grupo-nessa-carlos",
-    primaryName: "Nessa e Carlos",
-    guests: ["Nessa", "Carlos"],
-  },
-  {
-    id: "grupo-nuza-sid",
-    primaryName: "Nuza e Sid",
-    guests: ["Nuza", "Sid"],
-  },
-  {
-    id: "grupo-carol-igor",
-    primaryName: "Carol e Igor",
-    guests: ["Carol", "Igor"],
-  },
-  {
-    id: "grupo-alice",
-    primaryName: "Alice",
-    guests: ["Alice"],
-  },
-  {
-    id: "grupo-raquel",
-    primaryName: "Raquel",
-    guests: ["Raquel"],
-  },
-  {
-    id: "grupo-julia",
-    primaryName: "Julia",
-    guests: ["Julia"],
-  },
-  {
-    id: "grupo-drielly",
-    primaryName: "Drielly",
-    guests: ["Drielly"],
-  },
-  {
-    id: "grupo-ronaldo",
-    primaryName: "Ronaldo",
-    guests: ["Ronaldo"],
-  },
-  {
-    id: "grupo-cristiane-juliano",
-    primaryName: "Cristiane e Juliano",
-    guests: ["Cristiane", "Juliano"],
-  },
-];
-
-function normalize(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-type LookupResult =
-  | { kind: "empty" }
-  | { kind: "not-found" }
-  | { kind: "ambiguous"; groups: InvitationGroup[] }
-  | { kind: "found"; group: InvitationGroup };
-
-function lookupGroups(query: string): LookupResult {
-  const q = normalize(query);
-  if (!q) return { kind: "empty" };
-
-  const exact = invitationGroups.filter((g) =>
-    g.guests.some((name) => normalize(name) === q)
+function initialSelections(invitation: HouseholdInvitation): Record<string, boolean> {
+  return Object.fromEntries(
+    invitation.guests.map((g) => [g.guestId, g.rsvpStatus !== "declined"])
   );
-  if (exact.length === 1) return { kind: "found", group: exact[0] };
-  if (exact.length > 1) return { kind: "ambiguous", groups: exact };
-
-  const partial = invitationGroups.filter((g) =>
-    g.guests.some((name) => {
-      const n = normalize(name);
-      return n.includes(q) || q.includes(n);
-    })
-  );
-  if (partial.length === 1) return { kind: "found", group: partial[0] };
-  if (partial.length > 1) return { kind: "ambiguous", groups: partial };
-
-  return { kind: "not-found" };
 }
 
 export function RSVP() {
-  const [query, setQuery] = useState("");
-  const [result, setResult] = useState<LookupResult>({ kind: "empty" });
+  const [codeInput, setCodeInput] = useState("");
+  const [lookup, setLookup] = useState<LookupState>({ kind: "idle" });
   const [selections, setSelections] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState<{
-    group: InvitationGroup;
-    confirmations: { name: string; attending: boolean }[];
-  } | null>(null);
+  const [note, setNote] = useState("");
+  const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const r = lookupGroups(query);
-    setResult(r);
-    if (r.kind === "found") {
-      const init: Record<string, boolean> = {};
-      r.group.guests.forEach((g) => (init[g] = true));
-      setSelections(init);
-    } else {
-      setSelections({});
-    }
-    setSubmitted(null);
-  };
-
-  const selectGroup = (group: InvitationGroup) => {
-    setResult({ kind: "found", group });
-    const init: Record<string, boolean> = {};
-    group.guests.forEach((g) => (init[g] = true));
-    setSelections(init);
-  };
+  const submitMutation = useMutation({
+    mutationFn: (input: RsvpSubmissionRequest) => submitRsvp(input),
+    onSuccess: (_response, variables) => {
+      if (lookup.kind !== "found") return;
+      const confirmations = lookup.invitation.guests.map((g) => ({
+        guestId: g.guestId,
+        guestName: g.guestName,
+        attending:
+          variables.guestResponses.find((r) => r.guestId === g.guestId)?.status ===
+          "attending",
+      }));
+      setSubmitted({ invitation: lookup.invitation, confirmations });
+    },
+    onError: (error) => {
+      const message =
+        error instanceof RsvpApiError
+          ? error.message
+          : "Não conseguimos enviar sua confirmação agora.";
+      toast.error(message);
+    },
+  });
 
   const reset = () => {
-    setQuery("");
-    setResult({ kind: "empty" });
+    setCodeInput("");
+    setLookup({ kind: "idle" });
     setSelections({});
+    setNote("");
     setSubmitted(null);
+    submitMutation.reset();
+  };
+
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalized = normalizeInvitationCode(codeInput);
+    if (!normalized) return;
+
+    setLookup({ kind: "loading" });
+    setSubmitted(null);
+
+    try {
+      const invitation = await fetchInvitation(normalized);
+      setLookup({ kind: "found", invitation });
+      setSelections(initialSelections(invitation));
+      setNote("");
+    } catch (error) {
+      if (error instanceof RsvpApiError && error.status === 404) {
+        setLookup({ kind: "not-found" });
+        return;
+      }
+      const message =
+        error instanceof RsvpApiError
+          ? error.message
+          : "Não conseguimos consultar o convite agora.";
+      toast.error(message);
+      setLookup({ kind: "error", message });
+    }
   };
 
   const submitConfirmation = () => {
-    if (result.kind !== "found") return;
-    const confirmations = result.group.guests.map((name) => ({
-      name,
-      attending: !!selections[name],
+    if (lookup.kind !== "found") return;
+    const invitation = lookup.invitation;
+
+    const guestResponses = invitation.guests.map((g) => ({
+      guestId: g.guestId,
+      status: (selections[g.guestId] ? "attending" : "declined") as
+        | "attending"
+        | "declined",
     }));
-    const payload = {
-      invitationGroupId: result.group.id,
-      searchedName: query.trim(),
-      confirmations,
-      submittedAt: new Date().toISOString(),
+    const attendingGuestCount = guestResponses.filter(
+      (r) => r.status === "attending"
+    ).length;
+
+    // submittedBy is required by the contract but we don't capture a separate
+    // identity here — use the first guest's id as a stable, non-secret marker.
+    const submittedBy = invitation.guests[0]?.guestId ?? invitation.invitationCode;
+
+    const payload: RsvpSubmissionRequest = {
+      invitationCode: invitation.invitationCode,
+      householdId: invitation.householdId,
+      submittedBy,
+      guestResponses,
+      attendingGuestCount,
+      ...(note.trim() ? { note: note.trim() } : {}),
     };
-    // eslint-disable-next-line no-console
-    console.log("[RSVP submission]", payload);
-    setSubmitted({ group: result.group, confirmations });
+
+    submitMutation.mutate(payload);
   };
 
   const attendingCount = useMemo(
@@ -223,47 +164,63 @@ export function RSVP() {
           >
             {submitted ? (
               <SuccessState
-                group={submitted.group}
+                invitation={submitted.invitation}
                 confirmations={submitted.confirmations}
                 onReset={reset}
               />
             ) : (
               <>
-                <form onSubmit={handleSearch} className="space-y-4">
+                <form onSubmit={handleLookup} className="space-y-4">
                   <label
-                    htmlFor="rsvp-name"
+                    htmlFor="rsvp-code"
                     className="text-sm font-medium text-foreground block"
                   >
-                    Digite seu nome para localizar seu convite
+                    Digite seu código de convite
                   </label>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Input
-                      id="rsvp-name"
-                      placeholder="Digite seu nome como está no convite"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      className="bg-background rounded-xl h-12 flex-1"
+                      id="rsvp-code"
+                      placeholder="Ex.: ABCD1234"
+                      value={codeInput}
+                      onChange={(e) =>
+                        setCodeInput(e.target.value.toUpperCase())
+                      }
+                      className="bg-background rounded-xl h-12 flex-1 tracking-widest uppercase"
                       autoComplete="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      maxLength={16}
                     />
                     <Button
                       type="submit"
                       className="rounded-full h-12 px-6 sm:px-8"
+                      disabled={
+                        lookup.kind === "loading" ||
+                        normalizeInvitationCode(codeInput).length === 0
+                      }
                     >
-                      <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+                      {lookup.kind === "loading" ? (
+                        <Loader2
+                          className="h-4 w-4 mr-2 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+                      )}
                       Localizar convite
                     </Button>
                   </div>
                 </form>
 
-                {result.kind === "not-found" && (
+                {lookup.kind === "not-found" && (
                   <div className="mt-6 rounded-2xl border border-border/60 bg-background p-5 flex gap-3 items-start">
                     <AlertCircle
                       className="h-5 w-5 text-foreground/60 shrink-0 mt-0.5"
                       aria-hidden="true"
                     />
                     <div className="text-sm text-muted-foreground leading-relaxed">
-                      Não encontramos esse nome. Confira a grafia ou fale com a
-                      gente pelo e-mail{" "}
+                      Código não encontrado. Confira a grafia ou fale com a gente
+                      pelo e-mail{" "}
                       <a
                         href="mailto:casamento@brimax.life"
                         className="text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground/80"
@@ -275,35 +232,7 @@ export function RSVP() {
                   </div>
                 )}
 
-                {result.kind === "ambiguous" && (
-                  <div className="mt-6 space-y-3">
-                    <p className="text-sm text-foreground">
-                      Encontramos mais de um convite parecido. Selecione o seu
-                      grupo para continuar.
-                    </p>
-                    <ul className="space-y-2">
-                      {result.groups.map((g) => (
-                        <li key={g.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectGroup(g)}
-                            className="w-full text-left rounded-xl border border-border/60 bg-background px-4 py-3 hover:border-foreground/40 transition-colors"
-                          >
-                            <div className="font-serif text-lg text-foreground">
-                              {g.primaryName}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {g.guests.length}{" "}
-                              {g.guests.length === 1 ? "convidado" : "convidados"}
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {result.kind === "found" && (
+                {lookup.kind === "found" && (
                   <div className="mt-8 space-y-6">
                     <div className="flex items-center justify-between gap-4">
                       <div>
@@ -311,7 +240,7 @@ export function RSVP() {
                           Convite localizado
                         </div>
                         <div className="font-serif text-2xl text-foreground mt-1">
-                          {result.group.primaryName}
+                          {lookup.invitation.householdName}
                         </div>
                       </div>
                       <button
@@ -329,11 +258,11 @@ export function RSVP() {
                     </p>
 
                     <ul className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-background overflow-hidden">
-                      {result.group.guests.map((name) => {
-                        const id = `guest-${name}`;
-                        const checked = !!selections[name];
+                      {lookup.invitation.guests.map((guest) => {
+                        const id = `guest-${guest.guestId}`;
+                        const checked = !!selections[guest.guestId];
                         return (
-                          <li key={name}>
+                          <li key={guest.guestId}>
                             <label
                               htmlFor={id}
                               className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-secondary/30 transition-colors"
@@ -344,12 +273,12 @@ export function RSVP() {
                                 onCheckedChange={(v) =>
                                   setSelections((s) => ({
                                     ...s,
-                                    [name]: v === true,
+                                    [guest.guestId]: v === true,
                                   }))
                                 }
                               />
                               <span className="font-serif text-lg text-foreground">
-                                {name}
+                                {guest.guestName}
                               </span>
                               <span className="ml-auto text-xs text-muted-foreground">
                                 {checked ? "Vai comparecer" : "Não vai"}
@@ -359,6 +288,24 @@ export function RSVP() {
                         );
                       })}
                     </ul>
+
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="rsvp-note"
+                        className="text-sm font-medium text-foreground block"
+                      >
+                        Recado para os noivos (opcional)
+                      </label>
+                      <Textarea
+                        id="rsvp-note"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        maxLength={500}
+                        rows={3}
+                        placeholder="Algo que a gente precisa saber? Restrições, transporte, etc."
+                        className="bg-background rounded-xl"
+                      />
+                    </div>
 
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
                       <span className="text-sm text-muted-foreground">
@@ -370,9 +317,20 @@ export function RSVP() {
                       <Button
                         type="button"
                         onClick={submitConfirmation}
+                        disabled={submitMutation.isPending}
                         className="rounded-full h-12 px-8 w-full sm:w-auto"
                       >
-                        Enviar confirmação
+                        {submitMutation.isPending ? (
+                          <>
+                            <Loader2
+                              className="h-4 w-4 mr-2 animate-spin"
+                              aria-hidden="true"
+                            />
+                            Enviando…
+                          </>
+                        ) : (
+                          "Enviar confirmação"
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -380,7 +338,6 @@ export function RSVP() {
               </>
             )}
           </motion.div>
-
         </div>
       </div>
     </section>
@@ -388,12 +345,12 @@ export function RSVP() {
 }
 
 function SuccessState({
-  group,
+  invitation,
   confirmations,
   onReset,
 }: {
-  group: InvitationGroup;
-  confirmations: { name: string; attending: boolean }[];
+  invitation: HouseholdInvitation;
+  confirmations: { guestId: string; guestName: string; attending: boolean }[];
   onReset: () => void;
 }) {
   const attending = confirmations.filter((c) => c.attending);
@@ -409,7 +366,8 @@ function SuccessState({
           Recebemos sua confirmação com carinho!
         </h3>
         <p className="text-sm text-muted-foreground mt-2">
-          Convite de <span className="text-foreground">{group.primaryName}</span>
+          Convite de{" "}
+          <span className="text-foreground">{invitation.householdName}</span>
         </p>
       </div>
 
@@ -423,8 +381,11 @@ function SuccessState({
           ) : (
             <ul className="space-y-1">
               {attending.map((c) => (
-                <li key={c.name} className="font-serif text-base text-foreground">
-                  {c.name}
+                <li
+                  key={c.guestId}
+                  className="font-serif text-base text-foreground"
+                >
+                  {c.guestName}
                 </li>
               ))}
             </ul>
@@ -439,8 +400,11 @@ function SuccessState({
           ) : (
             <ul className="space-y-1">
               {notAttending.map((c) => (
-                <li key={c.name} className="font-serif text-base text-foreground">
-                  {c.name}
+                <li
+                  key={c.guestId}
+                  className="font-serif text-base text-foreground"
+                >
+                  {c.guestName}
                 </li>
               ))}
             </ul>
@@ -448,17 +412,8 @@ function SuccessState({
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-        Confirmação registrada nesta experiência de teste. A integração final
-        será conectada ao sistema de convidados.
-      </p>
-
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Button
-          variant="outline"
-          onClick={onReset}
-          className="rounded-full"
-        >
+        <Button variant="outline" onClick={onReset} className="rounded-full">
           Confirmar outro convite
         </Button>
         <a

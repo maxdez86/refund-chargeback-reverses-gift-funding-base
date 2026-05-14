@@ -1,38 +1,100 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { invitationKeys, phoneLookupIndex } from "../apps/api/src/services/dynamodb/key-builder";
+import { invitationKeys } from "../apps/api/src/services/dynamodb/key-builder";
 import { resourceName, resolveStage } from "../packages/config/src";
+
+type HouseholdSeed = {
+  householdId: string;
+  householdName: string;
+  guestNames: string[];
+};
+
+const households: HouseholdSeed[] = [
+  { householdId: "grupo-amanda-cris", householdName: "Amanda e Chris", guestNames: ["Amanda", "Chris"] },
+  { householdId: "grupo-fabi-fernando", householdName: "Fabi e Fernando", guestNames: ["Fabi", "Fernando"] },
+  { householdId: "grupo-tami-marcos", householdName: "Tami e Marcos", guestNames: ["Tami", "Marcos"] },
+  { householdId: "grupo-elis-son", householdName: "Elís e Son", guestNames: ["Elís", "Son"] },
+  { householdId: "grupo-kelly-sa", householdName: "Kelly e Sá", guestNames: ["Kelly", "Sá"] },
+  { householdId: "grupo-lila-welton", householdName: "Lila e Welton", guestNames: ["Lila", "Welton"] },
+  { householdId: "grupo-nilza-cerqueira", householdName: "Nilza e Cerqueira", guestNames: ["Nilza", "Cerqueira"] },
+  { householdId: "grupo-debora-nael", householdName: "Débora e Nael", guestNames: ["Débora", "Nael"] },
+  { householdId: "grupo-nessa-carlos", householdName: "Nessa e Carlos", guestNames: ["Nessa", "Carlos"] },
+  { householdId: "grupo-nuza-sid", householdName: "Nuza e Sid", guestNames: ["Nuza", "Sid"] },
+  { householdId: "grupo-carol-igor", householdName: "Carol e Igor", guestNames: ["Carol", "Igor"] },
+  { householdId: "grupo-alice", householdName: "Alice", guestNames: ["Alice"] },
+  { householdId: "grupo-raquel", householdName: "Raquel", guestNames: ["Raquel"] },
+  { householdId: "grupo-julia", householdName: "Julia", guestNames: ["Julia"] },
+  { householdId: "grupo-drielly", householdName: "Drielly", guestNames: ["Drielly"] },
+  { householdId: "grupo-ronaldo", householdName: "Ronaldo", guestNames: ["Ronaldo"] },
+  { householdId: "grupo-cristiane-juliano", householdName: "Cristiane e Juliano", guestNames: ["Cristiane", "Juliano"] }
+];
+
+// Canonical invitation code: 8 chars from a confusion-free alphabet (no I/O/0/1).
+// Deterministic per household via SHA-256(householdId) so reruns are idempotent
+// and print runs stay aligned with what's in the table.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH = 8;
+
+function generateInvitationCode(seed: string): string {
+  const digest = createHash("sha256").update(seed).digest();
+  let code = "";
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    code += CODE_ALPHABET[digest[i] % CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+function slugify(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function buildGuestId(householdId: string, guestName: string): string {
+  return `${householdId}--${slugify(guestName)}`;
+}
 
 const stage = resolveStage(process.env.STAGE);
 const tableName = process.env.WEDDING_TABLE_NAME ?? resourceName("brimax-wedding", stage);
-const invitationCode = process.env.INVITATION_CODE ?? "ABCD1234";
-const householdId = process.env.HOUSEHOLD_ID ?? "household-001";
-const guestId = process.env.GUEST_ID ?? randomUUID();
-const phoneNumber = process.env.PHONE_NUMBER ?? "+5511999999999";
 
 async function main() {
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+  const summary: Array<{ householdName: string; invitationCode: string }> = [];
 
-  await client.send(
-    new PutCommand({
-      TableName: tableName,
-      Item: {
-        ...invitationKeys(invitationCode),
-        ...phoneLookupIndex(phoneNumber),
-        entityType: "Invitation",
-        invitationCode,
-        householdId,
-        guestId,
-        guestName: "Sample Guest",
-        phoneNumber,
-        allowedPlusOnes: 1,
-        rsvpStatus: "pending"
-      }
-    })
-  );
+  for (const household of households) {
+    const invitationCode = generateInvitationCode(household.householdId);
+    const guests = household.guestNames.map((guestName) => ({
+      guestId: buildGuestId(household.householdId, guestName),
+      guestName,
+      allowedPlusOnes: 0,
+      rsvpStatus: "pending" as const
+    }));
 
-  console.log(`Seeded invitation ${invitationCode} into ${tableName}.`);
+    await client.send(
+      new PutCommand({
+        TableName: tableName,
+        Item: {
+          ...invitationKeys(invitationCode),
+          entityType: "Invitation",
+          invitationCode,
+          householdId: household.householdId,
+          householdName: household.householdName,
+          guests
+        }
+      })
+    );
+
+    summary.push({ householdName: household.householdName, invitationCode });
+  }
+
+  console.log(`Seeded ${summary.length} households into ${tableName}:`);
+  for (const row of summary) {
+    console.log(`  ${row.invitationCode}  ${row.householdName}`);
+  }
 }
 
 main().catch((error) => {

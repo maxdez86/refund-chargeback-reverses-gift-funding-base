@@ -8,8 +8,19 @@ const service = new RsvpService();
 
 export async function handler(event: APIGatewayProxyEventV2) {
   try {
+    const idempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
     const requestBody = JSON.parse(event.body ?? "{}");
     const response = await service.submit(requestBody);
+
+    console.info(
+      JSON.stringify({
+        metric: "RSVP_SUBMITTED",
+        invitationCode: response.invitationCode,
+        householdId: response.householdId,
+        status: response.status,
+        idempotencyKeyPresent: Boolean(idempotencyKey?.trim())
+      })
+    );
 
     return jsonResponse(200, response);
   } catch (error) {

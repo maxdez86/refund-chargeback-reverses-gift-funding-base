@@ -1,16 +1,31 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const getGiftsMock = vi.fn();
+const fetchInvitationMock = vi.fn();
+const submitRsvpMock = vi.fn();
 
 vi.mock("@/lib/gifts-api", () => ({
   giftsQueryKey: ["gifts"],
   getGifts: (...args: unknown[]) => getGiftsMock(...args)
 }));
 
+vi.mock("@/lib/rsvp-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/rsvp-api")>(
+    "@/lib/rsvp-api"
+  );
+  return {
+    ...actual,
+    fetchInvitation: (...args: unknown[]) => fetchInvitationMock(...args),
+    submitRsvp: (...args: unknown[]) => submitRsvpMock(...args)
+  };
+});
+
 import App from "../src/App";
 
 describe("official web app", () => {
   beforeEach(() => {
+    fetchInvitationMock.mockReset();
+    submitRsvpMock.mockReset();
     getGiftsMock.mockReset().mockResolvedValue([
       {
         id: "g-test-pix",
@@ -111,33 +126,72 @@ describe("official web app", () => {
     expect(screen.getByText("97%")).toBeInTheDocument();
   });
 
-  it("resolves an RSVP group and supports ambiguous search results", async () => {
+  it("looks up an invitation by code and submits a confirmation", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitationCode: "ABCD2345",
+      householdId: "grupo-debora-nael",
+      householdName: "Débora e Nael",
+      guests: [
+        {
+          guestId: "grupo-debora-nael--debora",
+          guestName: "Débora",
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending"
+        },
+        {
+          guestId: "grupo-debora-nael--nael",
+          guestName: "Nael",
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending"
+        }
+      ]
+    });
+    submitRsvpMock.mockResolvedValueOnce({
+      ok: true,
+      invitationCode: "ABCD2345",
+      householdId: "grupo-debora-nael",
+      status: "attending",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText("Digite seu nome para localizar seu convite"), {
-      target: { value: "Débora" },
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "abcd2345" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Localizar convite" }));
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
 
     expect(
       await screen.findByText("Confirme quais convidados do seu convite irão comparecer:")
     ).toBeInTheDocument();
     expect(screen.getByText("Débora")).toBeInTheDocument();
+    expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345");
 
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
     expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Confirmar outro convite/i }));
-    fireEvent.change(screen.getByLabelText("Digite seu nome para localizar seu convite"), {
-      target: { value: "Car" },
+    expect(submitRsvpMock).toHaveBeenCalledTimes(1);
+    const payload = submitRsvpMock.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      invitationCode: "ABCD2345",
+      householdId: "grupo-debora-nael",
+      attendingGuestCount: 2
     });
-    fireEvent.click(screen.getByRole("button", { name: "Localizar convite" }));
+  });
 
-    expect(
-      await screen.findByText(
-        "Encontramos mais de um convite parecido. Selecione o seu grupo para continuar."
-      )
-    ).toBeInTheDocument();
+  it("renders the not-found state when the code does not match", async () => {
+    const { RsvpApiError } = await import("@/lib/rsvp-api");
+    fetchInvitationMock.mockRejectedValueOnce(
+      new RsvpApiError("Invitation not found.", 404)
+    );
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "MISSING1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    expect(await screen.findByText(/Código não encontrado/i)).toBeInTheDocument();
   });
 
   it("keeps the local section map link and venue media", async () => {

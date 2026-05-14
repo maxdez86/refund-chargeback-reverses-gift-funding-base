@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GuestProfileSchema, RsvpStatusSchema } from "./guest";
+import { RsvpStatusSchema } from "./guest";
 
 export const RsvpGuestAnswerSchema = z.object({
   guestId: z.string().min(1),
@@ -22,8 +22,7 @@ export const RsvpSubmissionResponseSchema = z.object({
   invitationCode: z.string(),
   householdId: z.string(),
   status: RsvpStatusSchema,
-  updatedAt: z.string(),
-  guestProfile: GuestProfileSchema.optional()
+  updatedAt: z.string()
 });
 
 export type RsvpGuestAnswer = z.infer<typeof RsvpGuestAnswerSchema>;

@@ -6,7 +6,12 @@ import {
   ScanCommand,
   type DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
-import type { AdminGuestExportRow, GuestProfile, RsvpSubmissionRequest } from "@brimax/contracts";
+import type {
+  AdminGuestExportRow,
+  GuestProfile,
+  HouseholdInvitation,
+  RsvpSubmissionRequest
+} from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import {
   invitationKeys,
@@ -16,7 +21,7 @@ import {
 } from "../key-builder";
 import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
-import { toAdminExportRow, toGuestProfile } from "../mappers";
+import { toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
 
 export class WeddingRepository {
   constructor(
@@ -24,7 +29,7 @@ export class WeddingRepository {
     private readonly tableName = getEnv().weddingTableName
   ) {}
 
-  async getGuestProfileByInvitationCode(invitationCode: string): Promise<GuestProfile | null> {
+  async getInvitationByCode(invitationCode: string): Promise<HouseholdInvitation | null> {
     const result = await this.documentClient.send(
       new GetCommand({
         TableName: this.tableName,
@@ -32,7 +37,7 @@ export class WeddingRepository {
       })
     );
 
-    return result.Item ? toGuestProfile(result.Item as Record<string, unknown>) : null;
+    return result.Item ? toHouseholdInvitation(result.Item as Record<string, unknown>) : null;
   }
 
   async getGuestProfilesByPhoneNumber(phoneNumber: string): Promise<GuestProfile[]> {
@@ -113,6 +118,8 @@ export class WeddingRepository {
       })
     );
 
-    return (result.Items ?? []).map((item) => toAdminExportRow(item as Record<string, unknown>));
+    return (result.Items ?? []).flatMap((item) =>
+      toAdminExportRows(item as Record<string, unknown>)
+    );
   }
 }
