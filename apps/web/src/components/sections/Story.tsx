@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -71,17 +71,30 @@ export function Story() {
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start", skipSnaps: false });
   const [prevEnabled, setPrevEnabled] = useState(false);
   const [nextEnabled, setNextEnabled] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
-  const scrollTo = useCallback((i: number) => emblaApi && emblaApi.scrollTo(i), [emblaApi]);
+
+  const scrollToPrev = useCallback(() => {
+    const el = document.querySelector("#contagem");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
+  const scrollToNext = useCallback(() => {
+    const el = document.querySelector("#pre-wedding");
+    if (!el) return;
+    const offset = 80;
+    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, []);
 
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
     setPrevEnabled(emblaApi.canScrollPrev());
     setNextEnabled(emblaApi.canScrollNext());
-    setSelectedIndex(emblaApi.selectedScrollSnap());
   }, [emblaApi]);
 
   useEffect(() => {
@@ -107,12 +120,20 @@ export function Story() {
     const root = emblaApi.rootNode();
     let lastFire = 0;
     const onWheel = (e: WheelEvent) => {
+      const cardEl = root.querySelector<HTMLElement>("[data-historia-card]");
+      if (!cardEl) return;
+      const band = cardEl.getBoundingClientRect();
+      if (e.clientY < band.top || e.clientY > band.bottom) return;
+
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (Math.abs(delta) < 4) return;
+
+      e.preventDefault();
+
       const goingNext = delta > 0;
       if (goingNext && !emblaApi.canScrollNext()) return;
       if (!goingNext && !emblaApi.canScrollPrev()) return;
-      e.preventDefault();
+
       const now = Date.now();
       if (now - lastFire < 220) return;
       lastFire = now;
@@ -124,8 +145,8 @@ export function Story() {
   }, [emblaApi]);
 
   return (
-    <section id="historia" className="py-16 md:py-20 bg-[#f4eee5] overflow-hidden">
-      <div className="container mx-auto px-6 mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-8">
+    <section id="historia" className="py-4 md:py-6 bg-[#f4eee5] overflow-hidden">
+      <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -133,13 +154,25 @@ export function Story() {
           transition={{ duration: 0.8 }}
           className="max-w-xl"
         >
-          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-6">
+          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-3">
             Nossa História
           </h2>
           <p className="text-lg text-muted-foreground font-light leading-relaxed">
             Antes do grande dia, existe uma história feita de encontros, palco, viagens e escolhas vividas com carinho.
           </p>
         </motion.div>
+
+        <div className="hidden md:flex absolute inset-x-0 bottom-0 justify-center pointer-events-none">
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            onClick={scrollToPrev}
+            aria-label="Rolar para a seção anterior"
+          >
+            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+          </Button>
+        </div>
 
         <div className="hidden md:flex items-center gap-3">
           <Button
@@ -178,6 +211,7 @@ export function Story() {
             {chapters.map((c, index) => (
               <motion.article
                 key={index}
+                data-historia-card
                 className="flex-[0_0_85%] md:flex-[0_0_45%] lg:flex-[0_0_32%] min-w-0"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -210,21 +244,16 @@ export function Story() {
         </div>
       </div>
 
-      {/* Progress dots */}
-      <div className="container mx-auto px-6 mt-4 flex justify-center gap-2" role="tablist" aria-label="Progresso da história">
-        {chapters.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => scrollTo(i)}
-            aria-label={`Ir para o capítulo ${i + 1}`}
-            aria-selected={selectedIndex === i}
-            role="tab"
-            className={`h-2 rounded-full transition-all duration-300 ${
-              selectedIndex === i ? "w-8 bg-foreground" : "w-2 bg-foreground/25 hover:bg-foreground/50"
-            }`}
-          />
-        ))}
+      <div className="container mx-auto px-6 mt-0 flex justify-center">
+        <Button
+          variant="outline"
+          size="icon"
+          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          onClick={scrollToNext}
+          aria-label="Rolar para a próxima seção"
+        >
+          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+        </Button>
       </div>
     </section>
   );

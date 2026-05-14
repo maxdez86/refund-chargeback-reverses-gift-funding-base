@@ -460,7 +460,7 @@ export function Presentes() {
   }, []);
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#rsvp");
+    const el = document.querySelector("#confirmar-presenca");
     if (!el) return;
     const offset = 80;
     const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
