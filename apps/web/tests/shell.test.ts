@@ -7,7 +7,7 @@ describe("index.html", () => {
 
     expect(html).toContain('<html lang="pt-BR" class="scroll-smooth">');
     expect(html).toContain("<title>Brimax — Casamento Brida e Max</title>");
-    expect(html).toContain("raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures/6.jpg");
+    expect(html).toContain("https://brimax.life/opengraph.jpg");
     expect(html).toContain("fonts.googleapis.com");
   });
 });

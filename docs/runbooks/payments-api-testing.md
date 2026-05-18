@@ -174,8 +174,11 @@ PAYMENTS_TEST_PAYMENT_METHOD=CREDIT_CARD bash scripts/test-payments-checkout.sh
 Open the printed `checkout.url` and verify that the Asaas hosted page offers the expected payment options:
 
 - for `HOSTED`: exactly two options, PIX and credit card
+- for `HOSTED`: credit card allows paying in full or in up to 10 installments
 - for `PIX`: only PIX
 - for `CREDIT_CARD`: only credit card
+
+Before production validation of hosted credit card installments, confirm in the Asaas account that automatic credit-card anticipation is disabled so receivables are not advanced.
 
 If boleto, debit card, or anything else appears for `HOSTED`, stop and re-check the Asaas Checkout configuration in the Asaas dashboard.
 

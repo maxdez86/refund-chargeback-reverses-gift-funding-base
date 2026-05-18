@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { InvitationCodeSchema } from "./invitation-code";
 
 export const RegistryCheckoutRequestSchema = z.object({
   guestId: z.string().min(1),
-  invitationCode: z.string().min(4),
+  invitationCode: InvitationCodeSchema,
   amountInCents: z.number().int().positive(),
   currency: z.string().length(3),
   message: z.string().max(500).optional()

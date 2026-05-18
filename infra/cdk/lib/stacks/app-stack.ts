@@ -106,6 +106,7 @@ export class AppStack extends cdk.Stack {
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
       EMAIL_FROM: senderEmailIdentity,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
+      RSVP_NOTIFICATION_TO: "contato@brimax.life",
       WEDDING_TABLE_NAME: props.table.tableName
     };
 
@@ -200,6 +201,7 @@ export class AppStack extends cdk.Stack {
     });
     paymentMessageFn.addToRolePolicy(sesSendPolicy);
     webhookProcessorFn.addToRolePolicy(sesSendPolicy);
+    rsvpFn.addToRolePolicy(sesSendPolicy);
 
     this.httpApi.addRoutes({
       path: "/payments",

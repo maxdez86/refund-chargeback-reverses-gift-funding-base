@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
-
-const PHOTO_BASE = "https://raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures";
+import { ResponsivePhoto } from "@/components/ResponsivePhoto";
+import { mediaUrl } from "@/lib/media";
 
 const heroCopy = {
   weekday: "Domingo",
@@ -27,18 +27,19 @@ export function Hero() {
       className="hero-v2 relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#111111]"
     >
       <div className="absolute inset-0">
-        <picture>
-          <source
-            media="(max-width: 767px)"
-            srcSet={`${PHOTO_BASE}/hero-mobile.jpeg`}
-          />
-          <img
-            src={`${PHOTO_BASE}/hero.jpeg`}
-            alt="Casal de mãos dadas ao pôr do sol"
-            className="h-full w-full object-cover object-[50%_50%] md:object-[50%_48%] xl:object-[50%_42%] 2xl:object-[50%_38%]"
-            fetchPriority="high"
-          />
-        </picture>
+        <ResponsivePhoto
+          section="hero"
+          sources={[
+            {
+              media: "(max-width: 767px)",
+              srcSet: mediaUrl("hero_footer", "hero-mobile.jpeg"),
+            },
+          ]}
+          fallbackSrc={mediaUrl("hero_footer", "hero.jpeg")}
+          alt="Casal de mãos dadas ao pôr do sol"
+          className="h-full w-full object-cover object-[50%_50%] md:object-[50%_48%] xl:object-[50%_42%] 2xl:object-[50%_38%]"
+          fetchPriority="high"
+        />
         <div className="hero-v2-gradient absolute inset-0" />
         <div className="absolute inset-0 bg-black/20" />
       </div>

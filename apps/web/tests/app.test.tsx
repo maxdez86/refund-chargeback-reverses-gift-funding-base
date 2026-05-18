@@ -28,11 +28,11 @@ describe("official web app", () => {
     submitRsvpMock.mockReset();
     getGiftsMock.mockReset().mockResolvedValue([
       {
-        id: "g-test-pix",
-        name: "PIX Teste",
-        imageUrl: "https://brimax.life/images/gifts-home.png",
+        id: "g-toalhas-banho",
+        name: "4 Toalhas de Banho",
+        image: "4-toalhas-banho.jpg",
         fractional: false,
-        totalValueCents: 500,
+        totalValueCents: 17_600,
         partValueCents: null,
         totalParts: null,
         partsFunded: 0,
@@ -42,7 +42,7 @@ describe("official web app", () => {
       {
         id: "g-armario",
         name: "Armário de Cozinha",
-        imageUrl: "https://example.com/armario.webp",
+        image: "armario-cozinha.webp",
         fractional: true,
         totalValueCents: 174900,
         partValueCents: 5000,
@@ -52,6 +52,7 @@ describe("official web app", () => {
         updatedAt: "2026-05-13T00:00:00.000Z"
       }
     ]);
+    window.localStorage.clear();
     window.history.replaceState({}, "", "/");
     window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
       callback(0);
@@ -64,7 +65,9 @@ describe("official web app", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: /Brida/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Nossa História" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "A história do ponto de vista dela" })
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Lista de Presentes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sua presença é o nosso maior presente" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tire suas dúvidas." })).toBeInTheDocument();
@@ -78,8 +81,6 @@ describe("official web app", () => {
     expect(
       await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
     ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
 
     expect(screen.queryByLabelText("Seu e-mail")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeEnabled();
@@ -109,7 +110,7 @@ describe("official web app", () => {
       {
         id: "g-armario",
         name: "Armário de Cozinha",
-        imageUrl: "https://example.com/armario.webp",
+        image: "armario-cozinha.webp",
         fractional: true,
         totalValueCents: 174900,
         partValueCents: 5000,

@@ -2,55 +2,41 @@ import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
-
-const PHOTO_BASE =
-  "https://raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures";
-
-const placeholderPhotos = [
-  "IMG-20231217-WA0019.jpg",
-  "IMG_20230723_195019.jpg",
-  "IMG_20230828_110138.jpg",
-  "IMG_20240111_102922.jpg",
-  "IMG_20240112_131120.jpg",
-  "IMG_20240908_210941.jpg",
-  "IMG_20241123_171012.jpg",
-  "IMG_20250309_065029.jpg",
-  "IMG_20250412_134057.jpg",
-  "IMG_20250412_134211.jpg",
-];
+import { mediaUrl } from "@/lib/media";
 
 type Person = {
   id: string;
   name: string;
   role?: string;
   isFamily?: boolean;
-  photo?: string;
+  photo: string;
 };
 
 const people: Person[] = [
-  { id: "nilza-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photo: "padrinhos/Nilza%20e%20Cerqueira.jpeg" },
-  { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true },
-  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva & Padrinho", isFamily: true, photo: "padrinhos/Cristiane%20e%20Juliano.jpeg" },
-  { id: "alice", name: "Alice", role: "Madrinha", photo: "padrinhos/Alice.jpeg" },
-  { id: "amanda-cris", name: "Amanda e Chris" },
-  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photo: "padrinhos/Ana%20Clara.jpeg" },
-  { id: "Carlinhos", name: "Carlinhos", role: "Pajem", photo: "padrinhos/Carlinhos.jpeg" },
-  { id: "carol-igor", name: "Carol e Igor" },
-  { id: "debora-nael", name: "Débora e Nael" },
-  { id: "drielly", name: "Drielly", role: "Madrinha", photo: "padrinhos/Drielly.jpeg" },
-  { id: "elis-son", name: "Elís e Son" },
-  { id: "fabi-fernando", name: "Fabi e Fernando" },
-  { id: "heitor", name: "Heitor", role: "Pajem" },
-  { id: "julia", name: "Julia", role: "Madrinha" },
-  { id: "kelly-sa", name: "Kelly e Sá", photo: "padrinhos/Kelly-e-Sa.jpeg" },
-  { id: "lila-welton", name: "Lila e Welton", photo: "padrinhos/Lila%20e%20Welton.jpeg" },
-  { id: "luiza", name: "Luiza", role: "Florista", photo: "padrinhos/Luiza.jpeg" },
-  { id: "nessa-carlos", name: "Nessa e Carlos" },
-  { id: "nicolas", name: "Nícolas", role: "Pajem" },
-  { id: "nuza-sid", name: "Nuza e Sid" },
-  { id: "raquel", name: "Raquel", role: "Madrinha", photo: "padrinhos/Raquel.jpeg" },
-  { id: "tami-marcos", name: "Tami e Marcos", photo: "padrinhos/Tami%20e%20Marcos.jpeg" },
+  { id: "nilza-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photo: "Nilza e Cerqueira.jpeg" },
+  { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true, photo: "ronaldo.jpeg" },
+  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva & Padrinho", isFamily: true, photo: "Cristiane e Juliano.jpeg" },
+  { id: "alice", name: "Alice", role: "Madrinha", photo: "Alice.jpeg" },
+  { id: "amanda-cris", name: "Amanda e Chris", photo: "amanda-chris.jpg" },
+  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photo: "Ana Clara.jpeg" },
+  { id: "Carlinhos", name: "Carlinhos", role: "Pajem", photo: "Carlinhos.jpeg" },
+  { id: "carol-igor", name: "Carol e Igor", photo: "carol-higor.jpeg" },
+  { id: "debora-nael", name: "Débora e Nael", photo: "debora-nael.jpeg" },
+  { id: "drielly", name: "Drielly", role: "Madrinha", photo: "Drielly.jpeg" },
+  { id: "elis-son", name: "Elís e Son", photo: "elis-son.jpg" },
+  { id: "fabi-fernando", name: "Fabi e Fernando", photo: "fabi-fernando.jpg" },
+  { id: "heitor", name: "Heitor", role: "Pajem", photo: "heitor.jpeg" },
+  { id: "julia", name: "Julia", role: "Madrinha", photo: "julia.jpeg" },
+  { id: "kelly-sa", name: "Kelly e Sá", photo: "Kelly-e-Sa.jpeg" },
+  { id: "lila-welton", name: "Lila e Welton", photo: "Lila e Welton.jpeg" },
+  { id: "luiza", name: "Luiza", role: "Florista", photo: "Luiza.jpeg" },
+  { id: "nessa-carlos", name: "Nessa e Carlos", photo: "nessa-carlos.jpeg" },
+  { id: "nicolas", name: "Nícolas", role: "Pajem", photo: "nicolas.jpeg" },
+  { id: "nuza-sid", name: "Nuza e Sid", photo: "nuza-sid.jpeg" },
+  { id: "raquel", name: "Raquel", role: "Madrinha", photo: "Raquel.jpeg" },
+  { id: "tami-marcos", name: "Tami e Marcos", photo: "Tami e Marcos.jpeg" },
 ];
 
 export function Padrinhos() {
@@ -196,7 +182,7 @@ export function Padrinhos() {
         >
           <div className="flex gap-6 md:gap-8 pb-2">
             {people.map((person, index) => {
-              const photo = person.photo ?? placeholderPhotos[index % placeholderPhotos.length];
+              const photoUrl = mediaUrl("padrinhos", person.photo);
               const eyebrow = person.role ?? (person.isFamily ? "Família" : "Madrinha & Padrinho");
               return (
                 <motion.article
@@ -216,8 +202,9 @@ export function Padrinhos() {
                         : ""
                     }`}
                   >
-                    <img
-                      src={`${PHOTO_BASE}/${photo}`}
+                    <ResponsivePhoto
+                      section="padrinhos"
+                      fallbackSrc={photoUrl}
                       alt=""
                       className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.03]"
                       loading="lazy"

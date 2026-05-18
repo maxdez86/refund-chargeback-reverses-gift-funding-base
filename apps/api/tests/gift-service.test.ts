@@ -9,13 +9,13 @@ describe("GiftService", () => {
 
     const service = new GiftService(repository as never);
     const response = await service.getGifts();
-    const pixGift = response.gifts.find((gift) => gift.id === "g-test-pix");
+    const toalhasGift = response.gifts.find((gift) => gift.id === "g-toalhas-banho");
 
     expect(response.ok).toBe(true);
-    expect(pixGift).toEqual(
+    expect(toalhasGift).toEqual(
       expect.objectContaining({
-        id: "g-test-pix",
-        imageUrl: "https://brimax.life/images/gifts-home.png",
+        id: "g-toalhas-banho",
+        image: "4-toalhas-banho.jpg",
         partsFunded: 0,
         fullyFunded: false,
         updatedAt: null

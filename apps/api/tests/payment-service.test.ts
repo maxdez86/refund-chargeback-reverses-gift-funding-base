@@ -26,7 +26,7 @@ describe("PaymentService", () => {
 
     const result = await service.createPayment(
       {
-        giftId: "g-test-pix",
+        giftId: "g-toalhas-banho",
         paymentMethod: "PIX"
       },
       "idem-test-pix"
@@ -39,13 +39,14 @@ describe("PaymentService", () => {
         externalReference: result.payment.paymentId,
         items: [
           expect.objectContaining({
-            name: "PIX Teste",
+            name: "4 Toalhas de Banho",
             quantity: 1,
-            value: 5
+            value: 176
           })
         ]
       })
     );
+    expect(asaasClient.createCheckout.mock.calls[0][0]).not.toHaveProperty("installment");
     expect(asaasClient.createCheckout.mock.calls[0][0]).not.toHaveProperty("customerData");
     expect(result.payment.status).toBe("CREATED");
     expect(result.payment.customerProfileStatus).toBe("PENDING");
@@ -88,7 +89,7 @@ describe("PaymentService", () => {
 
     const result = await service.createPayment(
       {
-        giftId: "g-test-pix",
+        giftId: "g-toalhas-banho",
         paymentMethod: "HOSTED"
       },
       "idem-test-hosted"
@@ -97,7 +98,10 @@ describe("PaymentService", () => {
     expect(asaasClient.createCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
         billingTypes: ["PIX", "CREDIT_CARD"],
-        chargeTypes: ["DETACHED"]
+        chargeTypes: ["DETACHED", "INSTALLMENT"],
+        installment: {
+          maxInstallmentCount: 10
+        }
       })
     );
     expect(result.payment.paymentMethod).toBe("HOSTED");
@@ -225,7 +229,7 @@ describe("PaymentService", () => {
     const service = new PaymentService(repository as never, {} as never);
     const result = await service.createPayment(
       {
-        giftId: "g-test-pix",
+        giftId: "g-toalhas-banho",
         paymentMethod: "PIX"
       },
       "idem-recovered"
@@ -265,7 +269,7 @@ describe("PaymentService", () => {
     const service = new PaymentService(repository as never, asaasClient as never);
     const result = await service.createPayment(
       {
-        giftId: "g-test-pix",
+        giftId: "g-toalhas-banho",
         paymentMethod: "PIX"
       },
       "idem-asaas-recovered"
@@ -307,7 +311,7 @@ describe("PaymentService", () => {
     await expect(
       service.createPayment(
         {
-          giftId: "g-test-pix",
+          giftId: "g-toalhas-banho",
           paymentMethod: "PIX"
         },
         "idem-orphan"

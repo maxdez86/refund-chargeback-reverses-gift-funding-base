@@ -14,11 +14,11 @@ describe("gifts-api", () => {
           ok: true,
           gifts: [
             {
-              id: "g-test-pix",
-              name: "PIX Teste",
-              imageUrl: "https://brimax.life/images/gifts-home.png",
+              id: "g-toalhas-banho",
+              name: "4 Toalhas de Banho",
+              image: "4-toalhas-banho.jpg",
               fractional: false,
-              totalValueCents: 500,
+              totalValueCents: 17_600,
               partValueCents: null,
               totalParts: null,
               partsFunded: 1,
@@ -39,7 +39,7 @@ describe("gifts-api", () => {
 
     expect(gifts).toEqual([
       expect.objectContaining({
-        id: "g-test-pix",
+        id: "g-toalhas-banho",
         fullyFunded: true,
         partsFunded: 1
       })

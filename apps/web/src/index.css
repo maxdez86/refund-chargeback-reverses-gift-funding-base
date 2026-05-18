@@ -151,6 +151,10 @@ html {
   scroll-behavior: smooth;
 }
 
+section[id] {
+  scroll-margin-top: 80px;
+}
+
 .hero-v2 {
   --hero-v2-ivory: #fbf7f0;
   --hero-v2-champagne: #d6ae64;

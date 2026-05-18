@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { InvitationCodeSchema } from "./invitation-code";
 
 export const AdminGuestExportRowSchema = z.object({
   householdId: z.string(),
   guestId: z.string(),
-  invitationCode: z.string(),
+  invitationCode: InvitationCodeSchema,
   guestName: z.string(),
   phoneNumber: z.string().optional(),
   rsvpStatus: z.string(),

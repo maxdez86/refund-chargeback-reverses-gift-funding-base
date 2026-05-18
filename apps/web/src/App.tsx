@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -20,7 +21,73 @@ import { Footer } from "@/components/sections/Footer";
 
 const queryClient = new QueryClient();
 
+// Mirrors the in-app "Confirmar Presença" button: calls scrollIntoView with the
+// same options after the page has settled, so direct visits to /#confirmar-presenca
+// land identically to a button click on mobile. The captured hash comes from the
+// head-script in index.html, which strips it pre-load to suppress the browser's
+// premature native anchor jump.
+function useInitialHashScroll() {
+  useEffect(() => {
+    const w = window as Window & { __brimaxInitialHash?: string };
+    const hash = w.__brimaxInitialHash || window.location.hash;
+    if (!hash || hash === "#") return;
+
+    let cancelled = false;
+    delete w.__brimaxInitialHash;
+
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search + hash
+    );
+
+    const run = async () => {
+      if (document.readyState !== "complete") {
+        await new Promise<void>((resolve) =>
+          window.addEventListener("load", () => resolve(), { once: true })
+        );
+      }
+      const fonts = (
+        document as Document & { fonts?: { ready: Promise<unknown> } }
+      ).fonts;
+      if (fonts?.ready) {
+        try {
+          await fonts.ready;
+        } catch {
+          /* ignore font-loading errors */
+        }
+      }
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      if (cancelled) return;
+
+      const el = document.querySelector(hash);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const initialTop = el.getBoundingClientRect().top;
+
+      // 800ms safety retry catches late layout shifts (e.g. lazy-loaded images
+      // above the fold) that move the target after we scrolled.
+      window.setTimeout(() => {
+        if (cancelled) return;
+        const target = document.querySelector(hash);
+        if (!target) return;
+        const nowTop = target.getBoundingClientRect().top;
+        if (Math.abs(nowTop - initialTop) > 4) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+        }
+      }, 800);
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+}
+
 function Home() {
+  useInitialHashScroll();
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       <Navigation />

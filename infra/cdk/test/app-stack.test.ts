@@ -30,7 +30,7 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::SQS::Queue", 2);
     template.resourceCountIs("AWS::SecretsManager::Secret", 2);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
-    template.resourceCountIs("AWS::Lambda::Function", 7);
+    template.resourceCountIs("AWS::Lambda::Function", 9);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments"
@@ -86,6 +86,25 @@ describe("AppStack", () => {
       Handler: "index.handler",
       MemorySize: 1024,
       Runtime: "nodejs20.x"
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          EMAIL_FROM: "casamento@brimax.life",
+          RSVP_NOTIFICATION_TO: "contato@brimax.life"
+        })
+      }
+    });
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["ses:SendEmail", "ses:SendRawEmail"]),
+            Effect: "Allow",
+            Resource: "*"
+          })
+        ])
+      }
     });
     template.hasOutput("AsaasWebhookUrl", {});
     template.hasOutput("ApiCustomDomainName", {});

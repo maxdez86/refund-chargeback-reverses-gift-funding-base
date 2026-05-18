@@ -1,14 +1,15 @@
 import React from "react";
 import { FaEnvelope, FaInstagram, FaYoutube } from "react-icons/fa";
-
-const PHOTO_BASE = "https://raw.githubusercontent.com/maxdez86/brimax-life-lovable/main/brimax-pictures";
+import { ResponsivePhoto } from "@/components/ResponsivePhoto";
+import { mediaUrl } from "@/lib/media";
 
 export function Footer() {
   return (
     <footer className="footer-v2 relative isolate overflow-hidden bg-[#181410] pt-16 pb-32 text-[#fbf7f0] md:py-20">
       <div className="absolute inset-0 -z-10">
-        <img
-          src={`${PHOTO_BASE}/foooter.jpeg`}
+        <ResponsivePhoto
+          section="footer"
+          fallbackSrc={mediaUrl("hero_footer", "footer.jpeg")}
           alt=""
           aria-hidden="true"
           loading="lazy"

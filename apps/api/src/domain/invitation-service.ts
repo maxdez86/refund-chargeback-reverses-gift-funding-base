@@ -2,7 +2,7 @@ import { AppError } from "../lib/errors";
 import { WeddingRepository } from "../services/dynamodb/repositories/wedding-repository";
 
 function normalizeInvitationCode(code: string): string {
-  return code.trim().toUpperCase();
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 export class InvitationService {

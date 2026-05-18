@@ -180,7 +180,7 @@ export function RSVP() {
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Input
                       id="rsvp-code"
-                      placeholder="Ex.: ABCD1234"
+                      placeholder="Ex.: AB2345"
                       value={codeInput}
                       onChange={(e) =>
                         setCodeInput(e.target.value.toUpperCase())
@@ -189,7 +189,7 @@ export function RSVP() {
                       autoComplete="off"
                       autoCapitalize="characters"
                       spellCheck={false}
-                      maxLength={16}
+                      maxLength={6}
                     />
                     <Button
                       type="submit"

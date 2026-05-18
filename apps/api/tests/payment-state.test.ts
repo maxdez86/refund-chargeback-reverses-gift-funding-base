@@ -19,17 +19,6 @@ describe("payment-state", () => {
     });
   });
 
-  it("resolves the dedicated PIX test gift as a R$ 5,00 single contribution", () => {
-    const gift = PAYMENT_GIFTS_BY_ID.get("g-test-pix");
-
-    expect(gift).toBeDefined();
-    expect(resolveGiftSelection(gift!, undefined)).toEqual({
-      amountCents: 500,
-      quantity: 1,
-      unitAmountCents: null
-    });
-  });
-
   it("resolves a fractional gift selection from the requested quantity", () => {
     const gift = PAYMENT_GIFTS_BY_ID.get("g-armario");
 

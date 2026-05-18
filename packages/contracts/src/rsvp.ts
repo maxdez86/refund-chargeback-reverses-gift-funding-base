@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RsvpStatusSchema } from "./guest";
+import { InvitationCodeSchema } from "./invitation-code";
 
 export const RsvpGuestAnswerSchema = z.object({
   guestId: z.string().min(1),
@@ -9,7 +10,7 @@ export const RsvpGuestAnswerSchema = z.object({
 });
 
 export const RsvpSubmissionRequestSchema = z.object({
-  invitationCode: z.string().min(4),
+  invitationCode: InvitationCodeSchema,
   householdId: z.string().min(1),
   submittedBy: z.string().min(1),
   guestResponses: z.array(RsvpGuestAnswerSchema).min(1),

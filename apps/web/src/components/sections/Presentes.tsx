@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Minus, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { type CreatePaymentRequest, type Gift as GiftResource } from "@brimax/contracts";
+import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getGifts, giftsQueryKey } from "@/lib/gifts-api";
+import { mediaUrl } from "@/lib/media";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
@@ -35,7 +37,7 @@ function toGiftView(gift: GiftResource): Gift {
   return {
     id: gift.id,
     name: gift.name,
-    image: gift.imageUrl,
+    image: mediaUrl("presentes", gift.image),
     totalValue: gift.totalValueCents / 100,
     fractional: gift.fractional,
     partValue: gift.partValueCents ? gift.partValueCents / 100 : null,
@@ -61,19 +63,7 @@ function fundedPercent(g: Gift): number {
 }
 
 function sortGifts(gifts: Gift[]): Gift[] {
-  return [...gifts].sort((a, b) => {
-    const bucket = (g: Gift) => {
-      if (isFullyFunded(g)) return 4;
-      if (!g.fractional) return 1;
-      if ((g.partsFunded ?? 0) === 0) return 2;
-      return 3;
-    };
-    const ba = bucket(a);
-    const bb = bucket(b);
-    if (ba !== bb) return ba - bb;
-    if (ba === 3) return fundedPercent(a) - fundedPercent(b);
-    return 0;
-  });
+  return [...gifts].sort((a, b) => a.totalValue - b.totalValue);
 }
 
 function ProgressBar({ percent }: { percent: number }) {
@@ -111,8 +101,9 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
       }`}
     >
       <div className="relative aspect-[4/5] bg-muted overflow-hidden">
-        <img
-          src={gift.image}
+        <ResponsivePhoto
+          section="presentes"
+          fallbackSrc={gift.image}
           alt={gift.name}
           loading="lazy"
           className={`w-full h-full object-cover ${fullFunded ? "grayscale" : ""}`}
@@ -302,8 +293,9 @@ function GiftDialog({
 
         <div className="space-y-5">
           <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
-            <img
-              src={gift.image}
+            <ResponsivePhoto
+              section="presentes"
+              fallbackSrc={gift.image}
               alt={gift.name}
               className="w-full h-full object-cover"
             />

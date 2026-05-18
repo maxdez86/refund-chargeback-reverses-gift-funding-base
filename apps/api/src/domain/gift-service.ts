@@ -15,7 +15,7 @@ export class GiftService {
       return {
         id: gift.id,
         name: gift.name,
-        imageUrl: gift.imageUrl,
+        image: gift.image,
         fractional: gift.fractional,
         totalValueCents: gift.totalValueCents,
         partValueCents: gift.partValueCents,

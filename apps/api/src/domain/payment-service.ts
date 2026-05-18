@@ -72,6 +72,10 @@ function buildCheckoutExpiresAt(minutesToExpire: number) {
   return new Date(Date.now() + minutesToExpire * 60_000).toISOString();
 }
 
+function shouldEnableHostedInstallments(billingTypes: ("PIX" | "CREDIT_CARD")[]) {
+  return billingTypes.includes("PIX") && billingTypes.includes("CREDIT_CARD");
+}
+
 export class PaymentService {
   constructor(
     private readonly repository = new PaymentRepository(),
@@ -229,7 +233,9 @@ export class PaymentService {
     const checkoutInput: CreateCheckoutInput = {
       billingTypes: input.billingTypes,
       callback: buildCheckoutCallbackUrls(input.paymentId),
-      chargeTypes: ["DETACHED"],
+      chargeTypes: shouldEnableHostedInstallments(input.billingTypes)
+        ? ["DETACHED", "INSTALLMENT"]
+        : ["DETACHED"],
       externalReference: input.paymentId,
       items: [
         {
@@ -241,6 +247,13 @@ export class PaymentService {
       ],
       minutesToExpire: input.checkoutExpirationMinutes
     };
+
+    if (shouldEnableHostedInstallments(input.billingTypes)) {
+      checkoutInput.installment = {
+        maxInstallmentCount: 10
+      };
+    }
+
     return this.asaasClient.createCheckout(checkoutInput);
   }
 

@@ -11,7 +11,7 @@ describe("rsvp-api", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          invitationCode: "ABCD2345",
+          invitationCode: "AB2345",
           householdId: "grupo-amanda-cris",
           householdName: "Amanda e Chris",
           guests: [
@@ -28,10 +28,10 @@ describe("rsvp-api", () => {
     );
 
     const { fetchInvitation } = await import("@/lib/rsvp-api");
-    const invitation = await fetchInvitation("  abcd2345 ");
+    const invitation = await fetchInvitation("  ab-2345 ");
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.example.com/invitation/ABCD2345"
+      "https://api.example.com/invitation/AB2345"
     );
     expect(invitation.householdName).toBe("Amanda e Chris");
     expect(invitation.guests).toHaveLength(1);
@@ -59,14 +59,14 @@ describe("rsvp-api", () => {
   it("fetchInvitation rejects a malformed payload", async () => {
     vi.stubEnv("VITE_API_URL", "https://api.example.com");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ invitationCode: "ABCD2345" }), {
+      new Response(JSON.stringify({ invitationCode: "AB2345" }), {
         status: 200,
         headers: { "content-type": "application/json" }
       })
     );
 
     const { fetchInvitation } = await import("@/lib/rsvp-api");
-    await expect(fetchInvitation("ABCD2345")).rejects.toThrow(
+    await expect(fetchInvitation("AB2345")).rejects.toThrow(
       /Resposta inválida/
     );
   });
@@ -77,7 +77,7 @@ describe("rsvp-api", () => {
       new Response(
         JSON.stringify({
           ok: true,
-          invitationCode: "ABCD2345",
+          invitationCode: "AB2345",
           householdId: "grupo-amanda-cris",
           status: "attending",
           updatedAt: "2026-05-14T00:00:00.000Z"
@@ -88,7 +88,7 @@ describe("rsvp-api", () => {
 
     const { submitRsvp } = await import("@/lib/rsvp-api");
     const response = await submitRsvp({
-      invitationCode: "ABCD2345",
+      invitationCode: "AB2345",
       householdId: "grupo-amanda-cris",
       submittedBy: "g1",
       guestResponses: [{ guestId: "g1", status: "attending" }],
@@ -116,7 +116,7 @@ describe("rsvp-api", () => {
     const { submitRsvp, RsvpApiError } = await import("@/lib/rsvp-api");
     await expect(
       submitRsvp({
-        invitationCode: "ABCD2345",
+        invitationCode: "AB2345",
         householdId: "grupo-amanda-cris",
         submittedBy: "g1",
         guestResponses: [{ guestId: "g1", status: "attending" }],

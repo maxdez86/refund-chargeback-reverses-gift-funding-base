@@ -10,6 +10,7 @@ import { type AppStage } from "@brimax/config";
 
 export interface StaticSiteConstructProps {
   certificate?: acm.ICertificate;
+  mediaBucket?: s3.IBucket;
   rootDomain?: string;
   siteAssetPath: string;
   stage: AppStage;
@@ -27,6 +28,20 @@ export class StaticSiteConstruct extends Construct {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true
     });
+
+    const mediaPrefixStripFunction = props.mediaBucket
+      ? new cloudfront.Function(this, "MediaPrefixStrip", {
+          code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var request = event.request;
+  if (request.uri.indexOf("/media/") === 0) {
+    request.uri = request.uri.substring(6);
+  }
+  return request;
+}
+`)
+        })
+      : undefined;
 
     const redirectFunction =
       props.rootDomain && props.wwwDomain
@@ -113,6 +128,24 @@ function handler(event) {
     );
 
     this.distribution = new cloudfront.Distribution(this, "SiteDistribution", {
+      additionalBehaviors: props.mediaBucket
+        ? {
+            "/media/*": {
+              cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+              functionAssociations: mediaPrefixStripFunction
+                ? [
+                    {
+                      eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+                      function: mediaPrefixStripFunction
+                    }
+                  ]
+                : undefined,
+              origin: origins.S3BucketOrigin.withOriginAccessControl(props.mediaBucket),
+              responseHeadersPolicy,
+              viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+            }
+          }
+        : undefined,
       certificate: props.certificate,
       defaultBehavior: {
         functionAssociations: redirectFunction

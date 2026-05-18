@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { InvitationCodeSchema } from "./invitation-code";
 
 export const RsvpStatusSchema = z.enum(["pending", "attending", "declined"]);
 
 export const GuestProfileSchema = z.object({
-  invitationCode: z.string().min(4),
+  invitationCode: InvitationCodeSchema,
   householdId: z.string().min(1),
   guestId: z.string().min(1),
   guestName: z.string().min(1),
@@ -22,7 +23,7 @@ export const GuestSummarySchema = z.object({
 });
 
 export const HouseholdInvitationSchema = z.object({
-  invitationCode: z.string().min(4),
+  invitationCode: InvitationCodeSchema,
   householdId: z.string().min(1),
   householdName: z.string().min(1),
   guests: z.array(GuestSummarySchema).min(1)

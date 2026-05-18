@@ -45,7 +45,7 @@ type AsaasErrorItem = {
 };
 
 type AsaasCheckoutBillingType = "PIX" | "CREDIT_CARD";
-type AsaasCheckoutChargeType = "DETACHED";
+type AsaasCheckoutChargeType = "DETACHED" | "INSTALLMENT";
 
 type CreateCheckoutInput = {
   billingTypes: AsaasCheckoutBillingType[];
@@ -65,6 +65,9 @@ type CreateCheckoutInput = {
     quantity: number;
     value: number;
   }>;
+  installment?: {
+    maxInstallmentCount: number;
+  };
   minutesToExpire: number;
 };
 

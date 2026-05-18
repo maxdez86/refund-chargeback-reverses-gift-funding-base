@@ -3,7 +3,7 @@ import { z } from "zod";
 export const GiftSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  imageUrl: z.string().url(),
+  image: z.string().min(1),
   fractional: z.boolean(),
   totalValueCents: z.number().int().positive(),
   partValueCents: z.number().int().positive().nullable(),

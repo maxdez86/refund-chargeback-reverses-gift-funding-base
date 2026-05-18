@@ -9,10 +9,10 @@ describe("PaymentRepository gift state", () => {
 
     await repository.resetGiftStateItems([
       {
-        id: "g-test-pix",
-        name: "PIX Teste",
-        imageUrl: "https://brimax.life/images/gifts-home.png",
-        totalValueCents: 500,
+        id: "g-toalhas-banho",
+        name: "4 Toalhas de Banho",
+        image: "4-toalhas-banho.jpg",
+        totalValueCents: 17_600,
         fractional: false,
         partValueCents: null,
         totalParts: null
@@ -23,10 +23,10 @@ describe("PaymentRepository gift state", () => {
     const command = send.mock.calls[0][0] as PutCommand;
     expect(command.input.Item).toEqual(
       expect.objectContaining({
-        PK: "GIFT#g-test-pix",
+        PK: "GIFT#g-toalhas-banho",
         SK: "STATE",
         entityType: "GiftState",
-        giftId: "g-test-pix",
+        giftId: "g-toalhas-banho",
         partsFunded: 0,
         fullyFunded: false
       })
@@ -72,7 +72,7 @@ describe("PaymentRepository gift state", () => {
     const repository = new PaymentRepository({ send } as never, "table-test");
 
     await repository.incrementGiftFunding({
-      giftId: "g-test-pix",
+      giftId: "g-toalhas-banho",
       paymentId: "payment-1",
       quantity: 1
     });
@@ -82,7 +82,7 @@ describe("PaymentRepository gift state", () => {
     const fullyFundedCommand = send.mock.calls[1][0] as UpdateCommand;
 
     expect(incrementCommand.input.Key).toEqual({
-      PK: "GIFT#g-test-pix",
+      PK: "GIFT#g-toalhas-banho",
       SK: "STATE"
     });
     expect(incrementCommand.input.ExpressionAttributeValues).toEqual(
