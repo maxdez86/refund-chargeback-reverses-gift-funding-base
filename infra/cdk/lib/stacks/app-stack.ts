@@ -21,6 +21,7 @@ export interface AppStackProps extends cdk.StackProps {
   apiDomain: string;
   asaasApiKey: string;
   asaasWebhookToken: string;
+  contactEmail: string;
   stage: AppStage;
   table: dynamodb.ITable;
 }
@@ -32,8 +33,8 @@ export class AppStack extends cdk.Stack {
     super(scope, id, props);
 
     const projectRoot = path.resolve(__dirname, "../../../../");
-    const senderDomainIdentity = "brimax.life";
-    const senderEmailIdentity = "casamento@brimax.life";
+    const senderEmailIdentity = props.contactEmail;
+    const senderDomainIdentity = senderEmailIdentity.split("@")[1] ?? "brimax.life";
     const asaasApiSecret = new secretsmanager.Secret(this, "AsaasApiSecret", {
       secretName: `/${props.stage}/brimax/asaas/api-key`,
       secretStringValue: cdk.SecretValue.unsafePlainText(
@@ -104,9 +105,10 @@ export class AppStack extends cdk.Stack {
           : "https://sandbox.asaas.com/checkoutSession/show",
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
+      CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: senderEmailIdentity,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
-      RSVP_NOTIFICATION_TO: "contato@brimax.life",
+      RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
     };
 

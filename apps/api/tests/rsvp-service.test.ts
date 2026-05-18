@@ -4,6 +4,7 @@ import { RsvpService } from "../src/domain/rsvp-service";
 import { AppError } from "../src/lib/errors";
 
 process.env.WEDDING_TABLE_NAME = "test-wedding-table";
+process.env.CONTACT_EMAIL = "casamento@brimax.life";
 
 const baseInvitation = {
   invitationCode: "AB2345",
@@ -54,7 +55,7 @@ describe("RsvpService", () => {
     expect(repository.upsertRsvp).toHaveBeenCalledWith(baseRequest, "attending");
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "contato@brimax.life",
+        to: "casamento@brimax.life",
         subject: "Nova confirmacao de presenca: Familia Silva",
         text: expect.stringContaining("Maria Silva: vai comparecer")
       })

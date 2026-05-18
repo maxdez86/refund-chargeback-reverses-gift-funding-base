@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 
 const faqs = [
   {
@@ -62,10 +63,10 @@ const faqs = [
       <>
         Pedimos desculpas se nos esquecemos de incluir alguém especial no seu convite! Por gentileza, envie um e-mail para{" "}
         <a
-          href="mailto:casamento@brimax.life"
+          href={CONTACT_EMAIL_MAILTO}
           className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
         >
-          casamento@brimax.life
+          {CONTACT_EMAIL}
         </a>
         {" "}com o nome do convidado para que possamos atualizar o sistema. Muito obrigado pela compreensão!
       </>

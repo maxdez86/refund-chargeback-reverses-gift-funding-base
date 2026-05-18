@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+process.env.VITE_CONTACT_EMAIL ??= process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
+
 const rawPort = process.env.PORT ?? "5173";
 
 const port = Number(rawPort);

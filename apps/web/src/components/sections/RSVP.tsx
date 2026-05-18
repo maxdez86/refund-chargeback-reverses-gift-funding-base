@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 
 type LookupState =
   | { kind: "idle" }
@@ -222,10 +223,10 @@ export function RSVP() {
                       Código não encontrado. Confira a grafia ou fale com a gente
                       pelo e-mail{" "}
                       <a
-                        href="mailto:casamento@brimax.life"
+                        href={CONTACT_EMAIL_MAILTO}
                         className="text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground/80"
                       >
-                        casamento@brimax.life
+                        {CONTACT_EMAIL}
                       </a>
                       .
                     </div>
@@ -417,7 +418,7 @@ function SuccessState({
           Confirmar outro convite
         </Button>
         <a
-          href="mailto:casamento@brimax.life"
+          href={CONTACT_EMAIL_MAILTO}
           className="inline-flex items-center justify-center gap-2 rounded-full border border-border/60 px-5 h-10 text-sm text-foreground hover:bg-secondary/40 transition-colors"
         >
           <Mail className="h-4 w-4" aria-hidden="true" />

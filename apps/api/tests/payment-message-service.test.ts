@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { PaymentMessageService } from "../src/domain/payment-message-service";
 
+process.env.CONTACT_EMAIL = "casamento@brimax.life";
+process.env.WEDDING_TABLE_NAME = "test-wedding-table";
+
 describe("PaymentMessageService", () => {
   it("stores one post-payment message and emails the couple", async () => {
     const repository = {

@@ -14,6 +14,7 @@ const stage = resolveStage(app.node.tryGetContext("stage") ?? process.env.STAGE)
 const rootDomain = process.env.ROOT_DOMAIN ?? "brimax.life";
 const apiDomain = process.env.API_DOMAIN ?? `api.${rootDomain}`;
 const wwwDomain = `www.${rootDomain}`;
+const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
@@ -83,6 +84,7 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   apiDomain,
   asaasApiKey,
   asaasWebhookToken,
+  contactEmail,
   stage,
   table: dataStack.table
 });

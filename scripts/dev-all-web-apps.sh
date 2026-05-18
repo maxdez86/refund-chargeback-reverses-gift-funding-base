@@ -5,6 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOG_DIR="${REPO_ROOT}/.tmp/dev-all-web-apps"
 
+source "${SCRIPT_DIR}/landing-env.sh"
+
+export VITE_CONTACT_EMAIL="${VITE_CONTACT_EMAIL:-${CONTACT_EMAIL}}"
+
 mkdir -p "${LOG_DIR}"
 
 apps=(

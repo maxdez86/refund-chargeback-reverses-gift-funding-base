@@ -39,14 +39,14 @@ function uniqueById(items) {
 
 export function buildManagedWebhookConfig({
   apiDomain,
-  rootDomain,
+  contactEmail,
   webhookToken,
   webhookUrl
 }) {
   return {
     name: "brimax-prod-asaas-webhook",
     url: webhookUrl ?? `https://${apiDomain}/webhooks/asaas`,
-    email: `casamento@${rootDomain}`,
+    email: contactEmail,
     enabled: true,
     interrupted: false,
     apiVersion: 3,
@@ -108,9 +108,9 @@ export async function syncAsaasWebhook({
   apiBaseUrl,
   apiDomain,
   apiKey,
+  contactEmail,
   fetchImpl = fetch,
   logger = console,
-  rootDomain,
   stage,
   webhookToken,
   webhookUrl
@@ -125,7 +125,7 @@ export async function syncAsaasWebhook({
 
   const desiredWebhook = buildManagedWebhookConfig({
     apiDomain,
-    rootDomain,
+    contactEmail,
     webhookToken,
     webhookUrl
   });
@@ -175,7 +175,7 @@ export async function runFromEnv({ fetchImpl = fetch, logger = console } = {}) {
   const stage = process.env.STAGE ?? "prod";
   const apiBaseUrl = process.env.ASAAS_API_BASE_URL ?? "https://api.asaas.com/v3";
   const apiDomain = requiredEnv("API_DOMAIN");
-  const rootDomain = requiredEnv("ROOT_DOMAIN");
+  const contactEmail = requiredEnv("CONTACT_EMAIL");
   const apiKey = requiredEnv("ASAAS_API_KEY");
   const webhookToken = requiredEnv("ASAAS_WEBHOOK_TOKEN");
   const webhookUrl = process.env.PAYMENTS_WEBHOOK_URL ?? `https://${apiDomain}/webhooks/asaas`;
@@ -184,9 +184,9 @@ export async function runFromEnv({ fetchImpl = fetch, logger = console } = {}) {
     apiBaseUrl,
     apiDomain,
     apiKey,
+    contactEmail,
     fetchImpl,
     logger,
-    rootDomain,
     stage,
     webhookToken,
     webhookUrl

@@ -28,6 +28,8 @@ export function getEnv(): Env {
     return cachedEnv;
   }
 
+  const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
+
   cachedEnv = {
     adminExportToken: process.env.ADMIN_EXPORT_TOKEN ?? "",
     asaasApiBaseUrl: process.env.ASAAS_API_BASE_URL ?? "https://api-sandbox.asaas.com/v3",
@@ -35,9 +37,9 @@ export function getEnv(): Env {
       process.env.ASAAS_CHECKOUT_BASE_URL ?? "https://www.asaas.com/checkoutSession/show",
     asaasApiSecretArn: process.env.ASAAS_API_SECRET_ARN ?? "",
     asaasWebhookSecretArn: process.env.ASAAS_WEBHOOK_SECRET_ARN ?? "",
-    emailFrom: process.env.EMAIL_FROM ?? "casamento@brimax.life",
+    emailFrom: process.env.EMAIL_FROM ?? contactEmail,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
-    rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? "contato@brimax.life",
+    rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",
     weddingTableName: required("WEDDING_TABLE_NAME")
   };

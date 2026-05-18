@@ -24,8 +24,8 @@ describe("asaas webhook sync", () => {
       apiBaseUrl: "https://api.asaas.com/v3",
       apiDomain: "api.brimax.life",
       apiKey: "asaas-key",
+      contactEmail: "casamento@brimax.life",
       fetchImpl,
-      rootDomain: "brimax.life",
       stage: "prod",
       webhookToken: "whsec_test_token_123456789012345678901234567890"
     });
@@ -67,8 +67,8 @@ describe("asaas webhook sync", () => {
       apiBaseUrl: "https://api.asaas.com/v3",
       apiDomain: "api.brimax.life",
       apiKey: "asaas-key",
+      contactEmail: "casamento@brimax.life",
       fetchImpl,
-      rootDomain: "brimax.life",
       stage: "prod",
       webhookToken: "whsec_test_token_123456789012345678901234567890"
     });
@@ -104,8 +104,8 @@ describe("asaas webhook sync", () => {
         apiBaseUrl: "https://api.asaas.com/v3",
         apiDomain: "api.brimax.life",
         apiKey: "asaas-key",
+        contactEmail: "casamento@brimax.life",
         fetchImpl,
-        rootDomain: "brimax.life",
         stage: "prod",
         webhookToken: "whsec_test_token_123456789012345678901234567890"
       })
@@ -122,8 +122,8 @@ describe("asaas webhook sync", () => {
       apiBaseUrl: "https://api-sandbox.asaas.com/v3",
       apiDomain: "api.dev.brimax.life",
       apiKey: "asaas-key",
+      contactEmail: "casamento@brimax.life",
       fetchImpl,
-      rootDomain: "brimax.life",
       stage: "dev",
       webhookToken: "whsec_test_token_123456789012345678901234567890"
     });
@@ -156,8 +156,8 @@ describe("asaas webhook sync", () => {
       apiBaseUrl: "https://api.asaas.com/v3",
       apiDomain: "api.brimax.life",
       apiKey: "asaas-key",
+      contactEmail: "casamento@brimax.life",
       fetchImpl,
-      rootDomain: "brimax.life",
       stage: "prod",
       webhookToken: "whsec_test_token_123456789012345678901234567890"
     });

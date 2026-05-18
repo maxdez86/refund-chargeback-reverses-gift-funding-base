@@ -20,6 +20,7 @@ describe("AppStack", () => {
       apiDomain: "api.brimax.life",
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
+      contactEmail: "casamento@brimax.life",
       stage: "dev",
       table: dataStack.table
     });
@@ -90,8 +91,9 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
+          CONTACT_EMAIL: "casamento@brimax.life",
           EMAIL_FROM: "casamento@brimax.life",
-          RSVP_NOTIFICATION_TO: "contato@brimax.life"
+          RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }
     });

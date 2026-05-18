@@ -1,6 +1,7 @@
 import React from "react";
 import { FaEnvelope, FaInstagram, FaYoutube } from "react-icons/fa";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
+import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 import { mediaUrl } from "@/lib/media";
 
 export function Footer() {
@@ -27,11 +28,11 @@ export function Footer() {
 
         <div className="flex flex-col items-center justify-center gap-3 text-sm text-[#fbf7f0]/70 md:flex-row md:gap-8">
           <a
-            href="mailto:casamento@brimax.life"
+            href={CONTACT_EMAIL_MAILTO}
             className="inline-flex items-center gap-2 transition-colors hover:text-[#d6ae64]"
           >
             <FaEnvelope aria-hidden="true" className="text-base" />
-            <span>casamento@brimax.life</span>
+            <span>{CONTACT_EMAIL}</span>
           </a>
           <a
             href="https://www.instagram.com/brimax.life/"

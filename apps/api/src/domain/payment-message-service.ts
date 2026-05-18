@@ -3,6 +3,7 @@ import {
   CreatePaymentMessageRequestSchema
 } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
+import { getEnv } from "../lib/env";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { EmailService } from "../services/email/client";
 
@@ -79,7 +80,7 @@ export class PaymentMessageService {
 
         try {
           await this.emailService.sendEmail({
-            to: "casamento@brimax.life",
+            to: getEnv().rsvpNotificationTo,
             subject: `Novo presente recebido pelo site: ${storedMessage.giftName}`,
             text:
               `Presente: ${storedMessage.giftName}\n` +

@@ -15,6 +15,7 @@ load_local_env_file() {
     AWS_PROFILE
     AWS_REGION
     ROOT_DOMAIN
+    CONTACT_EMAIL
     API_DOMAIN
     WWW_DOMAIN
     PAYMENTS_STACK_NAME
@@ -68,6 +69,7 @@ load_local_env_file
 
 export AWS_REGION="${AWS_REGION:-us-east-1}"
 export ROOT_DOMAIN="${ROOT_DOMAIN:-brimax.life}"
+export CONTACT_EMAIL="${CONTACT_EMAIL:-casamento@${ROOT_DOMAIN}}"
 export STAGE="${STAGE:-prod}"
 export API_DOMAIN="${API_DOMAIN:-api.${ROOT_DOMAIN}}"
 export WWW_DOMAIN="${WWW_DOMAIN:-www.${ROOT_DOMAIN}}"
