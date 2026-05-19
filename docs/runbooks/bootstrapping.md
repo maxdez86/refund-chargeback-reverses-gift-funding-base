@@ -132,22 +132,31 @@ This same `edge-dns` apply also enforces:
 - `always_use_https = on`
 - `min_tls_version = 1.2`
 
-## SES Domain Verification
+## SES Deliverability DNS
 
-To unlock SES production access, verify the `brimax.life` domain after the backend stack is deployed:
+To unlock SES production access and align transactional email authentication, verify the `brimax.life` domain after the backend stack is deployed:
 
 ```bash
-bash scripts/landing-opentofu.sh ses-dns init
-bash scripts/landing-opentofu.sh ses-dns apply
+pnpm opentofu:ses-dns:init
+pnpm opentofu:ses-dns:apply
 aws sesv2 get-email-identity --region us-east-1 --email-identity brimax.life
 ```
 
 Expected behavior:
 - `BrimaxAppStack` exposes the SES Easy DKIM CNAME tokens.
-- The `ses-dns` OpenTofu module creates those three DNS-only Cloudflare CNAMEs.
-- `aws sesv2 get-email-identity` eventually reports successful verification for `brimax.life`.
+- The `ses-dns` OpenTofu module creates the DKIM, MAIL FROM, SPF, and DMARC DNS records in Cloudflare.
+- `aws sesv2 get-email-identity` eventually reports successful verification for `brimax.life`, successful DKIM status, and a healthy custom MAIL FROM status.
 
-Only request SES production access after domain verification is complete.
+Use this verification command for a deeper status check:
+
+```bash
+aws sesv2 get-email-identity \
+  --region us-east-1 \
+  --email-identity brimax.life \
+  --query '{VerifiedForSendingStatus:VerifiedForSendingStatus,DkimStatus:DkimAttributes.Status,MailFromDomain:MailFromAttributes.MailFromDomain,MailFromStatus:MailFromAttributes.MailFromDomainStatus}'
+```
+
+Only request SES production access after domain verification is complete and the custom MAIL FROM DNS is healthy.
 
 ## Full First-Time Command Sequence
 
@@ -161,6 +170,8 @@ pnpm deploy:landing:cert
 pnpm wait:landing:cert
 pnpm deploy:landing:edge
 pnpm deploy:backend
+pnpm opentofu:ses-dns:init
+pnpm opentofu:ses-dns:apply
 ```
 
 ### Terminal 2

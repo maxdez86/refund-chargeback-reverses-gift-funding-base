@@ -12,6 +12,13 @@ pnpm deploy:backend
 
 Updates the backend application stack and API.
 
+If the deploy changes SES sender outputs or email deliverability configuration, also run:
+
+```bash
+pnpm opentofu:ses-dns:init
+pnpm opentofu:ses-dns:apply
+```
+
 ### Deploy Frontend
 
 ```bash
@@ -41,6 +48,7 @@ pnpm build:web
 pnpm typecheck
 pnpm test
 pnpm --filter @brimax/infra-cdk cdk synth
+pnpm opentofu:ses-dns:plan
 ```
 
 ## Full Deployment Sequence
@@ -90,16 +98,25 @@ This is the standard post-bootstrap production sequence. It assumes the platform
    pnpm opentofu:api-dns:apply
    ```
 
+8. If backend email deliverability settings changed, initialize and apply the SES DNS OpenTofu module:
+
+   ```bash
+   pnpm opentofu:ses-dns:init
+   pnpm opentofu:ses-dns:apply
+   ```
+
 The normal managed deploy keeps these production settings aligned:
 - CloudFront adds the baseline security headers.
 - CloudFront only serves the canonical hosts and rejects the default `cloudfront.net` hostname.
 - OpenTofu keeps Cloudflare `ssl`, `always_use_https`, and `min_tls_version` aligned.
+- OpenTofu keeps SES DKIM, MAIL FROM, SPF, and DMARC DNS records aligned when the sender config changes.
 
 ## Outputs / What To Check
 
 - `BrimaxAppStack` output `AsaasWebhookUrl` is the branded webhook URL.
 - `BrimaxAppStack` output `ApiCustomDomainUrl` is the branded public API base URL.
 - The raw `execute-api` hostname remains available only for fallback or debugging and should not be used for normal production traffic.
+- After email deliverability changes, verify SES identity health with `aws sesv2 get-email-identity --region us-east-1 --email-identity brimax.life` and send a real inbox test to confirm placement and headers.
 
 ## First-Time Setup
 

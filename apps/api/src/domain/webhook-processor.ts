@@ -4,6 +4,7 @@ import { AppError } from "../lib/errors";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
+import { escapeHtml, renderDetailLine, renderEmailDocument } from "../services/email/html";
 
 type AsaasWebhookPayload = {
   event?: string;
@@ -211,11 +212,16 @@ export class WebhookProcessor {
         subject: `${payment.payerFirstName}, recebemos seu presente`,
         text:
           `Oi, ${payment.payerFirstName}!\n\n` +
-          `Recebemos seu presente para Brida & Max.\n` +
-          `Presente: ${payment.gift.name}\n` +
-          `Valor: ${amount}\n` +
-          `\n` +
-          `Obrigado por fazer parte desse momento.\n`
+          `O seu presente para Brida & Max foi recebido com sucesso.\n` +
+          `Presente escolhido: ${payment.gift.name}\n` +
+          `Valor: ${amount}\n\n` +
+          `Obrigado por fazer parte desse momento.\n` +
+          `Enviado por brimax.life.\n`,
+        html: buildPayerConfirmationHtml({
+          amount,
+          giftName: payment.gift.name,
+          payerFirstName: payment.payerFirstName
+        })
       });
       await this.repository.markNotificationSent({
         paymentId: payment.paymentId,
@@ -229,4 +235,19 @@ export class WebhookProcessor {
       throw error;
     }
   }
+}
+
+function buildPayerConfirmationHtml(input: {
+  amount: string;
+  giftName: string;
+  payerFirstName: string;
+}) {
+  return renderEmailDocument(
+    `<p style="margin:0 0 12px;">Oi, ${escapeHtml(input.payerFirstName)}!</p>` +
+      '<p style="margin:0 0 16px;">O seu presente para Brida &amp; Max foi recebido com sucesso.</p>' +
+      renderDetailLine("Presente escolhido", input.giftName) +
+      renderDetailLine("Valor", input.amount) +
+      '<p style="margin:16px 0 16px;">Obrigado por fazer parte desse momento.</p>' +
+      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+  );
 }

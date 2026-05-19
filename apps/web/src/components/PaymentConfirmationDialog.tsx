@@ -34,7 +34,7 @@ type DialogCopy = {
 const COPY: Record<DialogVariant, DialogCopy> = {
   success: {
     title: "Presente recebido!",
-    body: "Sua contribuição foi confirmada. Muito obrigado pelo seu carinho e por fazer parte do nosso dia. — Brida & Max",
+    body: "Recebemos o seu presente e ficamos muito felizes por ter você fazendo parte desse momento tão especial da nossa história. Obrigado pelo carinho! - Brida e Max",
     icon: "check",
   },
   pending: {
@@ -314,7 +314,7 @@ export function PaymentConfirmationDialog() {
     const firstName = toDisplayNameCase(payment?.payerFirstName);
 
     if (firstName) {
-      return `${firstName}, sua contribuição foi confirmada. Muito obrigado pelo seu carinho e por fazer parte do nosso dia. — Brida & Max`;
+      return `${firstName}, recebemos o seu presente e ficamos muito felizes por ter você fazendo parte desse momento tão especial da nossa história. Obrigado pelo carinho! - Brida e Max`;
     }
 
     return COPY.success.body;
@@ -405,7 +405,7 @@ export function PaymentConfirmationDialog() {
           <div className="space-y-3">
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground text-center">
-                Quer deixar uma mensagem para Brida & Max?
+                Escreva aqui um recadinho para os noivos 
               </p>
               <Textarea
                 value={messageBody}

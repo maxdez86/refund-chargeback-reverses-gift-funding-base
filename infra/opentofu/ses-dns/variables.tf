@@ -20,6 +20,26 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "ses_domain_identity" {
+  description = "SES sender domain identity."
+  type        = string
+}
+
+variable "ses_mail_from_domain" {
+  description = "Custom SES MAIL FROM subdomain."
+  type        = string
+}
+
+variable "ses_mail_from_mx_value" {
+  description = "SES MAIL FROM MX record target including priority."
+  type        = string
+}
+
+variable "ses_mail_from_txt_value" {
+  description = "SES MAIL FROM SPF TXT value."
+  type        = string
+}
+
 variable "ses_dkim_record_name_1" {
   description = "SES DKIM CNAME record name 1."
   type        = string

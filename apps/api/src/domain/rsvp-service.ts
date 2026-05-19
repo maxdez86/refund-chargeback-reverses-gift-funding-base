@@ -9,6 +9,12 @@ import { getEnv } from "../lib/env";
 import { deriveOverallRsvpStatus } from "../services/dynamodb/mappers";
 import { WeddingRepository } from "../services/dynamodb/repositories/wedding-repository";
 import { EmailService } from "../services/email/client";
+import {
+  escapeHtml,
+  renderDetailLine,
+  renderEmailDocument,
+  renderMultilineText
+} from "../services/email/html";
 
 type RsvpSubmitResult = {
   response: ReturnType<typeof RsvpSubmissionResponseSchema.parse>;
@@ -41,7 +47,8 @@ export class RsvpService {
       await this.emailService.sendEmail({
         to: getEnv().rsvpNotificationTo,
         subject: `Nova confirmacao de presenca: ${invitation.householdName}`,
-        text: buildRsvpNotificationText(invitation, parsed, status, updatedAt)
+        text: buildRsvpNotificationText(invitation, parsed, status, updatedAt),
+        html: buildRsvpNotificationHtml(invitation, parsed, status, updatedAt)
       });
       notificationSent = true;
     } catch (error) {
@@ -99,4 +106,44 @@ function buildRsvpNotificationText(
     "Recado:",
     request.note?.trim() ? request.note.trim() : "Nenhum recado enviado."
   ].join("\n");
+}
+
+function buildRsvpNotificationHtml(
+  invitation: Awaited<ReturnType<WeddingRepository["getInvitationByCode"]>>,
+  request: RsvpSubmissionRequest,
+  status: GuestProfile["rsvpStatus"],
+  updatedAt: string
+) {
+  const responsesByGuestId = new Map(
+    request.guestResponses.map((response) => [response.guestId, response.status])
+  );
+  const guestItems =
+    invitation?.guests
+      .map((guest) => {
+        const response = responsesByGuestId.get(guest.guestId);
+        const description =
+          response === "attending" ? "vai comparecer" : "nao vai comparecer";
+
+        return `<li>${escapeHtml(`${guest.guestName}: ${description}`)}</li>`;
+      })
+      .join("") ?? "";
+
+  return renderEmailDocument(
+    '<p style="margin:0 0 12px;">Oi, Brida &amp; Max!</p>' +
+      '<p style="margin:0 0 16px;">Nova confirmacao de presenca recebida pelo site.</p>' +
+      renderDetailLine("Grupo", invitation?.householdName ?? request.householdId) +
+      renderDetailLine("Codigo do convite", request.invitationCode) +
+      renderDetailLine("Household ID", request.householdId) +
+      renderDetailLine("Status geral", status) +
+      renderDetailLine("Pessoas confirmadas", String(request.attendingGuestCount)) +
+      renderDetailLine("Enviado por", request.submittedBy) +
+      renderDetailLine("Atualizado em", updatedAt) +
+      '<p style="margin:16px 0 8px;"><strong>Convidados:</strong></p>' +
+      `<ul style="margin:0 0 16px 20px;padding:0;">${guestItems}</ul>` +
+      '<p style="margin:0 0 8px;"><strong>Recado:</strong></p>' +
+      `<p style="margin:0 0 16px;">${renderMultilineText(
+        request.note?.trim() ? request.note.trim() : "Nenhum recado enviado."
+      )}</p>` +
+      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+  );
 }

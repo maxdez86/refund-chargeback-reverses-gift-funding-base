@@ -23,6 +23,9 @@ query_stack_output() {
 }
 
 SES_DOMAIN_IDENTITY="$(query_stack_output "SesSenderDomainIdentity")"
+SES_MAIL_FROM_DOMAIN="$(query_stack_output "SesMailFromDomain")"
+SES_MAIL_FROM_MX_VALUE="$(query_stack_output "SesMailFromMxValue")"
+SES_MAIL_FROM_TXT_VALUE="$(query_stack_output "SesMailFromTxtValue")"
 SES_DKIM_RECORD_NAME_1="$(query_stack_output "SesDkimDnsTokenName1")"
 SES_DKIM_RECORD_VALUE_1="$(query_stack_output "SesDkimDnsTokenValue1")"
 SES_DKIM_RECORD_NAME_2="$(query_stack_output "SesDkimDnsTokenName2")"
@@ -32,6 +35,9 @@ SES_DKIM_RECORD_VALUE_3="$(query_stack_output "SesDkimDnsTokenValue3")"
 
 for key in \
   SES_DOMAIN_IDENTITY \
+  SES_MAIL_FROM_DOMAIN \
+  SES_MAIL_FROM_MX_VALUE \
+  SES_MAIL_FROM_TXT_VALUE \
   SES_DKIM_RECORD_NAME_1 \
   SES_DKIM_RECORD_VALUE_1 \
   SES_DKIM_RECORD_NAME_2 \
@@ -45,6 +51,9 @@ for key in \
 done
 
 printf 'export SES_DOMAIN_IDENTITY=%q\n' "${SES_DOMAIN_IDENTITY}"
+printf 'export SES_MAIL_FROM_DOMAIN=%q\n' "${SES_MAIL_FROM_DOMAIN}"
+printf 'export SES_MAIL_FROM_MX_VALUE=%q\n' "${SES_MAIL_FROM_MX_VALUE}"
+printf 'export SES_MAIL_FROM_TXT_VALUE=%q\n' "${SES_MAIL_FROM_TXT_VALUE}"
 printf 'export SES_DKIM_RECORD_NAME_1=%q\n' "${SES_DKIM_RECORD_NAME_1}"
 printf 'export SES_DKIM_RECORD_VALUE_1=%q\n' "${SES_DKIM_RECORD_VALUE_1}"
 printf 'export SES_DKIM_RECORD_NAME_2=%q\n' "${SES_DKIM_RECORD_NAME_2}"

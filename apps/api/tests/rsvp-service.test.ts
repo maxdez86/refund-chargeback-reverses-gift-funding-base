@@ -57,7 +57,8 @@ describe("RsvpService", () => {
       expect.objectContaining({
         to: "casamento@brimax.life",
         subject: "Nova confirmacao de presenca: Familia Silva",
-        text: expect.stringContaining("Maria Silva: vai comparecer")
+        text: expect.stringContaining("Maria Silva: vai comparecer"),
+        html: expect.stringContaining("Enviado automaticamente por brimax.life.")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
@@ -92,6 +93,11 @@ describe("RsvpService", () => {
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Recado:\nNenhum recado enviado.")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining("Nenhum recado enviado.")
       })
     );
   });

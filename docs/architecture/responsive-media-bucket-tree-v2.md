@@ -105,10 +105,6 @@ Formats:
 - `webp`
 - `jpeg`
 
-Transparent exception:
-
-- `presentes/purificador-agua/*` may use `png` instead of `jpeg` only if transparency must remain.
-
 ## Concrete Tree
 
 ### Hero
@@ -241,28 +237,6 @@ Each presentes slug folder must contain:
 1440.webp
 1440.jpeg
 ```
-
-Exception for `purificador-agua` if transparency remains required:
-
-```text
-480.avif
-480.webp
-480.png
-960.avif
-960.webp
-960.png
-1440.avif
-1440.webp
-1440.png
-```
-
-### Social
-
-```text
-social/
-  opengraph.jpeg
-```
-
 ## Later Contract Changes
 
 These are intentionally deferred until after assets are uploaded:
@@ -278,7 +252,6 @@ These are intentionally deferred until after assets are uploaded:
 - `hero/` contains exactly 9 files.
 - `footer/` contains exactly 9 files.
 - Each `story/`, `padrinhos/`, and `presentes/` slug folder contains the exact expected width/format set.
-- `social/` contains exactly `opengraph.jpeg`.
 - No file uses `.jpg`.
 - No filename contains spaces.
 - No filename contains uppercase letters.

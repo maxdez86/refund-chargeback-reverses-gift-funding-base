@@ -8,13 +8,18 @@ export class EmailService {
     to: string;
     subject: string;
     text: string;
+    html?: string;
+    replyTo?: string;
   }) {
+    const replyTo = input.replyTo ?? getEnv().contactEmail;
+
     const result = await sesClient.send(
       new SendEmailCommand({
         FromEmailAddress: getEnv().emailFrom,
         Destination: {
           ToAddresses: [input.to]
         },
+        ReplyToAddresses: [replyTo],
         Content: {
           Simple: {
             Subject: {
@@ -25,7 +30,15 @@ export class EmailService {
               Text: {
                 Data: input.text,
                 Charset: "UTF-8"
-              }
+              },
+              ...(input.html
+                ? {
+                    Html: {
+                      Data: input.html,
+                      Charset: "UTF-8"
+                    }
+                  }
+                : {})
             }
           }
         }

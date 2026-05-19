@@ -40,7 +40,7 @@ const chapters: Chapter[] = [
     id: "namoro",
     title: "Amor na prática",
     text: "O amor foi acontecendo assim: cheio de pequenos momentos que viraram tudo. Em Belo Horizonte, durante uma viagem para assistir a um clássico de futebol, ele resolveu transformar sentimento em compromisso. Em um restaurante super chique, comigo de moletom, sem maquiagem, completamente desprevenida, ouvi ele dizer: “Tenho uma coisa pra você… fecha os olhos.” E foi assim que ele me pediu em namoro. Entre o prato principal e a sobremesa mais deliciosa que já comi na vida. Só nós dois, sendo exatamente quem sempre fomos um com o outro.",
-    media: { kind: "image", file: "pedido-namoro.jpg", alt: "Pedido de namoro" },
+    media: { kind: "image", file: "pedido-namoro.webp", alt: "Pedido de namoro" },
   },
   {
     id: "munhoz",

@@ -110,6 +110,11 @@ describe("WebhookProcessor", () => {
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
+        html: expect.stringContaining("Enviado automaticamente por brimax.life.")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
         text: expect.not.stringContaining("Pagamento: payment-1")
       })
     );

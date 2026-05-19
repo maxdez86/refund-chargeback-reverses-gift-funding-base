@@ -74,6 +74,11 @@ describe("PaymentMessageService", () => {
         text: expect.stringContaining("Aqui está a mensagem que a pessoa enviou para vocês:")
       })
     );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining("Enviado automaticamente por brimax.life.")
+      })
+    );
     expect(repository.markNotificationSent).toHaveBeenCalledWith({
       paymentId: "payment-1",
       type: "COUPLE_MESSAGE",

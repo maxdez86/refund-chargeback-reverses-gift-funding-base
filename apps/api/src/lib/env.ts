@@ -4,6 +4,7 @@ type Env = {
   asaasCheckoutBaseUrl: string;
   asaasApiSecretArn: string;
   asaasWebhookSecretArn: string;
+  contactEmail: string;
   emailFrom: string;
   hostedCheckoutSuccessUrl: string;
   rsvpNotificationTo: string;
@@ -37,6 +38,7 @@ export function getEnv(): Env {
       process.env.ASAAS_CHECKOUT_BASE_URL ?? "https://www.asaas.com/checkoutSession/show",
     asaasApiSecretArn: process.env.ASAAS_API_SECRET_ARN ?? "",
     asaasWebhookSecretArn: process.env.ASAAS_WEBHOOK_SECRET_ARN ?? "",
+    contactEmail,
     emailFrom: process.env.EMAIL_FROM ?? contactEmail,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,

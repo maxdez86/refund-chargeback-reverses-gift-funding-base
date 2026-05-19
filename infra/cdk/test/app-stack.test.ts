@@ -69,6 +69,10 @@ describe("AppStack", () => {
       EmailIdentity: "brimax.life",
       DkimSigningAttributes: {
         NextSigningKeyLength: "RSA_2048_BIT"
+      },
+      MailFromAttributes: {
+        BehaviorOnMxFailure: "REJECT_MESSAGE",
+        MailFromDomain: "mail.brimax.life"
       }
     });
 
@@ -92,7 +96,7 @@ describe("AppStack", () => {
       Environment: {
         Variables: Match.objectLike({
           CONTACT_EMAIL: "casamento@brimax.life",
-          EMAIL_FROM: "casamento@brimax.life",
+          EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
           RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }
@@ -116,6 +120,9 @@ describe("AppStack", () => {
     template.hasOutput("ApiCustomDomainRegionalHostedZoneId", {});
     template.hasOutput("SesSenderEmailIdentity", {});
     template.hasOutput("SesSenderDomainIdentity", {});
+    template.hasOutput("SesMailFromDomain", {});
+    template.hasOutput("SesMailFromMxValue", {});
+    template.hasOutput("SesMailFromTxtValue", {});
     template.hasOutput("SesDkimDnsTokenName1", {});
     template.hasOutput("SesDkimDnsTokenValue1", {});
     template.hasOutput("SesDkimDnsTokenName2", {});

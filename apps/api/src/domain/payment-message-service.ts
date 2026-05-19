@@ -6,6 +6,11 @@ import { AppError } from "../lib/errors";
 import { getEnv } from "../lib/env";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { EmailService } from "../services/email/client";
+import {
+  renderDetailLine,
+  renderEmailDocument,
+  renderMultilineText
+} from "../services/email/html";
 
 function toDisplayNameCase(value: string | undefined) {
   if (!value) {
@@ -81,15 +86,23 @@ export class PaymentMessageService {
         try {
           await this.emailService.sendEmail({
             to: getEnv().rsvpNotificationTo,
-            subject: `Novo presente recebido pelo site: ${storedMessage.giftName}`,
-            text:
-              `Presente: ${storedMessage.giftName}\n` +
-              `Valor: ${amount}\n` +
-              `Pagamento: ${paymentId}\n` +
-              `Nome: ${storedMessage.payerName ?? "não informado"}\n` +
-              `Remetente: ${storedMessage.payerEmail ?? "não informado"}\n\n` +
-              `Aqui está a mensagem que a pessoa enviou para vocês:\n\n` +
-              `${storedMessage.body}\n`
+            subject: `${storedMessage.payerName}, enviou um presente para vocês 🤍`,
+            text: buildCoupleMessageText({
+              amount,
+              giftName: storedMessage.giftName,
+              message: storedMessage.body,
+              payerEmail: storedMessage.payerEmail,
+              payerName: storedMessage.payerName,
+              paymentId
+            }),
+            html: buildCoupleMessageHtml({
+              amount,
+              giftName: storedMessage.giftName,
+              message: storedMessage.body,
+              payerEmail: storedMessage.payerEmail,
+              payerName: storedMessage.payerName,
+              paymentId
+            })
           });
           await this.repository.markNotificationSent({
             paymentId,
@@ -110,4 +123,47 @@ export class PaymentMessageService {
       message: storedMessage
     });
   }
+}
+
+function buildCoupleMessageText(input: {
+  amount: string;
+  giftName: string;
+  message: string;
+  payerEmail?: string;
+  payerName?: string;
+  paymentId: string;
+}) {
+  return (
+    `Oi, Brida & Max!\n\n` +
+    `Vocês receberam um novo presente pelo site do casamento ✨\n\n` +
+    `Presente: ${input.giftName}\n` +
+    `Valor: ${input.amount}\n` +
+    `Pagamento: ${input.paymentId}\n` +
+    `Enviado por: ${input.payerName ?? "não informado"}\n` +
+    `Remetente: ${input.payerEmail ?? "não informado"}\n\n` +
+    `💌 Mensagem deixada:\n\n` +
+    `${input.message}\n`
+  );
+}
+
+function buildCoupleMessageHtml(input: {
+  amount: string;
+  giftName: string;
+  message: string;
+  payerEmail?: string;
+  payerName?: string;
+  paymentId: string;
+}) {
+  return renderEmailDocument(
+    '<p style="margin:0 0 12px;">Oi, Brida &amp; Max!</p>' +
+      '<p style="margin:0 0 16px;">Vocês receberam um novo presente pelo site do casamento ✨</p>' +
+      renderDetailLine("Presente", input.giftName) +
+      renderDetailLine("Valor", input.amount) +
+      renderDetailLine("Pagamento", input.paymentId) +
+      renderDetailLine("Enviado por", input.payerName ?? "não informado") +
+      renderDetailLine("Remetente", input.payerEmail ?? "não informado") +
+      '<p style="margin:16px 0 8px;"><strong>💌 Mensagem deixada:</strong></p>' +
+      `<p style="margin:0 0 16px;">${renderMultilineText(input.message)}</p>` +
+      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+  );
 }

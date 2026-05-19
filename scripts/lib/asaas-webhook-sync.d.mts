@@ -2,7 +2,7 @@ export const MANAGED_ASAAS_WEBHOOK_EVENTS: string[];
 
 export function buildManagedWebhookConfig(input: {
   apiDomain: string;
-  rootDomain: string;
+  contactEmail: string;
   webhookToken: string;
   webhookUrl?: string;
 }): {
@@ -26,9 +26,9 @@ export function syncAsaasWebhook(input: {
   apiBaseUrl: string;
   apiDomain: string;
   apiKey: string;
+  contactEmail: string;
   fetchImpl?: typeof fetch;
   logger?: Pick<Console, "info" | "error">;
-  rootDomain: string;
   stage: string;
   webhookToken: string;
   webhookUrl?: string;

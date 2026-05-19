@@ -59,6 +59,10 @@ case "${ACTION}" in
       source <(bash "$(dirname "$0")/export-ses-domain-dkim-records.sh")
 
       VAR_ARGS+=(
+        -var "ses_domain_identity=${SES_DOMAIN_IDENTITY}"
+        -var "ses_mail_from_domain=${SES_MAIL_FROM_DOMAIN}"
+        -var "ses_mail_from_mx_value=${SES_MAIL_FROM_MX_VALUE}"
+        -var "ses_mail_from_txt_value=${SES_MAIL_FROM_TXT_VALUE}"
         -var "ses_dkim_record_name_1=${SES_DKIM_RECORD_NAME_1}"
         -var "ses_dkim_record_value_1=${SES_DKIM_RECORD_VALUE_1}"
         -var "ses_dkim_record_name_2=${SES_DKIM_RECORD_NAME_2}"

@@ -35,6 +35,9 @@ export class AppStack extends cdk.Stack {
     const projectRoot = path.resolve(__dirname, "../../../../");
     const senderEmailIdentity = props.contactEmail;
     const senderDomainIdentity = senderEmailIdentity.split("@")[1] ?? "brimax.life";
+    const senderMailFromDomain = `mail.${senderDomainIdentity}`;
+    const senderMailFromMxValue = `10 feedback-smtp.${this.region}.amazonses.com`;
+    const senderMailFromTxtValue = "v=spf1 include:amazonses.com ~all";
     const asaasApiSecret = new secretsmanager.Secret(this, "AsaasApiSecret", {
       secretName: `/${props.stage}/brimax/asaas/api-key`,
       secretStringValue: cdk.SecretValue.unsafePlainText(
@@ -61,6 +64,10 @@ export class AppStack extends cdk.Stack {
       emailIdentity: senderDomainIdentity,
       dkimSigningAttributes: {
         nextSigningKeyLength: "RSA_2048_BIT"
+      },
+      mailFromAttributes: {
+        behaviorOnMxFailure: "REJECT_MESSAGE",
+        mailFromDomain: senderMailFromDomain
       }
     });
     const senderIdentity = new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
@@ -106,7 +113,7 @@ export class AppStack extends cdk.Stack {
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
       CONTACT_EMAIL: props.contactEmail,
-      EMAIL_FROM: senderEmailIdentity,
+      EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
@@ -328,6 +335,15 @@ export class AppStack extends cdk.Stack {
     new cdk.CfnOutput(this, "SesSenderDomainIdentity", {
       description: "SES domain identity used to unlock production access after DKIM DNS verification.",
       value: senderDomain.emailIdentity
+    });
+    new cdk.CfnOutput(this, "SesMailFromDomain", {
+      value: senderMailFromDomain
+    });
+    new cdk.CfnOutput(this, "SesMailFromMxValue", {
+      value: senderMailFromMxValue
+    });
+    new cdk.CfnOutput(this, "SesMailFromTxtValue", {
+      value: senderMailFromTxtValue
     });
 
     new cdk.CfnOutput(this, "SesDkimDnsTokenName1", {
