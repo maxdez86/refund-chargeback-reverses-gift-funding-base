@@ -2,7 +2,10 @@ import React from "react";
 import { FaEnvelope, FaInstagram, FaYoutube } from "react-icons/fa";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
-import { mediaUrl } from "@/lib/media";
+import {
+  buildDeviceImageFallbackSrc,
+  buildDeviceImageSources,
+} from "@/lib/media";
 
 export function Footer() {
   return (
@@ -10,7 +13,8 @@ export function Footer() {
       <div className="absolute inset-0 -z-10">
         <ResponsivePhoto
           section="footer"
-          fallbackSrc={mediaUrl("hero_footer", "footer.jpeg")}
+          sources={buildDeviceImageSources("footer")}
+          fallbackSrc={buildDeviceImageFallbackSrc("footer")}
           alt=""
           aria-hidden="true"
           loading="lazy"

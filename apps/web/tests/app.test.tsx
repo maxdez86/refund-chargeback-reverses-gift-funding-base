@@ -30,7 +30,7 @@ describe("official web app", () => {
       {
         id: "g-toalhas-banho",
         name: "4 Toalhas de Banho",
-        image: "4-toalhas-banho.jpg",
+        image: "toalhas-banho",
         fractional: false,
         totalValueCents: 17_600,
         partValueCents: null,
@@ -42,7 +42,7 @@ describe("official web app", () => {
       {
         id: "g-armario",
         name: "Armário de Cozinha",
-        image: "armario-cozinha.webp",
+        image: "armario-cozinha",
         fractional: true,
         totalValueCents: 174900,
         partValueCents: 5000,
@@ -61,7 +61,7 @@ describe("official web app", () => {
     HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
-  it("renders the migrated brimax landing page sections", () => {
+  it("renders the migrated brimax landing page sections", async () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: /Brida/i })).toBeInTheDocument();
@@ -71,6 +71,24 @@ describe("official web app", () => {
     expect(screen.getByRole("link", { name: "Lista de Presentes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sua presença é o nosso maior presente" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tire suas dúvidas." })).toBeInTheDocument();
+    expect(await screen.findByText("4 Toalhas de Banho")).toBeInTheDocument();
+    expect(document.querySelector('picture[data-media-policy-section="hero"] source[srcset="/media/hero/mobile.avif"]')).toBeInTheDocument();
+    expect(document.querySelector('picture[data-media-policy-section="footer"] source[srcset="/media/footer/desktop.jpeg"]')).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'picture[data-media-policy-section="story"] source[srcset*="/media/story/ps-eu-te-amo/480.avif 480w"]'
+      )
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'picture[data-media-policy-section="padrinhos"] source[srcset*="/media/padrinhos/nilza-e-cerqueira/480.avif 480w"]'
+      )
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'picture[data-media-policy-section="presentes"] source[srcset*="/media/presentes/toalhas-banho/480.avif 480w"]'
+      )
+    ).toBeInTheDocument();
   });
 
   it("opens the gift dialog flow", async () => {
@@ -110,7 +128,7 @@ describe("official web app", () => {
       {
         id: "g-armario",
         name: "Armário de Cozinha",
-        image: "armario-cozinha.webp",
+        image: "armario-cozinha",
         fractional: true,
         totalValueCents: 174900,
         partValueCents: 5000,

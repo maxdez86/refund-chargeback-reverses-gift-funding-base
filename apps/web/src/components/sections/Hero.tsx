@@ -1,7 +1,10 @@
 import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
-import { mediaUrl } from "@/lib/media";
+import {
+  buildDeviceImageFallbackSrc,
+  buildDeviceImageSources,
+} from "@/lib/media";
 
 const heroCopy = {
   weekday: "Domingo",
@@ -29,13 +32,8 @@ export function Hero() {
       <div className="absolute inset-0">
         <ResponsivePhoto
           section="hero"
-          sources={[
-            {
-              media: "(max-width: 767px)",
-              srcSet: mediaUrl("hero_footer", "hero-mobile.jpeg"),
-            },
-          ]}
-          fallbackSrc={mediaUrl("hero_footer", "hero.jpeg")}
+          sources={buildDeviceImageSources("hero")}
+          fallbackSrc={buildDeviceImageFallbackSrc("hero")}
           alt="Casal de mãos dadas ao pôr do sol"
           className="h-full w-full object-cover object-[50%_50%] md:object-[50%_48%] xl:object-[50%_42%] 2xl:object-[50%_38%]"
           fetchPriority="high"

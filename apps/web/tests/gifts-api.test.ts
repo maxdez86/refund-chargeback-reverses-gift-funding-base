@@ -16,7 +16,7 @@ describe("gifts-api", () => {
             {
               id: "g-toalhas-banho",
               name: "4 Toalhas de Banho",
-              image: "4-toalhas-banho.jpg",
+              image: "toalhas-banho",
               fractional: false,
               totalValueCents: 17_600,
               partValueCents: null,

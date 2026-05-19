@@ -16,7 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { getGifts, giftsQueryKey } from "@/lib/gifts-api";
-import { mediaUrl } from "@/lib/media";
+import {
+  buildSharedWidthImageFallbackSrc,
+  buildSharedWidthImageSources,
+} from "@/lib/media";
 import { createPayment, PaymentApiError } from "@/lib/payments-api";
 import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
@@ -24,7 +27,7 @@ import { returnToPresentes } from "@/lib/presentes-return";
 type Gift = {
   id: string;
   name: string;
-  image: string;
+  imageSlug: string;
   totalValue: number;
   fractional: boolean;
   partValue: number | null;
@@ -37,7 +40,7 @@ function toGiftView(gift: GiftResource): Gift {
   return {
     id: gift.id,
     name: gift.name,
-    image: mediaUrl("presentes", gift.image),
+    imageSlug: gift.image,
     totalValue: gift.totalValueCents / 100,
     fractional: gift.fractional,
     partValue: gift.partValueCents ? gift.partValueCents / 100 : null,
@@ -46,6 +49,9 @@ function toGiftView(gift: GiftResource): Gift {
     fullyFunded: gift.fullyFunded
   };
 }
+
+const PRESENTES_CARD_IMAGE_SIZES = "(max-width: 767px) 82vw, (max-width: 1279px) 42vw, 28vw";
+const PRESENTES_DIALOG_IMAGE_SIZES = "(max-width: 639px) 90vw, 32rem";
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -103,7 +109,8 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
       <div className="relative aspect-[4/5] bg-muted overflow-hidden">
         <ResponsivePhoto
           section="presentes"
-          fallbackSrc={gift.image}
+          sources={buildSharedWidthImageSources("presentes", gift.imageSlug, PRESENTES_CARD_IMAGE_SIZES)}
+          fallbackSrc={buildSharedWidthImageFallbackSrc("presentes", gift.imageSlug)}
           alt={gift.name}
           loading="lazy"
           className={`w-full h-full object-cover ${fullFunded ? "grayscale" : ""}`}
@@ -295,7 +302,8 @@ function GiftDialog({
           <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
             <ResponsivePhoto
               section="presentes"
-              fallbackSrc={gift.image}
+              sources={buildSharedWidthImageSources("presentes", gift.imageSlug, PRESENTES_DIALOG_IMAGE_SIZES)}
+              fallbackSrc={buildSharedWidthImageFallbackSrc("presentes", gift.imageSlug)}
               alt={gift.name}
               className="w-full h-full object-cover"
             />

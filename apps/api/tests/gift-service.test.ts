@@ -15,7 +15,7 @@ describe("GiftService", () => {
     expect(toalhasGift).toEqual(
       expect.objectContaining({
         id: "g-toalhas-banho",
-        image: "4-toalhas-banho.jpg",
+        image: "toalhas-banho",
         partsFunded: 0,
         fullyFunded: false,
         updatedAt: null

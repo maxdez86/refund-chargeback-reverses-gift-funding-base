@@ -11,7 +11,7 @@ describe("PaymentRepository gift state", () => {
       {
         id: "g-toalhas-banho",
         name: "4 Toalhas de Banho",
-        image: "4-toalhas-banho.jpg",
+        image: "toalhas-banho",
         totalValueCents: 17_600,
         fractional: false,
         partValueCents: null,

@@ -4,40 +4,45 @@ import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
-import { mediaUrl } from "@/lib/media";
+import {
+  buildSharedWidthImageFallbackSrc,
+  buildSharedWidthImageSources,
+} from "@/lib/media";
 
 type Person = {
   id: string;
   name: string;
   role?: string;
   isFamily?: boolean;
-  photo: string;
+  photoSlug: string;
 };
 
 const people: Person[] = [
-  { id: "nilza-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photo: "Nilza e Cerqueira.jpeg" },
-  { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true, photo: "ronaldo.jpeg" },
-  { id: "cristiane-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva & Padrinho", isFamily: true, photo: "Cristiane e Juliano.jpeg" },
-  { id: "alice", name: "Alice", role: "Madrinha", photo: "Alice.jpeg" },
-  { id: "amanda-cris", name: "Amanda e Chris", photo: "amanda-chris.jpg" },
-  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photo: "Ana Clara.jpeg" },
-  { id: "Carlinhos", name: "Carlinhos", role: "Pajem", photo: "Carlinhos.jpeg" },
-  { id: "carol-igor", name: "Carol e Igor", photo: "carol-higor.jpeg" },
-  { id: "debora-nael", name: "Débora e Nael", photo: "debora-nael.jpeg" },
-  { id: "drielly", name: "Drielly", role: "Madrinha", photo: "Drielly.jpeg" },
-  { id: "elis-son", name: "Elís e Son", photo: "elis-son.jpg" },
-  { id: "fabi-fernando", name: "Fabi e Fernando", photo: "fabi-fernando.jpg" },
-  { id: "heitor", name: "Heitor", role: "Pajem", photo: "heitor.jpeg" },
-  { id: "julia", name: "Julia", role: "Madrinha", photo: "julia.jpeg" },
-  { id: "kelly-sa", name: "Kelly e Sá", photo: "Kelly-e-Sa.jpeg" },
-  { id: "lila-welton", name: "Lila e Welton", photo: "Lila e Welton.jpeg" },
-  { id: "luiza", name: "Luiza", role: "Florista", photo: "Luiza.jpeg" },
-  { id: "nessa-carlos", name: "Nessa e Carlos", photo: "nessa-carlos.jpeg" },
-  { id: "nicolas", name: "Nícolas", role: "Pajem", photo: "nicolas.jpeg" },
-  { id: "nuza-sid", name: "Nuza e Sid", photo: "nuza-sid.jpeg" },
-  { id: "raquel", name: "Raquel", role: "Madrinha", photo: "Raquel.jpeg" },
-  { id: "tami-marcos", name: "Tami e Marcos", photo: "Tami e Marcos.jpeg" },
+  { id: "nilza-e-cerqueira", name: "Nilza e Cerqueira", role: "Pais do noivo", isFamily: true, photoSlug: "nilza-e-cerqueira" },
+  { id: "ronaldo", name: "Ronaldo", role: "Pai da noiva", isFamily: true, photoSlug: "ronaldo" },
+  { id: "cristiane-e-juliano", name: "Cristiane e Juliano", role: "Mãe da noiva & Padrinho", isFamily: true, photoSlug: "cristiane-e-juliano" },
+  { id: "alice", name: "Alice", role: "Madrinha", photoSlug: "alice" },
+  { id: "amanda-chris", name: "Amanda e Chris", photoSlug: "amanda-chris" },
+  { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photoSlug: "ana-clara" },
+  { id: "carlinhos", name: "Carlinhos", role: "Pajem", photoSlug: "carlinhos" },
+  { id: "carol-higor", name: "Carol e Igor", photoSlug: "carol-higor" },
+  { id: "debora-nael", name: "Débora e Nael", photoSlug: "debora-nael" },
+  { id: "drielly", name: "Drielly", role: "Madrinha", photoSlug: "drielly" },
+  { id: "elis-son", name: "Elís e Son", photoSlug: "elis-son" },
+  { id: "fabi-fernando", name: "Fabi e Fernando", photoSlug: "fabi-fernando" },
+  { id: "heitor", name: "Heitor", role: "Pajem", photoSlug: "heitor" },
+  { id: "julia", name: "Julia", role: "Madrinha", photoSlug: "julia" },
+  { id: "kelly-e-sa", name: "Kelly e Sá", photoSlug: "kelly-e-sa" },
+  { id: "lila-e-welton", name: "Lila e Welton", photoSlug: "lila-e-welton" },
+  { id: "luiza", name: "Luiza", role: "Florista", photoSlug: "luiza" },
+  { id: "nessa-carlos", name: "Nessa e Carlos", photoSlug: "nessa-carlos" },
+  { id: "nicolas", name: "Nícolas", role: "Pajem", photoSlug: "nicolas" },
+  { id: "nuza-sid", name: "Nuza e Sid", photoSlug: "nuza-sid" },
+  { id: "raquel", name: "Raquel", role: "Madrinha", photoSlug: "raquel" },
+  { id: "tami-e-marcos", name: "Tami e Marcos", photoSlug: "tami-e-marcos" },
 ];
+
+const PADRINHOS_IMAGE_SIZES = "(max-width: 767px) 85vw, (max-width: 1279px) 45vw, 32vw";
 
 export function Padrinhos() {
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start", skipSnaps: false });
@@ -182,7 +187,6 @@ export function Padrinhos() {
         >
           <div className="flex gap-6 md:gap-8 pb-2">
             {people.map((person, index) => {
-              const photoUrl = mediaUrl("padrinhos", person.photo);
               const eyebrow = person.role ?? (person.isFamily ? "Família" : "Madrinha & Padrinho");
               return (
                 <motion.article
@@ -204,7 +208,8 @@ export function Padrinhos() {
                   >
                     <ResponsivePhoto
                       section="padrinhos"
-                      fallbackSrc={photoUrl}
+                      sources={buildSharedWidthImageSources("padrinhos", person.photoSlug, PADRINHOS_IMAGE_SIZES)}
+                      fallbackSrc={buildSharedWidthImageFallbackSrc("padrinhos", person.photoSlug)}
                       alt=""
                       className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.03]"
                       loading="lazy"

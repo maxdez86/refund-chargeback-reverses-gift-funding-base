@@ -4,10 +4,14 @@ import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
-import { mediaUrl } from "@/lib/media";
+import {
+  buildSharedWidthImageFallbackSrc,
+  buildSharedWidthImageSources,
+  mediaFileUrl,
+} from "@/lib/media";
 
 type Media =
-  | { kind: "image"; file: string; alt: string }
+  | { kind: "image"; slug: string; alt: string }
   | { kind: "video"; file: string; posterAlt: string };
 
 type Chapter = {
@@ -34,25 +38,25 @@ const chapters: Chapter[] = [
     id: "ps",
     title: "PS. Eu Te Amo",
     text: "Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo ainda, mas o sentimento já transbordava. Em um momento inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia esperar aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu: “Eu te amo, meu amor.” Depois do primeiro, vieram vários. Eu adorava ouvir como ele tinha se apaixonado por mim e sempre puxava esse assunto outra vez. Em uma dessas conversas, ele comentou que tinha fuçado meu Instagram. Brinquei perguntando se aquilo tinha acontecido antes ou depois de se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”",
-    media: { kind: "image", file: "ps-eu-te-amo.JPG", alt: "Primeiro eu te amo" },
+    media: { kind: "image", slug: "ps-eu-te-amo", alt: "Primeiro eu te amo" },
   },
   {
     id: "namoro",
     title: "Amor na prática",
     text: "O amor foi acontecendo assim: cheio de pequenos momentos que viraram tudo. Em Belo Horizonte, durante uma viagem para assistir a um clássico de futebol, ele resolveu transformar sentimento em compromisso. Em um restaurante super chique, comigo de moletom, sem maquiagem, completamente desprevenida, ouvi ele dizer: “Tenho uma coisa pra você… fecha os olhos.” E foi assim que ele me pediu em namoro. Entre o prato principal e a sobremesa mais deliciosa que já comi na vida. Só nós dois, sendo exatamente quem sempre fomos um com o outro.",
-    media: { kind: "image", file: "pedido-namoro.webp", alt: "Pedido de namoro" },
+    media: { kind: "image", slug: "pedido-namoro", alt: "Pedido de namoro" },
   },
   {
     id: "munhoz",
     title: "Memórias de um inverno",
     text: "Desde então, a gente passou a colecionar memórias favoritas. E uma das mais especiais mora em Munhoz. A cidade nos acolheu em um inverno delicioso. A gente conversou profundamente sobre a vida… daqueles assuntos que fazem duas pessoas perceberem que estão, aos poucos, se encontrando em um outro alguém. Vivemos todas as aventuras possíveis: tirolesa, rapel, passeio a cavalo, caiaque, frio no rosto e mãos dadas o tempo inteiro. Acho que foi em Munhoz que eu percebi, de um jeito ainda mais forte, como era fácil ser feliz ao lado dele.",
-    media: { kind: "image", file: "memorias-de-um-inverno.jpg", alt: "Parque dos sonhos" },
+    media: { kind: "image", slug: "memorias-de-um-inverno", alt: "Parque dos sonhos" },
   },
   {
     id: "estadio",
     title: "Viva paixões comigo",
     text: "Ele, um torcedor de alma. Eu, sua companheira fiel em cada jogo no estádio, onde eu oficialmente virei o amuleto da sorte dele. As paixões que começaram a fazer sentido porque passaram a ser vividas juntos. Até as brincadeiras mais simples ficaram especiais, como quando ele perguntou se seria muito romântico comemorar 11 meses no jogo do Palmeiras.",
-    media: { kind: "image", file: "viva-paixoes-comigo.jpg", alt: "Estádio" },
+    media: { kind: "image", slug: "viva-paixoes-comigo", alt: "Estádio" },
   },
   {
     id: "buque",
@@ -73,6 +77,8 @@ const chapters: Chapter[] = [
     media: { kind: "video", file: "antes-do-sim.mp4", posterAlt: "Save the date" },
   },
 ];
+
+const STORY_IMAGE_SIZES = "(max-width: 767px) 85vw, (max-width: 1279px) 45vw, 32vw";
 
 function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
   return (
@@ -119,14 +125,15 @@ function MediaCard({
         {media.kind === "image" ? (
           <ResponsivePhoto
             section="story"
-            fallbackSrc={mediaUrl("story", media.file)}
+            sources={buildSharedWidthImageSources("story", media.slug, STORY_IMAGE_SIZES)}
+            fallbackSrc={buildSharedWidthImageFallbackSrc("story", media.slug)}
             alt={media.alt}
             className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.03]"
             loading="lazy"
           />
         ) : playing ? (
           <video
-            src={mediaUrl("story", media.file)}
+            src={mediaFileUrl("story", media.file)}
             title={chapter.title}
             className="absolute inset-0 h-full w-full object-cover bg-black"
             controls
@@ -142,7 +149,7 @@ function MediaCard({
             className="group absolute inset-0 h-full w-full cursor-pointer overflow-hidden border-0 bg-black p-0"
           >
             <video
-              src={mediaUrl("story", media.file)}
+              src={mediaFileUrl("story", media.file)}
               preload="metadata"
               muted
               playsInline
