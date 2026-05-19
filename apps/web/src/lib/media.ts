@@ -1,7 +1,11 @@
 import {
+  MEDIA_DEVICE_BREAKPOINTS,
+  MEDIA_DEVICE_CLASSES,
+  PHOTOGRAPHIC_MEDIA_FORMATS,
   type MediaDeviceClass,
   type PhotographicMediaFormat,
 } from "@/lib/media-policy";
+import type { PictureSource } from "@/components/ResponsivePhoto";
 
 export const MEDIA_BUCKET = import.meta.env.VITE_MEDIA_BUCKET as string | undefined;
 
@@ -9,25 +13,17 @@ export type DeviceImageSection = "hero" | "footer";
 export type SharedWidthImageSection = "story" | "padrinhos" | "presentes";
 export type SharedWidthVariant = 480 | 960 | 1440;
 
-type ResponsiveSource = {
-  media?: string;
-  sizes?: string;
-  srcSet: string;
-  type?: string;
-};
-
 const MIME_TYPE_BY_FORMAT: Record<PhotographicMediaFormat, string> = {
   avif: "image/avif",
   webp: "image/webp",
   jpeg: "image/jpeg",
 };
 
-const SHARED_WIDTH_VARIANTS: readonly SharedWidthVariant[] = [480, 960, 1440];
-const PHOTOGRAPHIC_FORMATS: readonly PhotographicMediaFormat[] = ["avif", "webp", "jpeg"];
+export const SHARED_WIDTH_VARIANTS: readonly SharedWidthVariant[] = [480, 960, 1440];
 const DEVICE_MEDIA_QUERIES: Record<MediaDeviceClass, string> = {
-  mobile: "(max-width: 767px)",
-  tablet: "(min-width: 768px) and (max-width: 1279px)",
-  desktop: "(min-width: 1280px)",
+  mobile: `(max-width: ${MEDIA_DEVICE_BREAKPOINTS.mobileMax}px)`,
+  tablet: `(min-width: ${MEDIA_DEVICE_BREAKPOINTS.tabletMin}px) and (max-width: ${MEDIA_DEVICE_BREAKPOINTS.tabletMax}px)`,
+  desktop: `(min-width: ${MEDIA_DEVICE_BREAKPOINTS.desktopMin}px)`,
 };
 
 export function mediaFileUrl(section: string, file: string): string {
@@ -51,9 +47,9 @@ export function sharedWidthImageUrl(
   return `/media/${section}/${encodeURIComponent(slug)}/${width}.${format}`;
 }
 
-export function buildDeviceImageSources(section: DeviceImageSection): ResponsiveSource[] {
-  return (["mobile", "tablet", "desktop"] as const).flatMap((device) =>
-    PHOTOGRAPHIC_FORMATS.map((format) => ({
+export function buildDeviceImageSources(section: DeviceImageSection): PictureSource[] {
+  return MEDIA_DEVICE_CLASSES.flatMap((device) =>
+    PHOTOGRAPHIC_MEDIA_FORMATS.map((format) => ({
       media: DEVICE_MEDIA_QUERIES[device],
       srcSet: deviceImageUrl(section, device, format),
       type: MIME_TYPE_BY_FORMAT[format],
@@ -69,8 +65,8 @@ export function buildSharedWidthImageSources(
   section: SharedWidthImageSection,
   slug: string,
   sizes: string,
-): ResponsiveSource[] {
-  return PHOTOGRAPHIC_FORMATS.map((format) => ({
+): PictureSource[] {
+  return PHOTOGRAPHIC_MEDIA_FORMATS.map((format) => ({
     sizes,
     srcSet: SHARED_WIDTH_VARIANTS.map(
       (width) => `${sharedWidthImageUrl(section, slug, width, format)} ${width}w`,

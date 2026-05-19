@@ -6,7 +6,7 @@ import {
   type ImagePolicySection,
 } from "@/lib/media-policy";
 
-type PictureSource = {
+export type PictureSource = {
   media?: string;
   sizes?: string;
   srcSet: string;

@@ -103,7 +103,11 @@ describe("PaymentConfirmationDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Maria, sua contribuição foi confirmada/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Maria, recebemos o seu presente e ficamos muito felizes por ter você fazendo parte desse momento tão especial da nossa história/i
+      )
+    ).toBeInTheDocument();
   }, 10_000);
 
   it("recovers the last payment from localStorage on cold load", async () => {

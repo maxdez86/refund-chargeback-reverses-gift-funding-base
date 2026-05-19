@@ -61,7 +61,7 @@ describe("PaymentMessageService", () => {
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "casamento@brimax.life",
-        subject: "Novo presente recebido pelo site: PIX Teste"
+        subject: "Maria, enviou um presente para vocês 🤍"
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
@@ -71,7 +71,7 @@ describe("PaymentMessageService", () => {
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("Aqui está a mensagem que a pessoa enviou para vocês:")
+        text: expect.stringContaining("💌 Mensagem deixada:")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
