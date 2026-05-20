@@ -18,6 +18,7 @@ type ResponsivePhotoProps = Omit<
   "src" | "children"
 > & {
   fallbackSrc: string;
+  pictureClassName?: string;
   section: ImagePolicySection;
   sources?: readonly PictureSource[];
   overlay?: ReactNode;
@@ -28,6 +29,7 @@ export function ResponsivePhoto({
   className,
   fallbackSrc,
   overlay,
+  pictureClassName,
   section,
   sources = [],
   ...imgProps
@@ -36,6 +38,7 @@ export function ResponsivePhoto({
 
   return (
     <picture
+      className={pictureClassName}
       data-media-policy-section={section}
       data-media-policy-kind={policy.kind}
       data-media-policy-crop={policy.cropPolicy}
