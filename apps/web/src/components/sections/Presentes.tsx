@@ -128,7 +128,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
       }`}
     >
       <div
-        className={`relative aspect-[4/4.3] md:aspect-[4/5] lg:aspect-[4/4.35] overflow-hidden ${
+        className={`relative flex h-[12.5rem] items-center justify-center overflow-hidden md:h-[14rem] lg:h-[15rem] xl:h-[16.5rem] ${
           imagePresentation?.containerClassName ?? "bg-muted"
         }`}
       >
@@ -139,8 +139,8 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
           alt={gift.name}
           loading="lazy"
           pictureClassName="block w-full h-full"
-          className={`w-full h-full ${
-            imagePresentation?.imageClassName ?? "object-cover"
+          className={`h-full w-full p-2 ${
+            imagePresentation?.imageClassName ?? "object-contain object-center"
           } ${fullFunded ? "grayscale" : ""}`}
         />
         {fullFunded && (
@@ -153,9 +153,9 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
         )}
       </div>
 
-      <div className="flex flex-col flex-1 p-4 md:p-6 lg:p-4 gap-2.5 md:gap-3 lg:gap-2">
+      <div className="flex flex-1 flex-col gap-2 p-3 md:gap-2.5 md:p-4 lg:gap-2 lg:p-3.5 xl:p-4">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="font-serif text-xl text-foreground leading-snug">
+          <h3 className="font-serif text-xl leading-snug text-foreground md:text-[1.1rem] lg:text-[1.05rem] xl:text-xl">
             {gift.name}
           </h3>
           {gift.fractional && (
@@ -165,7 +165,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
           )}
         </div>
 
-        <div className="mt-1.5 md:mt-2 lg:mt-1">
+        <div className="mt-1 md:mt-1.5 lg:mt-1">
           <div className="text-lg font-medium text-foreground">
             {formatBRL(gift.totalValue)}
           </div>
@@ -177,7 +177,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
         </div>
 
         {gift.fractional && (
-          <div className="mt-1.5 md:mt-2 lg:mt-1 space-y-1.5 md:space-y-2 lg:space-y-1.5">
+          <div className="mt-1 space-y-1.5 md:mt-1.5 md:space-y-1.5 lg:mt-1 lg:space-y-1.5">
             <ProgressBar percent={percent} />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
@@ -194,11 +194,11 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
           </div>
         )}
 
-        <div className="mt-auto pt-2.5 md:pt-4 lg:pt-2">
+        <div className="mt-auto pt-1.5 md:pt-2.5 lg:pt-2">
           {fullFunded ? (
             <Button
               variant="outline"
-              className="w-full rounded-full h-11 cursor-not-allowed"
+              className="h-10 w-full cursor-not-allowed rounded-full"
               disabled
               aria-disabled="true"
             >
@@ -206,7 +206,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
             </Button>
           ) : (
             <Button
-              className="w-full rounded-full h-11"
+              className="h-10 w-full rounded-full"
               onClick={() => onOpen(gift)}
             >
               {gift.fractional ? "Contribuir" : "Escolher presente"}
@@ -243,7 +243,6 @@ function GiftDialog({
       : 0;
   const partValue = gift.partValue ?? 0;
   const contribution = gift.fractional ? quantity * partValue : gift.totalValue;
-  const percent = gift.fractional ? fundedPercent(gift) : 0;
 
   const dec = () => setQuantity((q) => Math.max(1, q - 1));
   const inc = () =>
@@ -326,42 +325,27 @@ function GiftDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
-          <div className="aspect-[4/3] rounded-xl overflow-hidden bg-muted">
+        <div className="space-y-4">
+          <div className="flex items-center justify-center max-h-48 sm:max-h-56 rounded-xl overflow-hidden bg-muted">
             <ResponsivePhoto
               section="presentes"
               sources={buildSharedWidthImageSources("presentes", gift.imageSlug, PRESENTES_DIALOG_IMAGE_SIZES)}
               fallbackSrc={buildSharedWidthImageFallbackSrc("presentes", gift.imageSlug)}
               alt={gift.name}
-              className="w-full h-full object-cover"
+              className="object-contain max-h-48 sm:max-h-56 w-auto"
             />
           </div>
 
           {gift.fractional && (
             <>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Cada cota</span>
-                <span className="font-medium text-foreground">
-                  {formatBRL(partValue)}
+                <span className="text-muted-foreground">
+                  {formatBRL(partValue)} por cota
                 </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Disponível</span>
                 <span className="font-medium text-foreground">
                   {remainingParts}{" "}
-                  {remainingParts === 1 ? "cota" : "cotas"}
+                  {remainingParts === 1 ? "disponível" : "disponíveis"}
                 </span>
-              </div>
-
-              <div className="space-y-2">
-                <ProgressBar percent={percent} />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{percent}% arrecadado</span>
-                  <span>
-                    {formatBRL((gift.partsFunded ?? 0) * partValue)} de{" "}
-                    {formatBRL(gift.totalValue)}
-                  </span>
-                </div>
               </div>
 
               <div className="space-y-3">
@@ -556,15 +540,15 @@ export function Presentes() {
   return (
     <section
       id="presentes"
-      className="py-3 md:py-6 lg:py-4 bg-[#fbf7f0] border-t border-border/30 overflow-hidden"
+      className="overflow-hidden border-t border-border/30 bg-[#fbf7f0] py-3 md:py-4 lg:py-3"
     >
-      <div className="container mx-auto px-6 mb-2 md:mb-3 lg:mb-2 flex flex-col md:flex-row md:items-end justify-between gap-4 md:gap-8 lg:gap-6 relative">
+      <div className="container relative mx-auto mb-1 flex flex-col justify-between gap-2 px-6 md:mb-2 md:flex-row md:items-end md:gap-6 lg:gap-4">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="max-w-xl flex flex-col gap-3 md:block"
+          className="max-w-xl flex flex-col gap-2 md:block"
         >
           <h2 className="font-serif text-3xl md:text-5xl lg:text-5xl xl:text-6xl text-foreground">
             Se quiser nos presentear
@@ -574,11 +558,11 @@ export function Presentes() {
             <Button
               variant="outline"
               size="icon"
-              className="rounded-full h-11 w-11 border-border/50 text-foreground animate-bounce"
+              className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
               onClick={scrollToPrev}
               aria-label="Rolar para a seção anterior"
             >
-              <ChevronUp className="h-5 w-5" aria-hidden="true" />
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </motion.div>
@@ -587,11 +571,11 @@ export function Presentes() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            className="pointer-events-auto h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
             onClick={scrollToPrev}
             aria-label="Rolar para a seção anterior"
           >
-            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+            <ChevronUp className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
 
@@ -599,34 +583,34 @@ export function Presentes() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollPrev}
             disabled={!prevEnabled}
             aria-label="Presente anterior"
           >
-            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollNext}
             disabled={!nextEnabled}
             aria-label="Próximo presente"
           >
-            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
 
       <div className="pl-6 md:pl-12 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
         {isLoading ? (
-          <div className="flex min-h-[320px] items-center justify-center pr-6 md:pr-12 lg:pr-[max(1.5rem,calc((100vw-1280px)/2))]">
+          <div className="flex min-h-[260px] items-center justify-center pr-6 md:pr-12 lg:pr-[max(1.5rem,calc((100vw-1280px)/2))]">
             <Spinner className="h-8 w-8" />
           </div>
         ) : error ? (
           <div className="pr-6 md:pr-12 lg:pr-[max(1.5rem,calc((100vw-1280px)/2))]">
-            <div className="rounded-2xl border border-border/40 bg-card px-6 py-10 text-center text-muted-foreground">
+            <div className="rounded-2xl border border-border/40 bg-card px-6 py-8 text-center text-muted-foreground">
               Não conseguimos carregar a lista de presentes agora. Tente novamente em alguns instantes.
             </div>
           </div>
@@ -639,7 +623,7 @@ export function Presentes() {
           aria-roledescription="carrossel"
           aria-label="Carrossel de presentes"
         >
-          <div className="flex gap-4 md:gap-6 lg:gap-5 pb-8 md:pb-12 lg:pb-6 items-stretch">
+          <div className="flex items-stretch gap-4 pb-3 md:gap-5 md:pb-7 lg:gap-4 lg:pb-4">
             {sorted.map((gift, index) => (
               <motion.div
                 key={gift.id}
@@ -662,11 +646,11 @@ export function Presentes() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
           onClick={scrollToNext}
           aria-label="Rolar para a próxima seção"
         >
-          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
 

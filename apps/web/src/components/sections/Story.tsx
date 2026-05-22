@@ -31,13 +31,13 @@ const chapters: Chapter[] = [
   {
     id: "beijo",
     title: "O último primeiro beijo",
-    text: "O universo, com seu senso de humor, decidiu nos escalar para interpretar Dália e Arandir. Cunhada e cunhado. E, para piorar, minha personagem era apaixonada por ele em segredo. O roteiro exigia convivência, intimidade em cena, falas difíceis… e um beijo. Nenhum de nós estava preparado para aquilo. Muito menos quando, sem aviso nenhum, nossa diretora soltou: “Sobe no palco, Max. Vamos fazer A cena.” O beijo quase não saiu. Tentamos uma, duas vezes. Colocaram até música para aliviar a tensão. E então aconteceu. Quando as luzes do palco se apagaram, alguma coisa entre nós continuou acesa. Depois disso, nós começamos, aos poucos, a nos aproximar de verdade, até que surgiu uma frase que acabou dizendo tudo o que a gente ainda não sabia explicar: “Isso não é uma declaração, mas você me afeta.”",
+    text: "O universo decidiu nos escalar para interpretar Dália e Arandir. Cunhada e cunhado. E, para piorar, minha personagem era apaixonada por ele em segredo. O roteiro exigia convivência, intimidade em cena, falas difíceis… e um beijo. Nenhum de nós estava preparado para aquilo. Muito menos quando, sem aviso, nossa diretora soltou: “Sobe no palco, Max. Vamos fazer A cena.” O beijo quase não saiu. Tentamos uma, duas vezes. Colocaram música para aliviar a tensão. E então aconteceu. Quando as luzes do palco se apagaram, alguma coisa entre nós continuou acesa. Depois disso, começamos, aos poucos, a nos aproximar de verdade, até surgir uma frase que acabou dizendo tudo o que a gente ainda não sabia explicar: “você me afeta”.",
     media: { kind: "video", file: "o-ultimo-primeiro-beijo.mp4", posterAlt: "Brida e Max em cena" },
   },
   {
     id: "ps",
     title: "PS. Eu Te Amo",
-    text: "Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo ainda, mas o sentimento já transbordava. Em um momento inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia esperar aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu: “Eu te amo, meu amor.” Depois do primeiro, vieram vários. Eu adorava ouvir como ele tinha se apaixonado por mim e sempre puxava esse assunto outra vez. Em uma dessas conversas, ele comentou que tinha fuçado meu Instagram. Brinquei perguntando se aquilo tinha acontecido antes ou depois de se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”",
+    text: "Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo ainda, mas o sentimento já transbordava. Em um momento inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia esperar aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu: “Eu te amo, meu amor.” Depois do primeiro, vieram vários. Eu adorava ouvir como ele tinha se apaixonado por mim e sempre puxava esse assunto novamente. Em uma dessas conversas, comentou que tinha fuçado meu Instagram. Brinquei perguntando se aquilo tinha acontecido antes ou depois de se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”",
     media: { kind: "image", slug: "ps-eu-te-amo", alt: "Primeiro eu te amo" },
   },
   {
@@ -84,7 +84,7 @@ function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
   return (
     <motion.article
       data-historia-card
-      className="flex-[0_0_85%] md:flex-[0_0_45%] lg:flex-[0_0_32%] min-w-0"
+      className="min-w-0 flex-[0_0_85%] md:flex-[0_0_48%] lg:flex-[0_0_38%] xl:flex-[0_0_32%]"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
@@ -92,9 +92,13 @@ function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
       aria-roledescription="capítulo"
       aria-label={chapter.title}
     >
-      <div className="min-h-[28rem] md:min-h-[32rem] lg:min-h-[36rem] rounded-2xl bg-[#efe6d7] p-6 md:p-8 flex flex-col">
-        <h3 className="font-serif text-2xl md:text-3xl mb-4 text-foreground">{chapter.title}</h3>
-        <p className="text-muted-foreground leading-relaxed text-sm md:text-base">{chapter.text}</p>
+      <div className="flex min-h-[24rem] flex-col rounded-2xl bg-[#efe6d7] p-5 md:min-h-[24.5rem] md:p-5 lg:min-h-[26rem] lg:p-5 xl:min-h-[30rem] xl:p-6">
+        <h3 className="mb-2 font-serif text-[1.65rem] text-foreground md:text-[1.85rem] lg:text-[1.95rem] xl:mb-3 xl:text-[2rem]">
+          {chapter.title}
+        </h3>
+        <p className="text-sm leading-[1.72] text-muted-foreground md:text-[0.9rem] lg:text-[0.92rem] xl:text-[0.95rem] xl:leading-relaxed">
+          {chapter.text}
+        </p>
       </div>
     </motion.article>
   );
@@ -115,13 +119,13 @@ function MediaCard({
   return (
     <motion.article
       data-historia-card
-      className="flex-[0_0_85%] md:flex-[0_0_45%] lg:flex-[0_0_32%] min-w-0"
+      className="min-w-0 flex-[0_0_85%] md:flex-[0_0_48%] lg:flex-[0_0_38%] xl:flex-[0_0_32%]"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.6, delay: Math.min(index, 3) * 0.08 }}
     >
-      <div className="h-[28rem] md:h-[32rem] lg:h-[36rem] rounded-2xl overflow-hidden bg-muted relative">
+      <div className="relative h-[24rem] rounded-2xl overflow-hidden bg-muted md:h-[24.5rem] lg:h-[26rem] xl:h-[30rem]">
         {media.kind === "image" ? (
           <ResponsivePhoto
             section="story"
@@ -250,16 +254,16 @@ export function Story() {
   }, [emblaApi]);
 
   return (
-    <section id="historia" className="py-4 md:py-6 bg-[#f4eee5] overflow-hidden">
-      <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
+    <section id="historia" className="overflow-hidden bg-[#f4eee5] py-3 md:py-4">
+      <div className="container relative mx-auto mb-2 flex flex-col justify-between gap-6 px-6 md:mb-2 md:flex-row md:items-end lg:gap-4 xl:gap-6">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="max-w-xl"
+          className="max-w-[13ch] md:max-w-[11ch] lg:max-w-[12ch] xl:max-w-xl"
         >
-          <h2 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-3">
+          <h2 className="mb-2 font-serif text-4xl text-foreground md:text-[3.4rem] lg:text-[4.3rem] xl:text-6xl">
             A história do ponto de vista dela
           </h2>
         </motion.div>
@@ -268,11 +272,11 @@ export function Story() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            className="pointer-events-auto h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
             onClick={scrollToPrev}
             aria-label="Rolar para a seção anterior"
           >
-            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+            <ChevronUp className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
 
@@ -280,22 +284,22 @@ export function Story() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollPrev}
             disabled={!prevEnabled}
             aria-label="Capítulo anterior"
           >
-            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollNext}
             disabled={!nextEnabled}
             aria-label="Próximo capítulo"
           >
-            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -309,7 +313,7 @@ export function Story() {
           aria-roledescription="carrossel"
           aria-label="Carrossel da nossa história"
         >
-          <div className="flex gap-6 md:gap-8 pb-12 items-stretch">
+          <div className="flex items-stretch gap-5 pb-8 md:gap-5 md:pb-7 lg:gap-6 lg:pb-8 xl:pb-9">
             {chapters.flatMap((c, i) => [
               <TextCard key={`${c.id}-text`} chapter={c} index={i} />,
               <MediaCard
@@ -328,11 +332,11 @@ export function Story() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
           onClick={scrollToNext}
           aria-label="Rolar para a próxima seção"
         >
-          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
     </section>

@@ -25,19 +25,23 @@ export function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const scrollTo = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    e.preventDefault();
+  const scrollToHref = (href: string) => {
     setMobileMenuOpen(false);
     const element = document.querySelector(href);
-    if (element) {
-      const offset = 80;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - offset;
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth"
-      });
-    }
+    if (!element) return;
+    const offset = 80;
+    const elementPosition = element.getBoundingClientRect().top;
+    const offsetPosition = elementPosition + window.pageYOffset - offset;
+    window.scrollTo({
+      top: offsetPosition,
+      behavior: "smooth"
+    });
+    window.history.replaceState(null, "", href);
+  };
+
+  const scrollTo = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    scrollToHref(href);
   };
 
   return (
@@ -82,10 +86,7 @@ export function Navigation() {
               variant="default"
               size="sm"
               className="font-medium rounded-full px-6"
-              onClick={() => {
-                const el = document.querySelector("#confirmar-presenca");
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
+              onClick={() => scrollToHref("#confirmar-presenca")}
             >
               Confirmar Presença
             </Button>
@@ -118,11 +119,7 @@ export function Navigation() {
             ))}
             <Button
               className="mt-8 rounded-full px-8 py-6 text-lg w-full max-w-xs"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                const el = document.querySelector("#confirmar-presenca");
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
+              onClick={() => scrollToHref("#confirmar-presenca")}
             >
               Confirmar Presença
             </Button>
@@ -136,19 +133,13 @@ export function Navigation() {
           <Button
             variant="outline"
             className="flex-1 rounded-xl bg-white/50"
-            onClick={() => {
-              const el = document.querySelector("#presentes");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => scrollToHref("#presentes")}
           >
             Lista de Presentes
           </Button>
           <Button
             className="flex-1 rounded-xl"
-            onClick={() => {
-              const el = document.querySelector("#confirmar-presenca");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => scrollToHref("#confirmar-presenca")}
           >
             Confirmar Presença
           </Button>

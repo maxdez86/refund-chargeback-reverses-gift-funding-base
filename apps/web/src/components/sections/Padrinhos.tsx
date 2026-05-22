@@ -125,9 +125,9 @@ export function Padrinhos() {
     <section
       id="padrinhos"
       aria-labelledby="padrinhos-heading"
-      className="padrinhos-v4 overflow-hidden bg-accent/30 py-4 text-foreground md:py-6"
+      className="padrinhos-v4 overflow-hidden bg-accent/30 py-4 text-foreground md:py-5"
     >
-      <div className="container mx-auto px-6 mb-2 md:mb-3 flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
+      <div className="container relative mx-auto mb-3 flex flex-col justify-between gap-6 px-6 md:mb-3 md:flex-row md:items-end">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -144,11 +144,11 @@ export function Padrinhos() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce pointer-events-auto"
+            className="pointer-events-auto h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
             onClick={scrollToPrev}
             aria-label="Rolar para a seção anterior"
           >
-            <ChevronUp className="h-5 w-5" aria-hidden="true" />
+            <ChevronUp className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
 
@@ -156,22 +156,22 @@ export function Padrinhos() {
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollPrev}
             disabled={!prevEnabled}
             aria-label="Pessoa anterior"
           >
-            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="rounded-full h-12 w-12 border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-border/50 text-foreground"
             onClick={scrollNext}
             disabled={!nextEnabled}
             aria-label="Próxima pessoa"
           >
-            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -185,7 +185,7 @@ export function Padrinhos() {
           aria-roledescription="carrossel"
           aria-label="Carrossel de padrinhos, madrinhas e família"
         >
-          <div className="flex gap-6 md:gap-8 pb-2">
+          <div className="flex gap-5 pb-3 md:gap-6 md:pb-4">
             {people.map((person, index) => {
               const eyebrow = person.role ?? (person.isFamily ? "Família" : "Madrinha & Padrinho");
               return (
@@ -200,7 +200,7 @@ export function Padrinhos() {
                 >
                   <div
                     data-padrinhos-photo
-                    className={`aspect-[5/6] rounded-2xl overflow-hidden mb-3 bg-muted relative ${
+                    className={`relative mb-3 flex h-[21rem] items-center justify-center overflow-hidden rounded-2xl bg-[#efe6d7] md:h-[23rem] lg:h-[25rem] xl:h-[27rem] ${
                       person.isFamily
                         ? "ring-2 ring-[#d6ae64] ring-offset-2 ring-offset-[#f5efe6]"
                         : ""
@@ -211,20 +211,21 @@ export function Padrinhos() {
                       sources={buildSharedWidthImageSources("padrinhos", person.photoSlug, PADRINHOS_IMAGE_SIZES)}
                       fallbackSrc={buildSharedWidthImageFallbackSrc("padrinhos", person.photoSlug)}
                       alt=""
-                      className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.03]"
+                      pictureClassName="block h-full w-full"
+                      className="h-full w-full object-contain object-center p-2"
                       loading="lazy"
                     />
-                    <div className="absolute top-4 left-4 bg-background/85 backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium tracking-widest uppercase text-foreground/80">
+                    <div className="absolute left-3 top-3 rounded-full bg-background/85 px-3 py-1 text-xs font-medium uppercase tracking-widest text-foreground/80 backdrop-blur-sm">
                       {String(index + 1).padStart(2, "0")} / {String(people.length).padStart(2, "0")}
                     </div>
                   </div>
                   <div className="pr-4">
-                    <span className="text-xs font-medium tracking-[0.2em] uppercase text-foreground/40 mb-3 block">
+                    <span className="mb-2.5 block text-xs font-medium uppercase tracking-[0.18em] text-foreground/40">
                       {eyebrow}
                     </span>
                     <h3
                       id={`person-name-${person.id}`}
-                      className="font-serif text-2xl md:text-3xl mb-3 text-foreground"
+                      className="mb-2 font-serif text-2xl text-foreground md:text-[1.9rem] xl:text-3xl"
                     >
                       {person.name}
                     </h3>
@@ -240,11 +241,11 @@ export function Padrinhos() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full h-12 w-12 border-border/50 text-foreground animate-bounce"
+          className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
           onClick={scrollToNext}
           aria-label="Rolar para a próxima seção"
         >
-          <ChevronDown className="h-5 w-5" aria-hidden="true" />
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
     </section>
