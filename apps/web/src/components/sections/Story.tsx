@@ -32,7 +32,7 @@ const chapters: Chapter[] = [
     id: "beijo",
     title: "O último primeiro beijo",
     text: "O universo decidiu nos escalar para interpretar Dália e Arandir. Cunhada e cunhado. E, para piorar, minha personagem era apaixonada por ele em segredo. O roteiro exigia convivência, intimidade em cena, falas difíceis… e um beijo. Nenhum de nós estava preparado para aquilo. Muito menos quando, sem aviso, nossa diretora soltou: “Sobe no palco, Max. Vamos fazer A cena.” O beijo quase não saiu. Tentamos uma, duas vezes. Colocaram música para aliviar a tensão. E então aconteceu. Quando as luzes do palco se apagaram, alguma coisa entre nós continuou acesa. Depois disso, começamos, aos poucos, a nos aproximar de verdade, até surgir uma frase que acabou dizendo tudo o que a gente ainda não sabia explicar: “você me afeta”.",
-    media: { kind: "video", file: "o-ultimo-primeiro-beijo.mp4", posterAlt: "Brida e Max em cena" },
+    media: { kind: "image", slug: "o-ultimo-primeiro-beijo", alt: "Brida e Max em cena" },
   },
   {
     id: "ps",

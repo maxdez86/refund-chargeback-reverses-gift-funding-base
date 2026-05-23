@@ -76,9 +76,15 @@ describe("official web app", () => {
     expect(document.querySelector('picture[data-media-policy-section="footer"] source[srcset="/media/footer/desktop.jpeg"]')).toBeInTheDocument();
     expect(
       document.querySelector(
+        'picture[data-media-policy-section="story"] source[srcset*="/media/story/o-ultimo-primeiro-beijo/480.avif 480w"]'
+      )
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(
         'picture[data-media-policy-section="story"] source[srcset*="/media/story/ps-eu-te-amo/480.avif 480w"]'
       )
     ).toBeInTheDocument();
+    expect(document.querySelector('video[src="/media/story/o-ultimo-primeiro-beijo.mp4"]')).not.toBeInTheDocument();
     expect(
       document.querySelector(
         'picture[data-media-policy-section="padrinhos"] source[srcset*="/media/padrinhos/nilza-e-cerqueira/480.avif 480w"]'
