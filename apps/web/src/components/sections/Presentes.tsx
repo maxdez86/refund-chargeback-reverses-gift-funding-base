@@ -2,7 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Minus, Plus, Check } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Minus,
+  Plus,
+  Check,
+  HelpCircle,
+  Gift as GiftIcon,
+  Users,
+  HandCoins,
+  Heart,
+} from "lucide-react";
 import { toast } from "sonner";
 import { type CreatePaymentRequest, type Gift as GiftResource } from "@brimax/contracts";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
@@ -218,6 +231,81 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
   );
 }
 
+const COTA_STEPS = [
+  {
+    icon: GiftIcon,
+    title: "Escolha um presente",
+    body: "Os presentes maiores estão divididos em cotas iguais, para que vários convidados possam contribuir juntos.",
+  },
+  {
+    icon: Users,
+    title: "Veja quantas cotas faltam",
+    body: "A barra de progresso mostra quanto já foi presenteado e quantas cotas ainda estão disponíveis.",
+  },
+  {
+    icon: HandCoins,
+    title: "Contribua com o que puder",
+    body: "Escolha quantas cotas você quer presentear e te levamos para o pagamento seguro pela Asaas.",
+  },
+  {
+    icon: Heart,
+    title: "Juntos completamos o presente",
+    body: "Quando todas as cotas forem preenchidas, o presente está garantido. Toda contribuição conta!",
+  },
+] as const;
+
+function HowCotasWorkDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg bg-background rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-2xl text-foreground">
+            Como funcionam as cotas?
+          </DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            Cada presente pode ser dividido em partes. Veja como participar:
+          </DialogDescription>
+        </DialogHeader>
+
+        <ol className="space-y-4">
+          {COTA_STEPS.map(({ icon: Icon, title, body }, i) => (
+            <li key={title} className="flex items-start gap-3">
+              <div className="relative shrink-0">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <span className="absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                  {i + 1}
+                </span>
+              </div>
+              <div className="flex-1 pt-0.5">
+                <h4 className="font-medium text-foreground">{title}</h4>
+                <p className="text-sm text-muted-foreground mt-0.5">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="pt-2">
+          <Button
+            type="button"
+            className="rounded-full w-full"
+            onClick={() => onOpenChange(false)}
+          >
+            Entendi
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function GiftDialog({
   gift,
   open,
@@ -229,6 +317,7 @@ function GiftDialog({
 }) {
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
 
   useEffect(() => {
     setQuantity(1);
@@ -323,6 +412,16 @@ function GiftDialog({
               ? "Escolha quantas cotas você gostaria de presentear e siga para o pagamento."
               : "Confira o valor e siga para o pagamento."}
           </DialogDescription>
+          {gift.fractional && (
+            <button
+              type="button"
+              onClick={() => setHowOpen(true)}
+              className="mt-1 inline-flex items-center gap-1.5 self-start text-sm text-primary underline-offset-4 hover:underline focus:outline-none focus-visible:underline"
+            >
+              <HelpCircle className="h-4 w-4" aria-hidden="true" />
+              Como funcionam as cotas?
+            </button>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -437,6 +536,7 @@ function GiftDialog({
           </div>
         </div>
       </DialogContent>
+      <HowCotasWorkDialog open={howOpen} onOpenChange={setHowOpen} />
     </Dialog>
   );
 }
