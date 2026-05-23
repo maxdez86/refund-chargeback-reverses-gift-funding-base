@@ -61,7 +61,7 @@ export const PAYMENT_GIFTS: PaymentGift[] = [
   fractional("g-refrigerador", "Geladeira Brastemp", 2960, "geladeira-brastemp"),
   fractional("g-sofa", "Sofá", 1482, "sofa"),
   single("g-steamer", "Steamer", 141, "steamer"),
-  single("g-travesseiros", "Travesseiros", 5, "travesseiros")
+  single("g-travesseiros", "Travesseiros", 59, "travesseiros")
 ];
 
 export const PAYMENT_GIFTS_BY_ID = new Map(PAYMENT_GIFTS.map((gift) => [gift.id, gift]));
