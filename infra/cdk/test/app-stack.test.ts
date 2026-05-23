@@ -31,6 +31,8 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::SQS::Queue", 2);
     template.resourceCountIs("AWS::SecretsManager::Secret", 2);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
+    template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
+    template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
     template.resourceCountIs("AWS::Lambda::Function", 9);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
@@ -75,6 +77,30 @@ describe("AppStack", () => {
         MailFromDomain: "mail.brimax.life"
       }
     });
+    template.hasResourceProperties("AWS::SES::ConfigurationSet", {
+      Name: "brimax-dev-transactional",
+      ReputationOptions: {
+        ReputationMetricsEnabled: true
+      },
+      DeliveryOptions: {
+        TlsPolicy: "REQUIRE"
+      }
+    });
+    template.hasResourceProperties("AWS::SES::ConfigurationSetEventDestination", {
+      EventDestination: {
+        CloudWatchDestination: {
+          DimensionConfigurations: Match.arrayWith([
+            Match.objectLike({
+              DefaultDimensionValue: Match.anyValue(),
+              DimensionName: "ses:configuration-set",
+              DimensionValueSource: "messageTag"
+            })
+          ])
+        },
+        Enabled: true,
+        MatchingEventTypes: ["delivery", "bounce", "complaint"]
+      }
+    });
 
     template.hasResourceProperties("AWS::Logs::MetricFilter", {
       FilterPattern: '"PAYMENT_CREATE_FAILED"',
@@ -97,6 +123,7 @@ describe("AppStack", () => {
         Variables: Match.objectLike({
           CONTACT_EMAIL: "casamento@brimax.life",
           EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
+          EMAIL_CONFIGURATION_SET_NAME: Match.anyValue(),
           RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }
@@ -120,6 +147,7 @@ describe("AppStack", () => {
     template.hasOutput("ApiCustomDomainRegionalHostedZoneId", {});
     template.hasOutput("SesSenderEmailIdentity", {});
     template.hasOutput("SesSenderDomainIdentity", {});
+    template.hasOutput("SesConfigurationSetName", {});
     template.hasOutput("SesMailFromDomain", {});
     template.hasOutput("SesMailFromMxValue", {});
     template.hasOutput("SesMailFromTxtValue", {});

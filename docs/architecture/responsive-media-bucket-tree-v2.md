@@ -142,6 +142,7 @@ footer/
 ```text
 story/
   amor-na-pratica/
+  book-review/
   memorias-de-um-inverno/
   ps-eu-te-amo/
   viva-paixoes-comigo/

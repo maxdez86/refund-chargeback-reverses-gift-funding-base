@@ -10,6 +10,7 @@ import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialo
 import { Hero } from "@/components/sections/Hero";
 import { Countdown } from "@/components/sections/Countdown";
 import { Story } from "@/components/sections/Story";
+import { StoryReview } from "@/components/sections/StoryReview";
 import { PreWedding } from "@/components/sections/PreWedding";
 import { Local } from "@/components/sections/Local";
 import { Padrinhos } from "@/components/sections/Padrinhos";
@@ -95,6 +96,7 @@ function Home() {
         <Hero />
         <Countdown />
         <Story />
+        <StoryReview />
         <PreWedding />
         <Local />
         <Padrinhos />

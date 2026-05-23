@@ -28,6 +28,7 @@ describe("EmailService", () => {
     sendMock.mockResolvedValue({ MessageId: "msg-1" });
     process.env.CONTACT_EMAIL = "casamento@brimax.life";
     process.env.EMAIL_FROM = "Casamento Brimax <casamento@brimax.life>";
+    process.env.EMAIL_CONFIGURATION_SET_NAME = "brimax-prod-transactional";
     process.env.WEDDING_TABLE_NAME = "test-wedding-table";
   });
 
@@ -51,6 +52,7 @@ describe("EmailService", () => {
         ToAddresses: ["convidado@example.com"]
       },
       ReplyToAddresses: ["casamento@brimax.life"],
+      ConfigurationSetName: "brimax-prod-transactional",
       Content: {
         Simple: {
           Subject: {

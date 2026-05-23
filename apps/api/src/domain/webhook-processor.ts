@@ -1,10 +1,19 @@
+import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
+import { getEnv } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
-import { escapeHtml, renderDetailLine, renderEmailDocument } from "../services/email/html";
+import {
+  escapeHtml,
+  renderDetailLine,
+  renderEmailCard,
+  renderEmailDocument,
+  renderEmailImage,
+  renderEmailSection
+} from "../services/email/html";
 
 type AsaasWebhookPayload = {
   event?: string;
@@ -44,6 +53,31 @@ function toDisplayNameCase(value: string | undefined) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toLocaleUpperCase("pt-BR") + part.slice(1))
     .join(" ");
+}
+
+const DEFAULT_SITE_ORIGIN = "https://brimax.life";
+
+function getSiteOrigin() {
+  const fallbackOrigin = new URL(DEFAULT_SITE_ORIGIN).origin;
+
+  try {
+    return new URL(getEnv().hostedCheckoutSuccessUrl).origin;
+  } catch {
+    return fallbackOrigin;
+  }
+}
+
+function getGiftImageUrl(giftId: string | undefined) {
+  if (!giftId) {
+    return undefined;
+  }
+
+  const imageSlug = PAYMENT_GIFTS_BY_ID.get(giftId)?.image;
+  if (!imageSlug) {
+    return undefined;
+  }
+
+  return `${getSiteOrigin()}/media/presentes/${encodeURIComponent(imageSlug)}/480.jpeg`;
 }
 
 export class WebhookProcessor {
@@ -207,19 +241,22 @@ export class WebhookProcessor {
     });
 
     try {
+      const giftImageUrl = getGiftImageUrl(payment.gift.id);
+
       await this.emailService.sendEmail({
         to: payment.payerEmail,
-        subject: `${payment.payerFirstName}, recebemos seu presente`,
+        subject: "Confirmacao do seu presente para Brida & Max",
         text:
           `Oi, ${payment.payerFirstName}!\n\n` +
-          `O seu presente para Brida & Max foi recebido com sucesso.\n` +
-          `Presente escolhido: ${payment.gift.name}\n` +
+          "Confirmamos o recebimento do seu presente para Brida & Max.\n\n" +
+          `Presente: ${payment.gift.name}\n` +
           `Valor: ${amount}\n\n` +
-          `Obrigado por fazer parte desse momento.\n` +
-          `Enviado por brimax.life.\n`,
+          "Se precisar de ajuda, basta responder este e-mail.\n" +
+          "brimax.life\n",
         html: buildPayerConfirmationHtml({
           amount,
           giftName: payment.gift.name,
+          giftImageUrl,
           payerFirstName: payment.payerFirstName
         })
       });
@@ -240,14 +277,32 @@ export class WebhookProcessor {
 function buildPayerConfirmationHtml(input: {
   amount: string;
   giftName: string;
+  giftImageUrl?: string;
   payerFirstName: string;
 }) {
   return renderEmailDocument(
-    `<p style="margin:0 0 12px;">Oi, ${escapeHtml(input.payerFirstName)}!</p>` +
-      '<p style="margin:0 0 16px;">O seu presente para Brida &amp; Max foi recebido com sucesso.</p>' +
-      renderDetailLine("Presente escolhido", input.giftName) +
-      renderDetailLine("Valor", input.amount) +
-      '<p style="margin:16px 0 16px;">Obrigado por fazer parte desse momento.</p>' +
-      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+    renderEmailSection(
+      '<p style="margin:0;color:#6b7280;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Brida &amp; Max</p>' +
+        '<p style="margin:8px 0 0;font-size:14px;color:#6b7280;">brimax.life</p>'
+    ) +
+      renderEmailSection(
+        `<p style="margin:0 0 12px;font-size:18px;color:#111827;">Oi, ${escapeHtml(input.payerFirstName)}!</p>` +
+          '<p style="margin:0;font-size:16px;color:#1f2937;">Confirmamos o recebimento do seu presente para Brida &amp; Max.</p>'
+      ) +
+      (input.giftImageUrl
+        ? renderEmailImage({
+            alt: input.giftName,
+            src: input.giftImageUrl
+          })
+        : "") +
+      renderEmailCard(
+        renderDetailLine("Presente", input.giftName) +
+          renderDetailLine("Valor", input.amount) +
+          '<p style="margin:16px 0 0;color:#4b5563;font-size:14px;">Se precisar de ajuda, basta responder este e-mail.</p>'
+      ) +
+      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado por brimax.life.</p>',
+    {
+      preheader: "Confirmamos o recebimento do seu presente para Brida & Max."
+    }
   );
 }

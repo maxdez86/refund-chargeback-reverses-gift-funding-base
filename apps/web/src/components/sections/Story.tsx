@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,8 +36,8 @@ const chapters: Chapter[] = [
   },
   {
     id: "ps",
-    title: "PS. Eu Te Amo",
-    text: "Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo ainda, mas o sentimento já transbordava. Em um momento inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia esperar aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu: “Eu te amo, meu amor.” Depois do primeiro, vieram vários. Eu adorava ouvir como ele tinha se apaixonado por mim e sempre puxava esse assunto novamente. Em uma dessas conversas, comentou que tinha fuçado meu Instagram. Brinquei perguntando se aquilo tinha acontecido antes ou depois de se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”",
+    title: "P.S. Eu Te Amo",
+    text: "Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo, mas o sentimento já transbordava. Em um momento inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia esperar aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu: “Eu te amo, meu amor.” Depois do primeiro, vieram vários. Eu adorava ouvir como ele tinha se apaixonado por mim e sempre puxava esse assunto. Em uma dessas conversas, comentou que tinha fuçado meu Instagram. Perguntei se aquilo tinha acontecido antes ou depois de se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”",
     media: { kind: "image", slug: "ps-eu-te-amo", alt: "Primeiro eu te amo" },
   },
   {
@@ -193,7 +193,7 @@ export function Story() {
   }, []);
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#pre-wedding");
+    const el = document.querySelector("#review");
     if (!el) return;
     const offset = 80;
     const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
@@ -255,32 +255,20 @@ export function Story() {
 
   return (
     <section id="historia" className="overflow-hidden bg-[#f4eee5] py-3 md:py-4">
-      <div className="container relative mx-auto mb-2 flex flex-col justify-between gap-6 px-6 md:mb-2 md:flex-row md:items-end lg:gap-4 xl:gap-6">
+      <div className="container relative mx-auto mb-2 flex flex-col gap-6 px-6 md:mb-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-end lg:gap-4 xl:gap-6">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="max-w-[13ch] md:max-w-[11ch] lg:max-w-[12ch] xl:max-w-xl"
+          className="w-full min-w-0 max-w-[17ch] md:max-w-none"
         >
-          <h2 className="mb-2 font-serif text-4xl text-foreground md:text-[3.4rem] lg:text-[4.3rem] xl:text-6xl">
+          <h2 className="mb-2 font-serif text-4xl text-foreground md:whitespace-nowrap md:text-[3.4rem] lg:text-[4.3rem] xl:text-6xl">
             A história do ponto de vista dela
           </h2>
         </motion.div>
 
-        <div className="hidden md:flex absolute inset-x-0 bottom-0 justify-center pointer-events-none">
-          <Button
-            variant="outline"
-            size="icon"
-            className="pointer-events-auto h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
-            onClick={scrollToPrev}
-            aria-label="Rolar para a seção anterior"
-          >
-            <ChevronUp className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
-
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden shrink-0 md:flex items-center gap-3">
           <Button
             variant="outline"
             size="icon"

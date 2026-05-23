@@ -73,6 +73,22 @@ export class AppStack extends cdk.Stack {
     const senderIdentity = new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
       emailIdentity: senderEmailIdentity
     });
+    const emailConfigurationSet = new ses.ConfigurationSet(this, "TransactionalEmailConfigurationSet", {
+      configurationSetName: `brimax-${props.stage}-transactional`,
+      reputationMetrics: true,
+      tlsPolicy: ses.ConfigurationSetTlsPolicy.REQUIRE
+    });
+
+    emailConfigurationSet.addEventDestination("DeliveryReputationMetrics", {
+      destination: ses.EventDestination.cloudWatchDimensions([
+        {
+          defaultValue: emailConfigurationSet.configurationSetName,
+          name: "ses:configuration-set",
+          source: ses.CloudWatchDimensionSource.MESSAGE_TAG
+        }
+      ]),
+      events: [ses.EmailSendingEvent.DELIVERY, ses.EmailSendingEvent.BOUNCE, ses.EmailSendingEvent.COMPLAINT]
+    });
 
     this.httpApi = new apigwv2.HttpApi(this, "PublicHttpApi", {
       apiName: `brimax-${props.stage}-api`,
@@ -114,6 +130,7 @@ export class AppStack extends cdk.Stack {
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
+      EMAIL_CONFIGURATION_SET_NAME: emailConfigurationSet.configurationSetName,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
@@ -335,6 +352,9 @@ export class AppStack extends cdk.Stack {
     new cdk.CfnOutput(this, "SesSenderDomainIdentity", {
       description: "SES domain identity used to unlock production access after DKIM DNS verification.",
       value: senderDomain.emailIdentity
+    });
+    new cdk.CfnOutput(this, "SesConfigurationSetName", {
+      value: emailConfigurationSet.configurationSetName
     });
     new cdk.CfnOutput(this, "SesMailFromDomain", {
       value: senderMailFromDomain

@@ -26,7 +26,7 @@ describe("WebhookProcessor", () => {
         status: "AWAITING_PAYMENT",
         asaasPaymentId: "pay_asaas_1",
         asaasCheckoutId: "checkout_1",
-        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+        gift: { id: "g-batedeira", name: "Batedeira", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
       getPayment: vi
@@ -38,7 +38,7 @@ describe("WebhookProcessor", () => {
           payerEmail: undefined,
           payerFirstName: undefined,
           customerProfileStatus: "PENDING",
-          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+          gift: { id: "g-batedeira", name: "Batedeira", quantity: 1 }
         })
         .mockResolvedValueOnce({
           paymentId: "payment-1",
@@ -47,7 +47,7 @@ describe("WebhookProcessor", () => {
           payerEmail: "maria@example.com",
           payerFirstName: "Maria",
           customerProfileStatus: "READY",
-          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+          gift: { id: "g-batedeira", name: "Batedeira", quantity: 1 }
       }),
       applyWebhookUpdate: vi.fn().mockResolvedValue(true),
       incrementGiftFunding: vi.fn().mockResolvedValue(undefined),
@@ -82,7 +82,7 @@ describe("WebhookProcessor", () => {
       asaasCheckoutId: "checkout_1"
     });
     expect(repository.incrementGiftFunding).toHaveBeenCalledWith({
-      giftId: "g-test-pix",
+      giftId: "g-batedeira",
       paymentId: "payment-1",
       quantity: 1
     });
@@ -105,12 +105,22 @@ describe("WebhookProcessor", () => {
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "maria@example.com",
-        subject: "Maria, recebemos seu presente"
+        subject: "Confirmacao do seu presente para Brida & Max"
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        html: expect.stringContaining("Enviado automaticamente por brimax.life.")
+        html: expect.stringContaining("Confirmamos o recebimento do seu presente para Brida &amp; Max.")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining("https://brimax.life/media/presentes/batedeira/480.jpeg")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Se precisar de ajuda, basta responder este e-mail.")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(

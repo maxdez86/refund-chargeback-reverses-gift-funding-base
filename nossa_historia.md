@@ -12,7 +12,7 @@ O universo, com seu senso de humor, decidiu nos escalar para interpretar Dália 
 
 Vídeo: https://drive.google.com/file/d/1XgxclH1DWo8uCBTuDsUFAzMeoTuGfY2Y/view?usp=drivesd
 
-PS. Eu Te Amo
+P.S. Eu Te Amo
 Seis meses depois do nosso primeiro encontro, fomos viajar juntos para São Vicente. Nessa altura, ainda nos chamávamos de “fofo” e “fofa”. Ninguém tinha dado o primeiro passo de verdade ainda, mas o sentimento já transbordava de todos os lados. Em um momento completamente inesperado, olhando para ele, eu disse: “Eu te amo.” E ele sorriu daquele jeito que parecia estar esperando ouvir aquilo desde o primeiro dia. Então colocou “Você”, do Tim Maia, para tocar, me olhou nos olhos e repetiu baixinho: “Eu te amo, meu amor.” Depois do primeiro, vieram vários! Eu adorava ouvir ele me contar como tinha se apaixonado por mim, e sempre puxava esse assunto de novo, como quem nunca se cansava da resposta. Em uma dessas conversas, ele comentou que tinha fuçado meu Instagram em algum momento, e eu perguntei, brincando, se aquilo tinha acontecido antes ou depois de começar a se interessar por mim. E ele respondeu: “Não teve antes. Só teve depois.”
 
 

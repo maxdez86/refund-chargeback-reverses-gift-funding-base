@@ -6,6 +6,7 @@ type Env = {
   asaasWebhookSecretArn: string;
   contactEmail: string;
   emailFrom: string;
+  emailConfigurationSetName?: string;
   hostedCheckoutSuccessUrl: string;
   rsvpNotificationTo: string;
   webhookQueueUrl: string;
@@ -40,6 +41,7 @@ export function getEnv(): Env {
     asaasWebhookSecretArn: process.env.ASAAS_WEBHOOK_SECRET_ARN ?? "",
     contactEmail,
     emailFrom: process.env.EMAIL_FROM ?? contactEmail,
+    emailConfigurationSetName: process.env.EMAIL_CONFIGURATION_SET_NAME?.trim() || undefined,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",

@@ -212,7 +212,7 @@ export function Padrinhos() {
                       fallbackSrc={buildSharedWidthImageFallbackSrc("padrinhos", person.photoSlug)}
                       alt=""
                       pictureClassName="block h-full w-full"
-                      className="h-full w-full object-contain object-center p-2"
+                      className="h-full w-full object-contain object-center"
                       loading="lazy"
                     />
                     <div className="absolute left-3 top-3 rounded-full bg-background/85 px-3 py-1 text-xs font-medium uppercase tracking-widest text-foreground/80 backdrop-blur-sm">

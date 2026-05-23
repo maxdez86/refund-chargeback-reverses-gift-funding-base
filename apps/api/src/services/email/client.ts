@@ -9,17 +9,21 @@ export class EmailService {
     subject: string;
     text: string;
     html?: string;
+    configurationSetName?: string;
     replyTo?: string;
   }) {
-    const replyTo = input.replyTo ?? getEnv().contactEmail;
+    const env = getEnv();
+    const replyTo = input.replyTo ?? env.contactEmail;
+    const configurationSetName = input.configurationSetName ?? env.emailConfigurationSetName;
 
     const result = await sesClient.send(
       new SendEmailCommand({
-        FromEmailAddress: getEnv().emailFrom,
+        FromEmailAddress: env.emailFrom,
         Destination: {
           ToAddresses: [input.to]
         },
         ReplyToAddresses: [replyTo],
+        ...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
         Content: {
           Simple: {
             Subject: {
