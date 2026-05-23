@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { mediaFileUrl } from "@/lib/media";
 
 const event = {
-  venue: "Buffet Tulipas - Unidade Villa Valentim",
+  venue: "Buffet Tulipas Villa Valentim",
   address: "Rua Valentim Magalhães, 293 - São Paulo - SP",
   dateLabel: "06/12/2026",
   timeLabel: "15:00",
@@ -10,14 +11,20 @@ const event = {
 
 const mapsQuery = encodeURIComponent(`${event.venue}, ${event.address}`);
 const mapsDirectionsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-const venueTourVideoId = "Lek3CSN5kGQ";
-const venueTourEmbedUrl = `https://www.youtube-nocookie.com/embed/${venueTourVideoId}?autoplay=1&rel=0`;
-const venueTourPosterUrl = `https://i.ytimg.com/vi/${venueTourVideoId}/maxresdefault.jpg`;
+const tourVideoUrl = mediaFileUrl("local", "tour-360-villa-valentim.mp4");
 
 export function Local() {
   const [copied, setCopied] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  const [tourPlaying, setTourPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      video.pause();
+    }
+  }, []);
 
   const downloadCalendarInvite = () => {
     const dtStamp = new Date()
@@ -74,144 +81,93 @@ export function Local() {
     <section
       id="local"
       aria-labelledby="local-heading"
-      className="local-v4 bg-[#f4eee5] py-24 text-foreground md:py-32"
+      className="local-v4 relative min-h-[100svh] overflow-hidden bg-[#111111] text-[#fbf7f0]"
     >
-      <div className="local-v4-shell mx-auto max-w-[1180px] px-6 md:px-10">
-        <motion.p
+      <div className="absolute inset-0">
+        <video
+          ref={videoRef}
+          src={tourVideoUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+          className="h-full w-full object-cover"
+        />
+        <div className="local-v4-gradient absolute inset-0" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1180px] flex-col justify-between gap-12 px-6 py-24 md:px-10 md:py-28">
+        <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-10%" }}
           transition={{ duration: 0.56, ease: [0.22, 0.8, 0.32, 1] }}
-          className="local-v4-eyebrow mb-4 text-sm uppercase text-foreground/55"
+          className="max-w-[36rem]"
         >
-          Local da Cerimônia e Festa
-        </motion.p>
-
-        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16">
-          <div>
-            <motion.h2
-              id="local-heading"
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-10%" }}
-              transition={{ duration: 0.56, delay: 0.05, ease: [0.22, 0.8, 0.32, 1] }}
-              className="local-v4-heading max-w-[14ch]"
-            >
-              Buffet Tulipas Villa Valentim
-            </motion.h2>
-
-            <motion.dl
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-10%" }}
-              transition={{ duration: 0.56, delay: 0.18, ease: [0.22, 0.8, 0.32, 1] }}
-              className="mt-10 grid gap-6 sm:grid-cols-2"
-            >
-              <div>
-                <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-foreground/55">Data</dt>
-                <dd className="local-v4-display text-2xl">{event.dateLabel}</dd>
-              </div>
-              <div>
-                <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-foreground/55">Horário</dt>
-                <dd className="local-v4-display text-2xl">Cerimônia às {event.timeLabel}h</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-foreground/55">Endereço</dt>
-                <dd>
-                  <p className="font-medium leading-snug">{event.venue}</p>
-                  <p className="select-all leading-snug text-foreground/70">{event.address}</p>
-                </dd>
-              </div>
-            </motion.dl>
-
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-10%" }}
-              transition={{ duration: 0.56, delay: 0.26, ease: [0.22, 0.8, 0.32, 1] }}
-              className="mt-8 flex flex-wrap gap-4"
-            >
-              <a
-                href={mapsDirectionsUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                aria-label={`Ver no mapa: ${event.venue}, ${event.address}`}
-                className="local-v4-button-primary inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
-              >
-                Ver no mapa
-              </a>
-              <button
-                type="button"
-                onClick={copyAddress}
-                aria-live="polite"
-                className="local-v4-button-secondary inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
-              >
-                {copied ? "Endereço copiado" : "Copiar endereço"}
-              </button>
-              <button
-                type="button"
-                onClick={downloadCalendarInvite}
-                className="local-v4-button-secondary inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
-              >
-                Adicionar ao calendário
-              </button>
-            </motion.div>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-10%" }}
-            transition={{ duration: 0.56, delay: 0.2, ease: [0.22, 0.8, 0.32, 1] }}
+          <p className="local-v4-eyebrow mb-4 text-sm uppercase text-[#d6ae64]">
+            Local da Cerimônia e Festa
+          </p>
+          <h2
+            id="local-heading"
+            className="local-v4-heading max-w-[14ch]"
           >
-            <div className="mb-5">
-              <h3 className="local-v4-display text-3xl leading-tight text-foreground md:text-4xl">
-                Um lugar feito para celebrar o amor.
-              </h3>
-            </div>
+            {event.venue}
+          </h2>
 
-            <div className="local-v4-map-card relative aspect-[4/3] overflow-hidden rounded-[1.5rem] border border-black/10 bg-[#f5efe6] lg:h-[32rem] lg:aspect-auto">
-              {tourPlaying ? (
-                <iframe
-                  src={venueTourEmbedUrl}
-                  title="Tour 360 do Villa Valentim"
-                  className="absolute inset-0 h-full w-full border-0"
-                  loading="lazy"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowFullScreen
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setTourPlaying(true)}
-                  aria-label="Reproduzir Tour 360 do Villa Valentim"
-                  className="group absolute inset-0 h-full w-full cursor-pointer overflow-hidden border-0 bg-transparent p-0"
-                >
-                  <img
-                    src={venueTourPosterUrl}
-                    alt=""
-                    loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                  />
-                  <span aria-hidden="true" className="absolute inset-0 bg-black/15 transition-colors group-hover:bg-black/25" />
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-1/2 top-1/2 grid h-20 w-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-[#d6ae64] shadow-xl transition-transform duration-300 group-hover:scale-105 md:h-24 md:w-24"
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-9 w-9 translate-x-[2px] text-white md:h-10 md:w-10">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </span>
-                </button>
-              )}
+          <dl className="mt-10 grid gap-6 sm:grid-cols-2">
+            <div>
+              <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-[#fbf7f0]/70">Data</dt>
+              <dd className="local-v4-display text-2xl">{event.dateLabel}</dd>
             </div>
-          </motion.div>
-        </div>
+            <div>
+              <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-[#fbf7f0]/70">Horário</dt>
+              <dd className="local-v4-display text-2xl">Cerimônia às {event.timeLabel}h</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="local-v4-eyebrow mb-1 text-sm uppercase text-[#fbf7f0]/70">Endereço</dt>
+              <dd className="select-all leading-snug text-[#fbf7f0]/90">{event.address}</dd>
+            </div>
+          </dl>
+        </motion.div>
 
-        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {announcement}
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-10%" }}
+          transition={{ duration: 0.56, delay: 0.15, ease: [0.22, 0.8, 0.32, 1] }}
+          className="flex flex-wrap gap-4"
+        >
+          <a
+            href={mapsDirectionsUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label={`Ver no mapa: ${event.venue}, ${event.address}`}
+            className="local-v4-button-primary inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
+          >
+            Ver no mapa
+          </a>
+          <button
+            type="button"
+            onClick={copyAddress}
+            aria-live="polite"
+            className="local-v4-button-ghost inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
+          >
+            {copied ? "Endereço copiado" : "Copiar endereço"}
+          </button>
+          <button
+            type="button"
+            onClick={downloadCalendarInvite}
+            className="local-v4-button-ghost inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-medium"
+          >
+            Adicionar ao calendário
+          </button>
+        </motion.div>
+      </div>
+
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
       </div>
     </section>
   );

@@ -204,7 +204,7 @@ section[id] {
 }
 
 .local-v4-button-primary,
-.local-v4-button-secondary {
+.local-v4-button-ghost {
   transition:
     transform 180ms cubic-bezier(0.22, 0.8, 0.32, 1),
     border-color 180ms cubic-bezier(0.22, 0.8, 0.32, 1),
@@ -212,28 +212,35 @@ section[id] {
 }
 
 .local-v4-button-primary {
-  background: #181410;
-  color: #f7f3ec;
+  background: #d6ae64;
+  color: #2a2217;
 }
 
 .local-v4-button-primary:hover {
   transform: translateY(-1px);
+  background: #e1bb74;
 }
 
-.local-v4-button-secondary {
-  background: #f7f3ec;
-  color: #181410;
-  border: 1px solid rgb(24 20 16 / 0.2);
+.local-v4-button-ghost {
+  background: transparent;
+  color: #fbf7f0;
+  border: 1px solid rgb(251 247 240 / 0.6);
 }
 
-.local-v4-button-secondary:hover {
-  border-color: rgb(24 20 16 / 0.6);
+.local-v4-button-ghost:hover {
+  background: rgb(251 247 240 / 0.1);
+  border-color: rgb(251 247 240 / 0.9);
 }
 
-.local-v4-map-card {
-  box-shadow:
-    0 1px 2px rgb(24 20 16 / 0.03),
-    0 18px 48px rgb(24 20 16 / 0.1);
+.local-v4-gradient {
+  background:
+    linear-gradient(
+      to bottom,
+      rgb(17 17 17 / 0.55) 0%,
+      rgb(17 17 17 / 0.2) 30%,
+      rgb(17 17 17 / 0.2) 70%,
+      rgb(17 17 17 / 0.7) 100%
+    );
 }
 
 .padrinhos-v4-heading {
