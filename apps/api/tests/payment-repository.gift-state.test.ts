@@ -1,8 +1,36 @@
-import { PutCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 import { PaymentRepository } from "../src/services/dynamodb/repositories/payment-repository";
 
 describe("PaymentRepository gift state", () => {
+  it("writes gift metadata items", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await repository.putGiftCatalogItems([
+      {
+        id: "g-toalhas-banho",
+        name: "4 Toalhas de Banho",
+        image: "toalhas-banho",
+        totalValueCents: 17_600,
+        fractional: false,
+        partValueCents: null,
+        totalParts: null
+      }
+    ]);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const command = send.mock.calls[0][0] as PutCommand;
+    expect(command.input.Item).toEqual(
+      expect.objectContaining({
+        PK: "GIFT#g-toalhas-banho",
+        SK: "METADATA",
+        entityType: "GiftMetadata",
+        name: "4 Toalhas de Banho"
+      })
+    );
+  });
+
   it("resets gift state items to zero", async () => {
     const send = vi.fn().mockResolvedValue({});
     const repository = new PaymentRepository({ send } as never, "table-test");
@@ -60,9 +88,49 @@ describe("PaymentRepository gift state", () => {
     ]);
   });
 
+  it("lists stored gift metadata rows", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        {
+          PK: "GIFT#g-armario",
+          SK: "METADATA",
+          id: "g-armario",
+          name: "Armário de Cozinha",
+          image: "armario-cozinha",
+          totalValueCents: 174_900,
+          fractional: true,
+          partValueCents: 5_000,
+          totalParts: 35
+        }
+      ]
+    });
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    const metadata = await repository.listGiftMetadata();
+
+    expect(send).toHaveBeenCalledWith(expect.any(ScanCommand));
+    expect(metadata).toEqual([
+      expect.objectContaining({
+        id: "g-armario",
+        image: "armario-cozinha"
+      })
+    ]);
+  });
+
   it("increments a single gift and marks it fully funded", async () => {
     const send = vi
       .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          id: "g-toalhas-banho",
+          name: "4 Toalhas de Banho",
+          image: "toalhas-banho",
+          totalValueCents: 17_600,
+          fractional: false,
+          partValueCents: null,
+          totalParts: null
+        }
+      })
       .mockResolvedValueOnce({
         Attributes: {
           partsFunded: 1
@@ -77,9 +145,10 @@ describe("PaymentRepository gift state", () => {
       quantity: 1
     });
 
-    expect(send).toHaveBeenCalledTimes(2);
-    const incrementCommand = send.mock.calls[0][0] as UpdateCommand;
-    const fullyFundedCommand = send.mock.calls[1][0] as UpdateCommand;
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send.mock.calls[0][0]).toBeInstanceOf(GetCommand);
+    const incrementCommand = send.mock.calls[1][0] as UpdateCommand;
+    const fullyFundedCommand = send.mock.calls[2][0] as UpdateCommand;
 
     expect(incrementCommand.input.Key).toEqual({
       PK: "GIFT#g-toalhas-banho",
@@ -97,11 +166,24 @@ describe("PaymentRepository gift state", () => {
   });
 
   it("increments a fractional gift by payment quantity without marking it fully funded early", async () => {
-    const send = vi.fn().mockResolvedValueOnce({
-      Attributes: {
-        partsFunded: 3
-      }
-    });
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          id: "g-armario",
+          name: "Armário de Cozinha",
+          image: "armario-cozinha",
+          totalValueCents: 174_900,
+          fractional: true,
+          partValueCents: 5_000,
+          totalParts: 35
+        }
+      })
+      .mockResolvedValueOnce({
+        Attributes: {
+          partsFunded: 3
+        }
+      });
     const repository = new PaymentRepository({ send } as never, "table-test");
 
     await repository.incrementGiftFunding({
@@ -110,6 +192,6 @@ describe("PaymentRepository gift state", () => {
       quantity: 3
     });
 
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });

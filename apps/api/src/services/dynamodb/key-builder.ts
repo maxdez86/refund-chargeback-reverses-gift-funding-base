@@ -54,6 +54,13 @@ export function giftStateKeys(giftId: string) {
   };
 }
 
+export function giftMetadataKeys(giftId: string) {
+  return {
+    PK: `GIFT#${giftId}`,
+    SK: "METADATA"
+  };
+}
+
 export function paymentMessageKeys(paymentId: string) {
   return {
     PK: `PAYMENT#${paymentId}`,

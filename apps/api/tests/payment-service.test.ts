@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { PaymentService } from "../src/domain/payment-service";
+
+const toalhasGift = PAYMENT_GIFTS_BY_ID.get("g-toalhas-banho");
 
 describe("PaymentService", () => {
   it("creates a hosted PIX checkout without collecting payer data", async () => {
@@ -13,6 +16,7 @@ describe("PaymentService", () => {
       }),
       putPayment: vi.fn().mockResolvedValue(undefined),
       completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn()
     };
     const asaasClient = {
@@ -76,6 +80,7 @@ describe("PaymentService", () => {
       }),
       putPayment: vi.fn().mockResolvedValue(undefined),
       completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn()
     };
     const asaasClient = {
@@ -141,6 +146,7 @@ describe("PaymentService", () => {
           status: "COMPLETED"
         }
       }),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn().mockResolvedValue(existingPayment)
     };
 
@@ -223,6 +229,7 @@ describe("PaymentService", () => {
           paymentSnapshot
         }
       }),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn().mockResolvedValueOnce(null)
     };
 
@@ -249,6 +256,7 @@ describe("PaymentService", () => {
           status: "IN_PROGRESS"
         }
       }),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn().mockResolvedValue(null)
     };
     const asaasClient = {
@@ -300,6 +308,7 @@ describe("PaymentService", () => {
           status: "IN_PROGRESS"
         }
       }),
+      getGift: vi.fn().mockResolvedValue(toalhasGift),
       getPayment: vi.fn().mockResolvedValue(null)
     };
     const asaasClient = {

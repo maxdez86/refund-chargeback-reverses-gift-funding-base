@@ -33,6 +33,6 @@ printf '%s' "${items_json}" | jq -c '.Items[]' | while IFS= read -r key_item; do
     >/dev/null
 done
 
-printf 'Deleted %s payment-related and gift-state test items from %s.\n' "${count}" "${PAYMENTS_TABLE_NAME}"
+printf 'Deleted %s payment-related and gift catalog items from %s.\n' "${count}" "${PAYMENTS_TABLE_NAME}"
 
-node --experimental-strip-types "$(dirname "$0")/lib/reset-gift-state.ts"
+node --experimental-strip-types "$(dirname "$0")/lib/seed-gift-catalog.ts"

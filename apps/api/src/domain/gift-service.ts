@@ -1,4 +1,3 @@
-import { PAYMENT_GIFTS } from "@brimax/config";
 import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 
@@ -6,10 +5,11 @@ export class GiftService {
   constructor(private readonly repository = new PaymentRepository()) {}
 
   async getGifts() {
+    const giftMetadata = await this.repository.listGiftMetadata();
     const giftStates = await this.repository.listGiftStates();
     const statesByGiftId = new Map(giftStates.map((state) => [state.giftId, state]));
 
-    const gifts: Gift[] = PAYMENT_GIFTS.map((gift) => {
+    const gifts: Gift[] = giftMetadata.map((gift) => {
       const state = statesByGiftId.get(gift.id);
 
       return {

@@ -30,6 +30,7 @@ export const CreatePaymentRequestSchema = z.object({
 export const PaymentGiftSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  image: z.string().min(1).optional(),
   fractional: z.boolean(),
   quantity: z.number().int().positive(),
   unitAmountCents: z.number().int().positive().nullable(),

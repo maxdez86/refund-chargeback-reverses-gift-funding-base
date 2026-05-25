@@ -15,6 +15,7 @@ import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import {
   giftStateKeys,
+  giftMetadataKeys,
   asaasCheckoutLookupIndex,
   asaasPaymentLookupIndex,
   idempotencyKeys,
@@ -66,6 +67,8 @@ export type StoredGiftState = {
   updatedAt: string;
   lastConfirmedPaymentId?: string;
 };
+
+export type StoredGiftMetadata = PaymentGift;
 
 type IdempotencyReservation = {
   fingerprint: string;
@@ -185,6 +188,23 @@ export class PaymentRepository {
     }
   }
 
+  async putGiftCatalogItems(gifts: PaymentGift[] = Array.from(PAYMENT_GIFTS_BY_ID.values())) {
+    await Promise.all(
+      gifts.map((gift) =>
+        this.documentClient.send(
+          new PutCommand({
+            TableName: this.tableName,
+            Item: {
+              ...giftMetadataKeys(gift.id),
+              entityType: "GiftMetadata",
+              ...gift
+            }
+          })
+        )
+      )
+    );
+  }
+
   async resetGiftStateItems(gifts: PaymentGift[] = Array.from(PAYMENT_GIFTS_BY_ID.values())) {
     const updatedAt = new Date().toISOString();
 
@@ -231,12 +251,47 @@ export class PaymentRepository {
     return items;
   }
 
+  async listGiftMetadata(): Promise<StoredGiftMetadata[]> {
+    const items: StoredGiftMetadata[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const response = await this.documentClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: "begins_with(PK, :giftPrefix) AND SK = :metadata",
+          ExpressionAttributeValues: {
+            ":giftPrefix": "GIFT#",
+            ":metadata": "METADATA"
+          },
+          ExclusiveStartKey: exclusiveStartKey
+        })
+      );
+
+      items.push(...((response.Items as StoredGiftMetadata[] | undefined) ?? []));
+      exclusiveStartKey = response.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return items;
+  }
+
+  async getGift(giftId: string): Promise<StoredGiftMetadata | null> {
+    const response = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: giftMetadataKeys(giftId)
+      })
+    );
+
+    return (response.Item as StoredGiftMetadata | undefined) ?? null;
+  }
+
   async incrementGiftFunding(input: {
     giftId: string;
     paymentId: string;
     quantity: number;
   }) {
-    const gift = PAYMENT_GIFTS_BY_ID.get(input.giftId);
+    const gift = await this.getGift(input.giftId);
 
     if (!gift) {
       throw new AppError("Unknown gift id for funding update.", 400);

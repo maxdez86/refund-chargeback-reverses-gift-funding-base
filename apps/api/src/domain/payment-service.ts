@@ -6,7 +6,6 @@ import {
   type PaymentMethod,
   type PaymentSummary
 } from "@brimax/contracts";
-import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { AppError } from "../lib/errors";
 import { stableJsonHash } from "../lib/security";
 import { AsaasClient } from "../services/asaas/client";
@@ -95,7 +94,7 @@ export class PaymentService {
       requestContext.giftId = parsed.giftId;
       requestContext.paymentMethod = parsed.paymentMethod;
 
-      const gift = PAYMENT_GIFTS_BY_ID.get(parsed.giftId);
+      const gift = await this.repository.getGift(parsed.giftId);
 
       if (!gift) {
         throw new AppError("Unknown gift id.", 400);
@@ -168,6 +167,7 @@ export class PaymentService {
         gift: {
           id: gift.id,
           name: gift.name,
+          image: gift.image,
           fractional: gift.fractional,
           quantity: giftSelection.quantity,
           unitAmountCents: giftSelection.unitAmountCents,

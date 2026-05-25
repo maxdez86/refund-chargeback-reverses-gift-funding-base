@@ -29,6 +29,10 @@ describe("WebhookProcessor", () => {
         gift: { id: "g-batedeira", name: "Batedeira", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-batedeira",
+        image: "batedeira"
+      }),
       getPayment: vi
         .fn()
         .mockResolvedValueOnce({
@@ -163,6 +167,10 @@ describe("WebhookProcessor", () => {
         gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-test-pix",
+        image: "pix-teste"
+      }),
       getPayment: vi
         .fn()
         .mockResolvedValueOnce({
@@ -233,6 +241,10 @@ describe("WebhookProcessor", () => {
         gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-test-pix",
+        image: "pix-teste"
+      }),
       getPayment: vi.fn().mockResolvedValue({
         paymentId: "payment-3",
         status: "CONFIRMED",
@@ -294,6 +306,10 @@ describe("WebhookProcessor", () => {
         gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-test-pix",
+        image: "pix-teste"
+      }),
       getPayment: vi
         .fn()
         .mockResolvedValueOnce({
@@ -360,6 +376,10 @@ describe("WebhookProcessor", () => {
         gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
       }),
       getPaymentByAsaasCheckoutId: vi.fn(),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-test-pix",
+        image: "pix-teste"
+      }),
       getPayment: vi.fn().mockResolvedValue({
         paymentId: "payment-5",
         status: "RECEIVED",

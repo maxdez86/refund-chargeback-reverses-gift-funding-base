@@ -4,6 +4,17 @@ import { GiftService } from "../src/domain/gift-service";
 describe("GiftService", () => {
   it("returns shared gift metadata with zero-funded defaults when state rows are missing", async () => {
     const repository = {
+      listGiftMetadata: vi.fn().mockResolvedValue([
+        {
+          id: "g-toalhas-banho",
+          name: "4 Toalhas de Banho",
+          image: "toalhas-banho",
+          totalValueCents: 17_600,
+          fractional: false,
+          partValueCents: null,
+          totalParts: null
+        }
+      ]),
       listGiftStates: vi.fn().mockResolvedValue([])
     };
 
@@ -25,6 +36,17 @@ describe("GiftService", () => {
 
   it("merges stored gift state into the shared catalog", async () => {
     const repository = {
+      listGiftMetadata: vi.fn().mockResolvedValue([
+        {
+          id: "g-armario",
+          name: "Armário de Cozinha",
+          image: "armario-cozinha",
+          totalValueCents: 174_900,
+          fractional: true,
+          partValueCents: 5_000,
+          totalParts: 35
+        }
+      ]),
       listGiftStates: vi.fn().mockResolvedValue([
         {
           giftId: "g-armario",

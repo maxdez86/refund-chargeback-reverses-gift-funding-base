@@ -1,4 +1,3 @@
-import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
@@ -67,12 +66,7 @@ function getSiteOrigin() {
   }
 }
 
-function getGiftImageUrl(giftId: string | undefined) {
-  if (!giftId) {
-    return undefined;
-  }
-
-  const imageSlug = PAYMENT_GIFTS_BY_ID.get(giftId)?.image;
+function getGiftImageUrl(imageSlug: string | undefined) {
   if (!imageSlug) {
     return undefined;
   }
@@ -241,7 +235,8 @@ export class WebhookProcessor {
     });
 
     try {
-      const giftImageUrl = getGiftImageUrl(payment.gift.id);
+      const giftImageSlug = payment.gift.image ?? (await this.repository.getGift(payment.gift.id))?.image;
+      const giftImageUrl = getGiftImageUrl(giftImageSlug);
 
       await this.emailService.sendEmail({
         to: payment.payerEmail,
