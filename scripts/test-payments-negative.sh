@@ -29,11 +29,12 @@ build_payment_request() {
   local quantity="$2"
   local payer_email="$3"
   local output_file="$4"
+  local payment_method="${5:-PIX}"
 
   jq -n \
     --arg giftId "${gift_id}" \
     --argjson quantity "${quantity}" \
-    --arg paymentMethod "PIX" \
+    --arg paymentMethod "${payment_method}" \
     --arg payerName "${PAYMENTS_TEST_PAYER_NAME}" \
     --arg payerEmail "${payer_email}" \
     --arg payerCpf "${PAYMENTS_TEST_PAYER_CPF}" \
@@ -124,7 +125,7 @@ printf 'Idempotency replay test passed for payment %s.\n' "${same_payment_id_one
 conflict_body="${artifact_dir}/conflict-body.json"
 conflict_response="${artifact_dir}/conflict-response.json"
 conflict_email="conflict+$(date -u +%Y%m%d%H%M%S)@example.com"
-build_payment_request "${PAYMENTS_TEST_GIFT_ID}" 2 "${conflict_email}" "${conflict_body}"
+build_payment_request "${PAYMENTS_TEST_GIFT_ID}" "${PAYMENTS_TEST_GIFT_QUANTITY}" "${conflict_email}" "${conflict_body}" "HOSTED"
 conflict_status="$(
   post_json \
     "${PAYMENTS_API_URL}/payments" \
@@ -166,9 +167,10 @@ printf 'Webhook auth failure test passed.\n'
 ddb_item_file="${artifact_dir}/ddb-item.json"
 aws_ddb_payment_item "${same_payment_id_one}" "${ddb_item_file}"
 asaas_payment_id="$(jq -r '.Item.asaasPaymentId.S // empty' "${ddb_item_file}")"
+asaas_checkout_id="$(jq -r '.Item.asaasCheckoutId.S // empty' "${ddb_item_file}")"
 
-if [[ -z "${asaas_payment_id}" ]]; then
-  printf 'Could not resolve asaasPaymentId from DynamoDB for payment %s.\n' "${same_payment_id_one}" >&2
+if [[ -z "${asaas_payment_id}" && -z "${asaas_checkout_id}" ]]; then
+  printf 'Could not resolve asaas payment or checkout id from DynamoDB for payment %s.\n' "${same_payment_id_one}" >&2
   cat "${ddb_item_file}" >&2
   exit 1
 fi
@@ -177,7 +179,7 @@ duplicate_webhook_body="${artifact_dir}/duplicate-webhook.json"
 duplicate_webhook_response_one="${artifact_dir}/duplicate-webhook-response-1.json"
 duplicate_webhook_response_two="${artifact_dir}/duplicate-webhook-response-2.json"
 cat > "${duplicate_webhook_body}" <<EOF
-{"event":"PAYMENT_CREATED","payment":{"id":"${asaas_payment_id}","externalReference":"${same_payment_id_one}","status":"PENDING"}}
+{"event":"PAYMENT_CREATED","payment":{"id":"${asaas_payment_id}","checkoutSession":"${asaas_checkout_id}","externalReference":"${same_payment_id_one}","status":"PENDING"}}
 EOF
 
 duplicate_status_one="$(
@@ -202,13 +204,13 @@ if [[ "${duplicate_status_one}" != "200" || "${duplicate_status_two}" != "200" ]
   exit 1
 fi
 
-if [[ "$(jq -r '.duplicate // empty' "${duplicate_webhook_response_one}")" != "false" ]]; then
+if ! jq -e '.duplicate == false' "${duplicate_webhook_response_one}" >/dev/null; then
   printf 'Expected first duplicate webhook submission to be accepted.\n' >&2
   cat "${duplicate_webhook_response_one}" >&2
   exit 1
 fi
 
-if [[ "$(jq -r '.duplicate // empty' "${duplicate_webhook_response_two}")" != "true" ]]; then
+if ! jq -e '.duplicate == true' "${duplicate_webhook_response_two}" >/dev/null; then
   printf 'Expected second duplicate webhook submission to report duplicate=true.\n' >&2
   cat "${duplicate_webhook_response_two}" >&2
   exit 1
