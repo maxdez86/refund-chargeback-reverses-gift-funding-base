@@ -11,7 +11,7 @@ Six stacks, instantiated in [bin/app.ts](bin/app.ts):
 | `PlatformStack` | `stage` | Account-wide platform setup |
 | `CertificateStack` | `apiDomain`, `rootDomain`, `wwwDomain`, `stage` | `apiCertificate`, `certificate` (ACM) |
 | `DataStack` | `stage` | `table` (DynamoDB single-table) |
-| `AppStack` | `apiCertificate`, `apiDomain`, `asaasApiKey`, `asaasWebhookToken`, `stage`, `table` | `httpApi` (Lambda + HTTP API + Asaas webhooks + Secrets Manager entries) |
+| `AppStack` | `apiCertificate`, `apiDomain`, `asaasApiKey`, `asaasWebhookToken`, `stage`, `table`, `turnstileSecretKey` | `httpApi` (Lambda + HTTP API + Asaas webhooks + Turnstile + Secrets Manager entries) |
 | `EdgeStack` | `certificate`, `rootDomain`, `siteAssetPath`, `stage`, `wwwDomain` | `distribution` (CloudFront over `apps/web/dist`) — explicitly `addDependency(certificateStack)` |
 | `ObservabilityStack` | `stage`, `distribution`, `httpApi`, `table` | CloudWatch + X-Ray dashboards/alarms |
 
@@ -27,7 +27,7 @@ const stage = resolveStage(app.node.tryGetContext("stage") ?? process.env.STAGE)
 
 ## Pre-deploy validation
 
-`bin/app.ts` checks `process.argv` for stack names matching `BrimaxAppStack` or `BrimaxObservabilityStack`. If either is requested and `ASAAS_API_KEY` or `ASAAS_WEBHOOK_TOKEN` is missing in the environment, the synth fails before anything is deployed. Other stacks (Platform, Certificate, Data, Edge) deploy without those vars.
+`bin/app.ts` checks `process.argv` for stack names matching `BrimaxAppStack` or `BrimaxObservabilityStack`. If either is requested and `ASAAS_API_KEY` or `ASAAS_WEBHOOK_TOKEN` is missing in the environment, the synth fails before anything is deployed. For `stage=prod`, `TURNSTILE_SECRET_KEY` is also required; for `stage=dev`, it falls back to Cloudflare's always-passes test secret. Other stacks (Platform, Certificate, Data, Edge) deploy without those vars.
 
 For changes scoped to a single non-payment stack (e.g. just `DataStack`), prefer the targeted form to skip the secrets check:
 

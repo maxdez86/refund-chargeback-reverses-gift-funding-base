@@ -24,7 +24,7 @@ This bootstrap also establishes the baseline edge hardening through IaC:
 3. Ensure the `personal-stg` AWS profile can deploy into account `183286346090`.
 4. Install the OpenTofu CLI locally.
 5. Create a local `.env` file from `.env.example`.
-6. Ensure `ASAAS_API_KEY` and `ASAAS_WEBHOOK_TOKEN` are already set in `.env` before the backend deploy step.
+6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, and `TURNSTILE_SECRET_KEY` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
 
 ## What Must Exist In `.env`
 
@@ -38,6 +38,10 @@ LANDING_CERTIFICATE_ARN=""
 CLOUDFLARE_API_TOKEN="..."
 CLOUDFLARE_ZONE_ID="..."
 TOFU_STATE_KEY_PREFIX="brimax-life"
+# Backend secret seed values (CDK writes these to Secrets Manager on deploy)
+ASAAS_API_KEY="..."
+ASAAS_WEBHOOK_TOKEN="..."
+TURNSTILE_SECRET_KEY="..."   # required when STAGE=prod; dev uses the always-passes test secret
 ```
 
 Important:

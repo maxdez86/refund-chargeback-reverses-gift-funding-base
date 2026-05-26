@@ -8,6 +8,7 @@ type Env = {
   emailConfigurationSetName?: string;
   hostedCheckoutSuccessUrl: string;
   rsvpNotificationTo: string;
+  turnstileSecretArn: string;
   webhookQueueUrl: string;
   weddingTableName: string;
 };
@@ -42,6 +43,7 @@ export function getEnv(): Env {
     emailConfigurationSetName: process.env.EMAIL_CONFIGURATION_SET_NAME?.trim() || undefined,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
+    turnstileSecretArn: process.env.TURNSTILE_SECRET_ARN ?? "",
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",
     weddingTableName: required("WEDDING_TABLE_NAME")
   };

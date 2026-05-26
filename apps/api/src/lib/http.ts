@@ -16,7 +16,7 @@ export function corsHeaders(requestOrigin: string | undefined): Record<string, s
 
   return {
     "access-control-allow-origin": requestOrigin,
-    "access-control-allow-headers": "content-type,idempotency-key",
+    "access-control-allow-headers": "content-type,idempotency-key,x-turnstile-token",
     "access-control-allow-methods": "GET,POST,OPTIONS",
     vary: "Origin"
   };

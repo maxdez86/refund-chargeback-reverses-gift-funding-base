@@ -24,6 +24,7 @@ export interface AppStackProps extends cdk.StackProps {
   contactEmail: string;
   stage: AppStage;
   table: dynamodb.ITable;
+  turnstileSecretKey: string;
 }
 
 export class AppStack extends cdk.Stack {
@@ -42,6 +43,12 @@ export class AppStack extends cdk.Stack {
       secretName: `/${props.stage}/brimax/asaas/api-key`,
       secretStringValue: cdk.SecretValue.unsafePlainText(
         JSON.stringify({ apiKey: props.asaasApiKey })
+      )
+    });
+    const turnstileSecret = new secretsmanager.Secret(this, "TurnstileSecret", {
+      secretName: `/${props.stage}/brimax/turnstile/secret-key`,
+      secretStringValue: cdk.SecretValue.unsafePlainText(
+        JSON.stringify({ secretKey: props.turnstileSecretKey })
       )
     });
     const asaasWebhookSecret = new secretsmanager.Secret(this, "AsaasWebhookSecret", {
@@ -93,7 +100,7 @@ export class AppStack extends cdk.Stack {
     this.httpApi = new apigwv2.HttpApi(this, "PublicHttpApi", {
       apiName: `brimax-${props.stage}-api`,
       corsPreflight: {
-        allowHeaders: ["content-type", "idempotency-key"],
+        allowHeaders: ["content-type", "idempotency-key", "x-turnstile-token"],
         allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
         allowOrigins: ["https://brimax.life", "https://www.brimax.life"],
         maxAge: cdk.Duration.minutes(10)
@@ -117,6 +124,27 @@ export class AppStack extends cdk.Stack {
         throttlingBurstLimit: 20,
         throttlingRateLimit: 10
       };
+      // Tighter caps on the abuse-prone routes. API Gateway throttling is
+      // account-wide (not per-IP), so these limits cap the total damage a
+      // scripted enumerator can do while leaving plenty of headroom for
+      // legitimate guests submitting an RSVP or opening a payment message.
+      // routeSettings is typed as `any` on CfnStage — CDK does not apply the
+      // CloudFormation property mapper to it, so the inner keys must be
+      // PascalCase to match the underlying AWS::ApiGatewayV2::Stage schema.
+      defaultStage.routeSettings = {
+        "GET /invitation/{code}": {
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 2
+        },
+        "POST /rsvp": {
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 1
+        },
+        "POST /payments/{paymentId}/message": {
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 1
+        }
+      };
     }
 
     const commonEnvironment = {
@@ -128,6 +156,7 @@ export class AppStack extends cdk.Stack {
           : "https://sandbox.asaas.com/checkoutSession/show",
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
+      TURNSTILE_SECRET_ARN: turnstileSecret.secretArn,
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
       EMAIL_CONFIGURATION_SET_NAME: emailConfigurationSet.configurationSetName,
@@ -221,6 +250,8 @@ export class AppStack extends cdk.Stack {
     asaasApiSecret.grantRead(createPaymentFn);
     asaasApiSecret.grantRead(webhookProcessorFn);
     asaasWebhookSecret.grantRead(asaasWebhookFn);
+    turnstileSecret.grantRead(invitationGetFn);
+    turnstileSecret.grantRead(rsvpFn);
     const sesSendPolicy = new iam.PolicyStatement({
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: ["*"]

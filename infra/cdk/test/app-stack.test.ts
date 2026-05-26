@@ -22,14 +22,15 @@ describe("AppStack", () => {
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento@brimax.life",
       stage: "dev",
-      table: dataStack.table
+      table: dataStack.table,
+      turnstileSecretKey: "1x0000000000000000000000000000000AA"
     });
     const template = Template.fromStack(stack);
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
     template.resourceCountIs("AWS::SQS::Queue", 2);
-    template.resourceCountIs("AWS::SecretsManager::Secret", 2);
+    template.resourceCountIs("AWS::SecretsManager::Secret", 3);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);

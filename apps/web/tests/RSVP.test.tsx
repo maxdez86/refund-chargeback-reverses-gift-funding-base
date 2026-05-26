@@ -132,17 +132,23 @@ describe("RSVP section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
     await screen.findByText(/Recebemos sua confirmação com carinho!/i);
-    expect(submitRsvpMock).toHaveBeenCalledWith({
-      invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
-      submittedBy: "g1",
-      guestResponses: [
-        { guestId: "g1", status: "attending" },
-        { guestId: "g2", status: "declined" }
-      ],
-      attendingGuestCount: 1,
-      note: "Chegamos no sábado!"
-    });
+    expect(submitRsvpMock).toHaveBeenCalledWith(
+      {
+        invitationCode: "ABCD2345",
+        householdId: "grupo-amanda-cris",
+        submittedBy: "g1",
+        guestResponses: [
+          { guestId: "g1", status: "attending" },
+          { guestId: "g2", status: "declined" }
+        ],
+        attendingGuestCount: 1,
+        note: "Chegamos no sábado!"
+      },
+      // The Turnstile widget cannot mount in jsdom (the CDN script never loads),
+      // so consumeTurnstileToken() returns null and that's what the RSVP form
+      // passes through to submitRsvp.
+      null
+    );
   });
 
   it("renders the not-found message when the API returns 404", async () => {

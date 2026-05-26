@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -18,6 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
+import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
+
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
 
 type LookupState =
   | { kind: "idle" }
@@ -43,9 +46,19 @@ export function RSVP() {
   const [selections, setSelections] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
+
+  const consumeTurnstileToken = (): string | null => {
+    if (!TURNSTILE_SITE_KEY) return null;
+    const token = turnstileRef.current?.getToken() ?? null;
+    // Tokens are single-use; trigger a fresh challenge for the next action.
+    turnstileRef.current?.reset();
+    return token;
+  };
 
   const submitMutation = useMutation({
-    mutationFn: (input: RsvpSubmissionRequest) => submitRsvp(input),
+    mutationFn: (input: RsvpSubmissionRequest) =>
+      submitRsvp(input, consumeTurnstileToken()),
     onSuccess: (_response, variables) => {
       if (lookup.kind !== "found") return;
       const confirmations = lookup.invitation.guests.map((g) => ({
@@ -84,7 +97,7 @@ export function RSVP() {
     setSubmitted(null);
 
     try {
-      const invitation = await fetchInvitation(normalized);
+      const invitation = await fetchInvitation(normalized, consumeTurnstileToken());
       setLookup({ kind: "found", invitation });
       setSelections(initialSelections(invitation));
       setNote("");
@@ -211,6 +224,11 @@ export function RSVP() {
                       Localizar convite
                     </Button>
                   </div>
+                  <Turnstile
+                    ref={turnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    className="flex justify-center pt-2"
+                  />
                 </form>
 
                 {lookup.kind === "not-found" && (

@@ -190,7 +190,9 @@ describe("official web app", () => {
       await screen.findByText("Confirme quais convidados do seu convite irão comparecer:")
     ).toBeInTheDocument();
     expect(screen.getByText("Débora")).toBeInTheDocument();
-    expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345");
+    // RSVP passes (code, turnstileToken) — token is null in jsdom because
+    // the Cloudflare widget script can't load there.
+    expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345", null);
 
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
     expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();

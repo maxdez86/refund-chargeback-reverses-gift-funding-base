@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { RsvpService } from "../../domain/rsvp-service";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
+import { verifyTurnstile } from "../../lib/turnstile";
 
 const service = new RsvpService();
 
@@ -10,6 +11,8 @@ export async function handler(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   try {
+    await verifyTurnstile(event);
+
     const idempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
     let requestBody: unknown;
     try {

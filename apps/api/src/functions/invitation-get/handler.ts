@@ -2,6 +2,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { InvitationService } from "../../domain/invitation-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse } from "../../lib/http";
+import { verifyTurnstile } from "../../lib/turnstile";
 
 const service = new InvitationService();
 
@@ -9,6 +10,8 @@ export async function handler(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   try {
+    await verifyTurnstile(event);
+
     const invitationCode = event.pathParameters?.code;
 
     if (!invitationCode) {

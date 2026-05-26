@@ -31,7 +31,7 @@ pnpm synth                   # build:web + cdk synth (validates stacks)
 
 # Deploy (each script reads STAGE env or CDK -c stage)
 pnpm deploy:platform         # PlatformStack
-pnpm deploy:backend          # Data + App + Observability (needs ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN)
+pnpm deploy:backend          # Data + App + Observability (needs ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN; needs TURNSTILE_SECRET_KEY for prod)
 pnpm deploy:landing:cert     # CertificateStack
 pnpm wait:landing:cert       # poll ACM until ISSUED
 pnpm deploy:landing:edge     # EdgeStack (CloudFront)
@@ -57,7 +57,7 @@ pnpm test:payments:negative
 
 **DynamoDB single-table design.** One table; key-builder lives in [apps/api/src/services/dynamodb/key-builder.ts](apps/api/src/services/dynamodb/key-builder.ts). Don't propose adding a new table without flagging the design implication.
 
-**Secrets.** `.env` lives at repo root, is gitignored, and is also blocked by `.claudeignore`. Never echo its contents back. Asaas credentials flow through Secrets Manager — CDK reads `ASAAS_API_KEY` / `ASAAS_WEBHOOK_TOKEN` env vars at deploy time and writes them to a managed secret.
+**Secrets.** `.env` lives at repo root, is gitignored, and is also blocked by `.claudeignore`. Never echo its contents back. Asaas credentials and the Cloudflare Turnstile secret flow through Secrets Manager — CDK reads `ASAAS_API_KEY` / `ASAAS_WEBHOOK_TOKEN` / `TURNSTILE_SECRET_KEY` env vars at deploy time and writes them to managed secrets (`/<stage>/brimax/asaas/api-key`, `…/asaas/webhook-token`, `…/turnstile/secret-key`). `TURNSTILE_SECRET_KEY` is required for prod deploys; dev falls back to Cloudflare's always-passes test secret.
 
 **Code style.** TypeScript strict; Zod for runtime validation at boundaries; Vitest for tests; functional React (no class components); `@/` alias in `apps/web`, relative imports in `apps/api`.
 

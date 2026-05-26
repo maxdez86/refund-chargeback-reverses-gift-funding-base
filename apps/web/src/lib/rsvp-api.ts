@@ -19,15 +19,19 @@ export function normalizeInvitationCode(code: string): string {
   return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-export async function fetchInvitation(code: string): Promise<HouseholdInvitation> {
+export async function fetchInvitation(
+  code: string,
+  turnstileToken?: string | null
+): Promise<HouseholdInvitation> {
   if (!API_URL) {
     throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
   }
 
   const normalized = normalizeInvitationCode(code);
-  const response = await fetch(
-    `${API_URL}/invitation/${encodeURIComponent(normalized)}`
-  );
+  const url = `${API_URL}/invitation/${encodeURIComponent(normalized)}`;
+  const response = turnstileToken
+    ? await fetch(url, { headers: { "x-turnstile-token": turnstileToken } })
+    : await fetch(url);
   const text = await response.text();
   const body: unknown = text ? safeJsonParse(text) : null;
 
@@ -45,18 +49,24 @@ export async function fetchInvitation(code: string): Promise<HouseholdInvitation
 }
 
 export async function submitRsvp(
-  input: RsvpSubmissionRequest
+  input: RsvpSubmissionRequest,
+  turnstileToken?: string | null
 ): Promise<RsvpSubmissionResponse> {
   if (!API_URL) {
     throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
   }
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "idempotency-key": crypto.randomUUID(),
+  };
+  if (turnstileToken) {
+    headers["x-turnstile-token"] = turnstileToken;
+  }
+
   const response = await fetch(`${API_URL}/rsvp`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "idempotency-key": crypto.randomUUID(),
-    },
+    headers,
     body: JSON.stringify(input),
   });
 

@@ -20,6 +20,12 @@ export PAYMENTS_OBSERVABILITY_STACK_NAME="${PAYMENTS_OBSERVABILITY_STACK_NAME:-$
 
 require_env ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN
 
+# Turnstile secret is only enforced for prod. Dev/test deploys fall back to
+# Cloudflare's always-passes test secret (handled in infra/cdk/bin/app.ts).
+if [[ "${STAGE}" == "prod" ]]; then
+  require_env TURNSTILE_SECRET_KEY
+fi
+
 CDK_ARGS=()
 if [[ -n "${AWS_PROFILE:-}" ]]; then
   CDK_ARGS+=(--profile "${AWS_PROFILE}")
@@ -32,7 +38,7 @@ printf 'Deploying backend stacks in %s (%s)\n' "${AWS_REGION}" "${STAGE}"
 printf '  - %s\n' "${PAYMENTS_DATA_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_OBSERVABILITY_STACK_NAME}"
-printf '  - using CDK-managed Secrets Manager values from ASAAS_API_KEY and ASAAS_WEBHOOK_TOKEN\n'
+printf '  - using CDK-managed Secrets Manager values from ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, TURNSTILE_SECRET_KEY\n'
 
 pnpm --filter @brimax/infra-cdk cdk deploy \
   "${PAYMENTS_DATA_STACK_NAME}" \

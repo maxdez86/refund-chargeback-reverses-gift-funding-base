@@ -18,6 +18,11 @@ const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
+const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
+
+// Cloudflare's documented always-passes test key. Lets non-prod synth/deploys
+// succeed without provisioning a real Turnstile site; prod must override.
+const TURNSTILE_TEST_SECRET_KEY = "1x0000000000000000000000000000000AA";
 
 function requestedStackNames() {
   return process.argv.filter((arg) => /^([a-z0-9-]+)?Brimax[A-Za-z]+Stack$/i.test(arg));
@@ -49,10 +54,14 @@ function requirePaymentDeploySecrets() {
     missing.push("ASAAS_WEBHOOK_TOKEN");
   }
 
+  if (stage === "prod" && !rawTurnstileSecretKey) {
+    missing.push("TURNSTILE_SECRET_KEY");
+  }
+
   if (missing.length > 0) {
     throw new Error(
-      `Missing required payment deployment env vars: ${missing.join(", ")}. ` +
-        "CDK manages the Asaas Secrets Manager entries from these raw values."
+      `Missing required deployment env vars for stage "${stage}": ${missing.join(", ")}. ` +
+        "CDK manages the Asaas + Turnstile Secrets Manager entries from these raw values."
     );
   }
 }
@@ -63,6 +72,7 @@ if (requiresPaymentSecretsForThisInvocation()) {
 
 const asaasApiKey = rawAsaasApiKey ?? "cdk-placeholder-asaas-api-key";
 const asaasWebhookToken = rawAsaasWebhookToken ?? "cdk-placeholder-asaas-webhook-token";
+const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 
 new PlatformStack(app, resourceName("BrimaxPlatformStack", stage), {
   stage
@@ -86,7 +96,8 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   asaasWebhookToken,
   contactEmail,
   stage,
-  table: dataStack.table
+  table: dataStack.table,
+  turnstileSecretKey
 });
 
 const edgeStack = new EdgeStack(app, resourceName("BrimaxEdgeStack", stage), {
