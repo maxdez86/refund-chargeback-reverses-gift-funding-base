@@ -17,14 +17,15 @@ if (Number.isNaN(port) || port <= 0) {
 const basePath = process.env.BASE_PATH ?? "/";
 const buildOutDir = process.env.BUILD_OUT_DIR ?? "dist/public";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    ...(isDev ? [runtimeErrorOverlay()] : []),
+    ...(isDev && process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer({

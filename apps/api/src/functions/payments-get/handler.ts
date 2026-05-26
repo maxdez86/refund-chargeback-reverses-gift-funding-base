@@ -1,13 +1,15 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { PaymentService } from "../../domain/payment-service";
 import { AppError } from "../../lib/errors";
-import { jsonResponse, noContentResponse } from "../../lib/http";
+import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 
 const service = new PaymentService();
 
 export async function handler(event: APIGatewayProxyEventV2) {
+  const cors = corsHeaders(event.headers.origin);
+
   if (event.requestContext.http.method === "OPTIONS") {
-    return noContentResponse();
+    return noContentResponse(cors);
   }
 
   try {
@@ -22,12 +24,12 @@ export async function handler(event: APIGatewayProxyEventV2) {
     return jsonResponse(200, {
       ok: true,
       payment
-    });
+    }, cors);
   } catch (error) {
     if (error instanceof AppError) {
-      return jsonResponse(error.statusCode, { message: error.message });
+      return jsonResponse(error.statusCode, { message: error.message }, cors);
     }
 
-    return jsonResponse(500, { message: "Unexpected payment lookup error." });
+    return jsonResponse(500, { message: "Unexpected payment lookup error." }, cors);
   }
 }

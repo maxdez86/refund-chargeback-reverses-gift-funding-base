@@ -62,7 +62,14 @@ function useInitialHashScroll() {
       await new Promise(requestAnimationFrame);
       if (cancelled) return;
 
-      const el = document.querySelector(hash);
+      // Non-anchor hashes (e.g. "#paymentId=...&paymentStatus=success") aren't
+      // valid CSS selectors; skip silently rather than crashing.
+      let el: Element | null = null;
+      try {
+        el = document.querySelector(hash);
+      } catch {
+        return;
+      }
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       const initialTop = el.getBoundingClientRect().top;
@@ -71,7 +78,12 @@ function useInitialHashScroll() {
       // above the fold) that move the target after we scrolled.
       window.setTimeout(() => {
         if (cancelled) return;
-        const target = document.querySelector(hash);
+        let target: Element | null = null;
+        try {
+          target = document.querySelector(hash);
+        } catch {
+          return;
+        }
         if (!target) return;
         const nowTop = target.getBoundingClientRect().top;
         if (Math.abs(nowTop - initialTop) > 4) {

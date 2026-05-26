@@ -59,11 +59,12 @@ function getCheckoutExpirationMinutes() {
 
 function buildCheckoutCallbackUrls(paymentId: string) {
   const baseUrl = getSiteBaseUrl();
+  const id = encodeURIComponent(paymentId);
 
   return {
-    successUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=success`,
-    cancelUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=cancel`,
-    expiredUrl: `${baseUrl}/?paymentId=${encodeURIComponent(paymentId)}&paymentStatus=expired`
+    successUrl: `${baseUrl}/#paymentId=${id}&paymentStatus=success`,
+    cancelUrl: `${baseUrl}/#paymentId=${id}&paymentStatus=cancel`,
+    expiredUrl: `${baseUrl}/#paymentId=${id}&paymentStatus=expired`
   };
 }
 

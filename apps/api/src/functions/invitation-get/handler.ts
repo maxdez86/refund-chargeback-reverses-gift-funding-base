@@ -1,11 +1,13 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { InvitationService } from "../../domain/invitation-service";
 import { AppError } from "../../lib/errors";
-import { jsonResponse } from "../../lib/http";
+import { corsHeaders, jsonResponse } from "../../lib/http";
 
 const service = new InvitationService();
 
 export async function handler(event: APIGatewayProxyEventV2) {
+  const cors = corsHeaders(event.headers.origin);
+
   try {
     const invitationCode = event.pathParameters?.code;
 
@@ -15,12 +17,12 @@ export async function handler(event: APIGatewayProxyEventV2) {
 
     const invitation = await service.getInvitation(invitationCode);
 
-    return jsonResponse(200, invitation);
+    return jsonResponse(200, invitation, cors);
   } catch (error) {
     if (error instanceof AppError) {
-      return jsonResponse(error.statusCode, { message: error.message });
+      return jsonResponse(error.statusCode, { message: error.message }, cors);
     }
 
-    return jsonResponse(500, { message: "Unexpected invitation lookup error." });
+    return jsonResponse(500, { message: "Unexpected invitation lookup error." }, cors);
   }
 }

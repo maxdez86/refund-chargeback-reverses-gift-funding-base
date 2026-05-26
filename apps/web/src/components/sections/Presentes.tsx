@@ -359,6 +359,15 @@ function GiftDialog({
       if (!payment.checkout?.url) {
         throw new PaymentApiError("Checkout indisponível. Tente novamente.");
       }
+      let checkoutUrl: URL;
+      try {
+        checkoutUrl = new URL(payment.checkout.url);
+      } catch {
+        throw new PaymentApiError("Checkout URL inválida.");
+      }
+      if (checkoutUrl.protocol !== "https:" || !/(^|\.)asaas\.com$/.test(checkoutUrl.hostname)) {
+        throw new PaymentApiError("Checkout URL não confiável.");
+      }
       const requestResolvedAt = performance.now();
       const redirectStartedAt = performance.now();
       console.info(
@@ -376,7 +385,7 @@ function GiftDialog({
         LAST_PAYMENT_ID_STORAGE_KEY,
         JSON.stringify({ paymentId: payment.paymentId, createdAt: Date.now() })
       );
-      window.location.href = payment.checkout.url;
+      window.location.href = checkoutUrl.toString();
     } catch (err) {
       console.info(
         JSON.stringify({

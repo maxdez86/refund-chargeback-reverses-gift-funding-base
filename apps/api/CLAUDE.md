@@ -18,7 +18,7 @@ src/
     rsvp-service.ts
     webhook-processor.ts
   services/                     # infrastructure adapters
-    asaas/  dynamodb/  email/  secrets-manager/  stripe/  whatsapp/
+    asaas/  dynamodb/  email/  secrets-manager/
   lib/
     env.ts        # getEnv() — cached env var reader
     errors.ts     # AppError (carries statusCode)
@@ -27,9 +27,9 @@ src/
 tests/                          # vitest
 ```
 
-The 9 Lambda handlers (each `src/functions/<name>/handler.ts`):
+The Lambda handlers (each `src/functions/<name>/handler.ts`):
 
-`admin-export` · `asaas-webhook` · `asaas-webhook-processor` · `invitation-get` · `payments-create` · `payments-get` · `rsvp` · `stripe-webhook` · `whatsapp-webhook`.
+`asaas-webhook` · `asaas-webhook-processor` · `gifts-get` · `invitation-get` · `payments-create` · `payments-get` · `payments-message` · `rsvp`.
 
 ## Conventions
 

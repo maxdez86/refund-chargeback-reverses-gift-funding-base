@@ -122,11 +122,20 @@ function readInitialState(): DialogState {
     return { paymentId: null, urlVariant: null, open: false };
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const paymentIdFromUrl = params.get("paymentId");
-  const urlVariant = resolveUrlVariant(params.get("paymentStatus"));
+  // Payment params arrive in the URL fragment (so they don't leak via Referer).
+  // index.html captures the initial hash into window.__brimaxInitialHash before
+  // React boots, so prefer that and fall back to the live hash.
+  const w = window as Window & { __brimaxInitialHash?: string };
+  const rawHash = w.__brimaxInitialHash ?? window.location.hash ?? "";
+  const hashContent = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+  const hashParams = new URLSearchParams(hashContent);
+  const paymentIdFromUrl = hashParams.get("paymentId");
+  const urlVariant = resolveUrlVariant(hashParams.get("paymentStatus"));
 
   if (paymentIdFromUrl && urlVariant) {
+    // Consume the captured hash so App's anchor-scroll logic doesn't try to
+    // resolve "#paymentId=..." as a CSS selector.
+    if (w.__brimaxInitialHash) delete w.__brimaxInitialHash;
     return {
       paymentId: paymentIdFromUrl,
       urlVariant,

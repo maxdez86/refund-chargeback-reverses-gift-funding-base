@@ -27,7 +27,7 @@ export class RsvpService {
     private readonly emailService = new EmailService()
   ) {}
 
-  async submit(request: RsvpSubmissionRequest): Promise<RsvpSubmitResult> {
+  async submit(request: unknown): Promise<RsvpSubmitResult> {
     const parsed = RsvpSubmissionRequestSchema.parse(request);
     const invitation = await this.repository.getInvitationByCode(parsed.invitationCode);
 

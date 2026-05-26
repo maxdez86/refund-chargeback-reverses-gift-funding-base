@@ -44,7 +44,12 @@ export async function handler(event: APIGatewayProxyEventV2) {
   }
 
   const rawBody = event.body ?? "{}";
-  const payload = JSON.parse(rawBody) as AsaasWebhookPayload;
+  let payload: AsaasWebhookPayload;
+  try {
+    payload = JSON.parse(rawBody) as AsaasWebhookPayload;
+  } catch {
+    return jsonResponse(400, { message: "Invalid JSON body." });
+  }
   const eventId = rawBodyHash(rawBody);
   const accepted = await repository.recordWebhookEventIfNew({
     eventId,

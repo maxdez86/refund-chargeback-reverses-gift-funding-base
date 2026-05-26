@@ -1,5 +1,4 @@
 type Env = {
-  adminExportToken: string;
   asaasApiBaseUrl: string;
   asaasCheckoutBaseUrl: string;
   asaasApiSecretArn: string;
@@ -33,7 +32,6 @@ export function getEnv(): Env {
   const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 
   cachedEnv = {
-    adminExportToken: process.env.ADMIN_EXPORT_TOKEN ?? "",
     asaasApiBaseUrl: process.env.ASAAS_API_BASE_URL ?? "https://api-sandbox.asaas.com/v3",
     asaasCheckoutBaseUrl:
       process.env.ASAAS_CHECKOUT_BASE_URL ?? "https://www.asaas.com/checkoutSession/show",

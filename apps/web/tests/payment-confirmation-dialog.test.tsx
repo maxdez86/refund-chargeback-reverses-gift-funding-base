@@ -88,7 +88,7 @@ describe("PaymentConfirmationDialog", () => {
         payerFirstName: "MARIA",
       });
 
-    window.history.replaceState({}, "", "/?paymentId=payment-1&paymentStatus=success");
+    window.history.replaceState({}, "", "/#paymentId=payment-1&paymentStatus=success");
 
     renderDialog();
 
@@ -163,7 +163,7 @@ describe("PaymentConfirmationDialog", () => {
       customerProfileStatus: "READY",
     });
 
-    window.history.replaceState({}, "", "/?paymentId=payment-close-1&paymentStatus=success");
+    window.history.replaceState({}, "", "/#paymentId=payment-close-1&paymentStatus=success");
 
     const { invalidateSpy } = renderDialog(<section id="presentes">Presentes</section>);
 

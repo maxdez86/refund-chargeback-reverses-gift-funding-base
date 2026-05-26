@@ -93,9 +93,10 @@ export class AppStack extends cdk.Stack {
     this.httpApi = new apigwv2.HttpApi(this, "PublicHttpApi", {
       apiName: `brimax-${props.stage}-api`,
       corsPreflight: {
-        allowHeaders: ["content-type", "idempotency-key", "x-admin-token", "asaas-access-token"],
+        allowHeaders: ["content-type", "idempotency-key"],
         allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
-        allowOrigins: ["*"]
+        allowOrigins: ["https://brimax.life", "https://www.brimax.life"],
+        maxAge: cdk.Duration.minutes(10)
       }
     });
 
@@ -119,7 +120,6 @@ export class AppStack extends cdk.Stack {
     }
 
     const commonEnvironment = {
-      ADMIN_EXPORT_TOKEN: "disabled",
       ASAAS_API_BASE_URL:
         props.stage === "prod" ? "https://api.asaas.com/v3" : "https://api-sandbox.asaas.com/v3",
       ASAAS_CHECKOUT_BASE_URL:

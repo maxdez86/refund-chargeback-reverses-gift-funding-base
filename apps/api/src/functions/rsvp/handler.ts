@@ -1,15 +1,22 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { ZodError } from "zod";
 import { RsvpService } from "../../domain/rsvp-service";
-import { jsonResponse } from "../../lib/http";
+import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
 
 const service = new RsvpService();
 
 export async function handler(event: APIGatewayProxyEventV2) {
+  const cors = corsHeaders(event.headers.origin);
+
   try {
     const idempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
-    const requestBody = JSON.parse(event.body ?? "{}");
+    let requestBody: unknown;
+    try {
+      requestBody = JSON.parse(event.body ?? "{}");
+    } catch {
+      throw new AppError("Invalid JSON body.", 400);
+    }
     const { response, notificationSent } = await service.submit(requestBody);
 
     console.info(
@@ -31,10 +38,10 @@ export async function handler(event: APIGatewayProxyEventV2) {
       })
     );
 
-    return jsonResponse(200, response);
+    return jsonResponse(200, response, cors);
   } catch (error) {
     if (error instanceof ZodError) {
-      return jsonResponse(400, { message: "Invalid RSVP payload.", issues: error.issues });
+      return jsonResponse(400, { message: "Invalid RSVP payload.", issues: error.issues }, cors);
     }
 
     if (error instanceof AppError) {
@@ -45,7 +52,7 @@ export async function handler(event: APIGatewayProxyEventV2) {
           message: error.message
         })
       );
-      return jsonResponse(error.statusCode, { message: error.message });
+      return jsonResponse(error.statusCode, { message: error.message }, cors);
     }
 
     console.error(
@@ -55,6 +62,6 @@ export async function handler(event: APIGatewayProxyEventV2) {
         message: error instanceof Error ? error.message : "Unexpected RSVP error."
       })
     );
-    return jsonResponse(500, { message: "Unexpected RSVP error." });
+    return jsonResponse(500, { message: "Unexpected RSVP error." }, cors);
   }
 }
