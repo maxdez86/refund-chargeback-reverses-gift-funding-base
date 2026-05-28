@@ -6,7 +6,7 @@ import {
 } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
 import { getEnv } from "../lib/env";
-import { deriveOverallRsvpStatus } from "../services/dynamodb/mappers";
+import { deriveOverallRsvpStatus, deriveRsvpCounts } from "../services/dynamodb/mappers";
 import { WeddingRepository } from "../services/dynamodb/repositories/wedding-repository";
 import { EmailService } from "../services/email/client";
 import {
@@ -39,6 +39,11 @@ export class RsvpService {
       throw new AppError("Invitation does not match the provided household.", 409);
     }
 
+    const counts = deriveRsvpCounts(parsed);
+    if (parsed.attendingGuestCount !== counts.attendingGuestCount) {
+      throw new AppError("Attending guest count does not match guest responses.", 409);
+    }
+
     const status: GuestProfile["rsvpStatus"] = deriveOverallRsvpStatus(parsed);
     const updatedAt = await this.repository.upsertRsvp(parsed, status);
     let notificationSent = false;
@@ -47,8 +52,8 @@ export class RsvpService {
       await this.emailService.sendEmail({
         to: getEnv().rsvpNotificationTo,
         subject: `Nova confirmacao de presenca: ${invitation.householdName}`,
-        text: buildRsvpNotificationText(invitation, parsed, status, updatedAt),
-        html: buildRsvpNotificationHtml(invitation, parsed, status, updatedAt)
+        text: buildRsvpNotificationText(invitation, parsed, status, updatedAt, counts),
+        html: buildRsvpNotificationHtml(invitation, parsed, status, updatedAt, counts)
       });
       notificationSent = true;
     } catch (error) {
@@ -79,14 +84,20 @@ function buildRsvpNotificationText(
   invitation: Awaited<ReturnType<WeddingRepository["getInvitationByCode"]>>,
   request: RsvpSubmissionRequest,
   status: GuestProfile["rsvpStatus"],
-  updatedAt: string
+  updatedAt: string,
+  counts: ReturnType<typeof deriveRsvpCounts>
 ) {
-  const responsesByGuestId = new Map(
-    request.guestResponses.map((response) => [response.guestId, response.status])
-  );
+  const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestLines = invitation?.guests.map((guest) => {
     const response = responsesByGuestId.get(guest.guestId);
-    return `- ${guest.guestName}: ${response === "attending" ? "vai comparecer" : "nao vai comparecer"}`;
+    if (!response || response.status !== "attending") {
+      return `- ${guest.guestName}: nao vai comparecer`;
+    }
+
+    const ageLabel = response.isChildSixOrYounger
+      ? "6 anos ou menos"
+      : "7 anos ou mais";
+    return `- ${guest.guestName}: vai comparecer (${ageLabel})`;
   }) ?? [];
 
   return [
@@ -96,7 +107,9 @@ function buildRsvpNotificationText(
     `Codigo do convite: ${request.invitationCode}`,
     `Household ID: ${request.householdId}`,
     `Status geral: ${status}`,
-    `Pessoas confirmadas: ${request.attendingGuestCount}`,
+    `Pessoas confirmadas: ${counts.attendingGuestCount}`,
+    `Pagantes: ${counts.paidAttendingGuestCount}`,
+    `Criancas 6 anos ou menos: ${counts.childSixOrYoungerAttendingCount}`,
     `Enviado por: ${request.submittedBy}`,
     `Atualizado em: ${updatedAt}`,
     "",
@@ -112,17 +125,17 @@ function buildRsvpNotificationHtml(
   invitation: Awaited<ReturnType<WeddingRepository["getInvitationByCode"]>>,
   request: RsvpSubmissionRequest,
   status: GuestProfile["rsvpStatus"],
-  updatedAt: string
+  updatedAt: string,
+  counts: ReturnType<typeof deriveRsvpCounts>
 ) {
-  const responsesByGuestId = new Map(
-    request.guestResponses.map((response) => [response.guestId, response.status])
-  );
+  const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestItems =
     invitation?.guests
       .map((guest) => {
         const response = responsesByGuestId.get(guest.guestId);
-        const description =
-          response === "attending" ? "vai comparecer" : "nao vai comparecer";
+        const description = !response || response.status !== "attending"
+          ? "nao vai comparecer"
+          : `vai comparecer (${response.isChildSixOrYounger ? "6 anos ou menos" : "7 anos ou mais"})`;
 
         return `<li>${escapeHtml(`${guest.guestName}: ${description}`)}</li>`;
       })
@@ -135,7 +148,12 @@ function buildRsvpNotificationHtml(
       renderDetailLine("Codigo do convite", request.invitationCode) +
       renderDetailLine("Household ID", request.householdId) +
       renderDetailLine("Status geral", status) +
-      renderDetailLine("Pessoas confirmadas", String(request.attendingGuestCount)) +
+      renderDetailLine("Pessoas confirmadas", String(counts.attendingGuestCount)) +
+      renderDetailLine("Pagantes", String(counts.paidAttendingGuestCount)) +
+      renderDetailLine(
+        "Criancas 6 anos ou menos",
+        String(counts.childSixOrYoungerAttendingCount)
+      ) +
       renderDetailLine("Enviado por", request.submittedBy) +
       renderDetailLine("Atualizado em", updatedAt) +
       '<p style="margin:16px 0 8px;"><strong>Convidados:</strong></p>' +

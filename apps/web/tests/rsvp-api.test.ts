@@ -19,7 +19,8 @@ describe("rsvp-api", () => {
               guestId: "g1",
               guestName: "Amanda",
               allowedPlusOnes: 0,
-              rsvpStatus: "pending"
+              rsvpStatus: "pending",
+              isChildSixOrYounger: true
             }
           ]
         }),
@@ -35,6 +36,7 @@ describe("rsvp-api", () => {
     );
     expect(invitation.householdName).toBe("Amanda e Chris");
     expect(invitation.guests).toHaveLength(1);
+    expect(invitation.guests[0]?.isChildSixOrYounger).toBe(true);
   });
 
   it("fetchInvitation throws RsvpApiError with status=404 when not found", async () => {
@@ -91,7 +93,7 @@ describe("rsvp-api", () => {
       invitationCode: "AB2345",
       householdId: "grupo-amanda-cris",
       submittedBy: "g1",
-      guestResponses: [{ guestId: "g1", status: "attending" }],
+      guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
       attendingGuestCount: 1
     });
 
@@ -119,7 +121,7 @@ describe("rsvp-api", () => {
         invitationCode: "AB2345",
         householdId: "grupo-amanda-cris",
         submittedBy: "g1",
-        guestResponses: [{ guestId: "g1", status: "attending" }],
+        guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
         attendingGuestCount: 1
       })
     ).rejects.toBeInstanceOf(RsvpApiError);

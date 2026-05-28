@@ -21,7 +21,7 @@ import {
 } from "../key-builder";
 import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
-import { toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
+import { deriveRsvpCounts, toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
 
 export class WeddingRepository {
   constructor(
@@ -58,6 +58,7 @@ export class WeddingRepository {
 
   async upsertRsvp(request: RsvpSubmissionRequest, status: GuestProfile["rsvpStatus"]) {
     const updatedAt = new Date().toISOString();
+    const counts = deriveRsvpCounts(request);
 
     await this.documentClient.send(
       new PutCommand({
@@ -69,7 +70,9 @@ export class WeddingRepository {
           householdId: request.householdId,
           submittedBy: request.submittedBy,
           guestResponses: request.guestResponses,
-          attendingGuestCount: request.attendingGuestCount,
+          attendingGuestCount: counts.attendingGuestCount,
+          paidAttendingGuestCount: counts.paidAttendingGuestCount,
+          childSixOrYoungerAttendingCount: counts.childSixOrYoungerAttendingCount,
           note: request.note,
           status,
           updatedAt
@@ -111,15 +114,30 @@ export class WeddingRepository {
     const result = await this.documentClient.send(
       new ScanCommand({
         TableName: this.tableName,
-        FilterExpression: "entityType = :entityType",
+        FilterExpression: "entityType = :invitationType OR entityType = :rsvpType",
         ExpressionAttributeValues: {
-          ":entityType": "Invitation"
+          ":invitationType": "Invitation",
+          ":rsvpType": "RsvpResponse"
         }
       })
     );
 
-    return (result.Items ?? []).flatMap((item) =>
-      toAdminExportRows(item as Record<string, unknown>)
+    const invitations = (result.Items ?? []).filter(
+      (item) => item.entityType === "Invitation"
+    ) as Record<string, unknown>[];
+    const rsvps = (result.Items ?? []).filter(
+      (item) => item.entityType === "RsvpResponse"
+    ) as Record<string, unknown>[];
+    const rsvpByHouseholdId = new Map(
+      rsvps.map((item) => [String(item.householdId ?? ""), item])
+    );
+
+    return invitations.flatMap((item) =>
+      toAdminExportRows({
+        ...item,
+        rsvpGuestResponses:
+          rsvpByHouseholdId.get(String(item.householdId ?? ""))?.guestResponses ?? []
+      })
     );
   }
 }

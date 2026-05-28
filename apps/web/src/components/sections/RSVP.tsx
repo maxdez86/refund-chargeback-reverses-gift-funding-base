@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
@@ -34,9 +35,17 @@ type SubmittedState = {
   confirmations: { guestId: string; guestName: string; attending: boolean }[];
 };
 
+type ChildAgeSelections = Record<string, boolean | undefined>;
+
 function initialSelections(invitation: HouseholdInvitation): Record<string, boolean> {
   return Object.fromEntries(
     invitation.guests.map((g) => [g.guestId, g.rsvpStatus !== "declined"])
+  );
+}
+
+function initialChildAgeSelections(invitation: HouseholdInvitation): ChildAgeSelections {
+  return Object.fromEntries(
+    invitation.guests.map((g) => [g.guestId, g.isChildSixOrYounger])
   );
 }
 
@@ -44,9 +53,12 @@ export function RSVP() {
   const [codeInput, setCodeInput] = useState("");
   const [lookup, setLookup] = useState<LookupState>({ kind: "idle" });
   const [selections, setSelections] = useState<Record<string, boolean>>({});
+  const [childAgeSelections, setChildAgeSelections] = useState<ChildAgeSelections>({});
+  const [childAgeErrorGuestId, setChildAgeErrorGuestId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  const guestDetailRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const consumeTurnstileToken = (): string | null => {
     if (!TURNSTILE_SITE_KEY) return null;
@@ -83,6 +95,8 @@ export function RSVP() {
     setCodeInput("");
     setLookup({ kind: "idle" });
     setSelections({});
+    setChildAgeSelections({});
+    setChildAgeErrorGuestId(null);
     setNote("");
     setSubmitted(null);
     submitMutation.reset();
@@ -100,6 +114,8 @@ export function RSVP() {
       const invitation = await fetchInvitation(normalized, consumeTurnstileToken());
       setLookup({ kind: "found", invitation });
       setSelections(initialSelections(invitation));
+      setChildAgeSelections(initialChildAgeSelections(invitation));
+      setChildAgeErrorGuestId(null);
       setNote("");
     } catch (error) {
       if (error instanceof RsvpApiError && error.status === 404) {
@@ -118,12 +134,25 @@ export function RSVP() {
   const submitConfirmation = () => {
     if (lookup.kind !== "found") return;
     const invitation = lookup.invitation;
+    const firstMissingAgeGuest = invitation.guests.find(
+      (g) => selections[g.guestId] && typeof childAgeSelections[g.guestId] !== "boolean"
+    );
+
+    if (firstMissingAgeGuest) {
+      setChildAgeErrorGuestId(firstMissingAgeGuest.guestId);
+      guestDetailRefs.current[firstMissingAgeGuest.guestId]?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      return;
+    }
 
     const guestResponses = invitation.guests.map((g) => ({
       guestId: g.guestId,
       status: (selections[g.guestId] ? "attending" : "declined") as
         | "attending"
         | "declined",
+      isChildSixOrYounger: childAgeSelections[g.guestId] ?? false,
     }));
     const attendingGuestCount = guestResponses.filter(
       (r) => r.status === "attending"
@@ -149,6 +178,14 @@ export function RSVP() {
     () => Object.values(selections).filter(Boolean).length,
     [selections]
   );
+  const hasPendingChildAgeConfirmation = useMemo(() => {
+    if (lookup.kind !== "found") return false;
+    return lookup.invitation.guests.some(
+      (guest) =>
+        selections[guest.guestId] &&
+        typeof childAgeSelections[guest.guestId] !== "boolean"
+    );
+  }, [childAgeSelections, lookup, selections]);
 
   return (
     <section
@@ -280,21 +317,35 @@ export function RSVP() {
                       {lookup.invitation.guests.map((guest) => {
                         const id = `guest-${guest.guestId}`;
                         const checked = !!selections[guest.guestId];
+                        const childAgeValue = childAgeSelections[guest.guestId];
+                        const showChildAgeError =
+                          childAgeErrorGuestId === guest.guestId &&
+                          checked &&
+                          typeof childAgeValue !== "boolean";
                         return (
-                          <li key={guest.guestId}>
+                          <li
+                            key={guest.guestId}
+                            ref={(node) => {
+                              guestDetailRefs.current[guest.guestId] = node;
+                            }}
+                            className="px-5 py-4"
+                          >
                             <label
                               htmlFor={id}
-                              className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-secondary/30 transition-colors"
+                              className="flex items-center gap-4 cursor-pointer hover:bg-secondary/30 transition-colors -mx-5 px-5 py-1 rounded-xl"
                             >
                               <Checkbox
                                 id={id}
                                 checked={checked}
-                                onCheckedChange={(v) =>
+                                onCheckedChange={(v) => {
                                   setSelections((s) => ({
                                     ...s,
                                     [guest.guestId]: v === true,
-                                  }))
-                                }
+                                  }));
+                                  if (v !== true && childAgeErrorGuestId === guest.guestId) {
+                                    setChildAgeErrorGuestId(null);
+                                  }
+                                }}
                               />
                               <span className="font-serif text-lg text-foreground">
                                 {guest.guestName}
@@ -303,6 +354,77 @@ export function RSVP() {
                                 {checked ? "Vai comparecer" : "Não vai"}
                               </span>
                             </label>
+
+                            {checked && (
+                              <div className="mt-4 rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium text-foreground">
+                                    Confirme a faixa etária
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Precisamos saber se {guest.guestName} tem 6 anos ou menos.
+                                  </p>
+                                </div>
+                                <RadioGroup
+                                  value={
+                                    typeof childAgeValue === "boolean"
+                                      ? childAgeValue
+                                        ? "child"
+                                        : "adult"
+                                      : ""
+                                  }
+                                  onValueChange={(value) => {
+                                    setChildAgeSelections((state) => ({
+                                      ...state,
+                                      [guest.guestId]: value === "child",
+                                    }));
+                                    if (childAgeErrorGuestId === guest.guestId) {
+                                      setChildAgeErrorGuestId(null);
+                                    }
+                                  }}
+                                  className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                                >
+                                  <label
+                                    className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background px-4 py-3 cursor-pointer"
+                                    htmlFor={`${id}-child`}
+                                  >
+                                    <RadioGroupItem
+                                      value="child"
+                                      id={`${id}-child`}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="space-y-1">
+                                      <div className="text-sm font-medium text-foreground">
+                                        6 anos ou menos
+                                      </div>
+                                      {guest.isChildSixOrYounger && (
+                                        <div className="text-xs text-muted-foreground">
+                                          Preenchido com base no cadastro. Confira antes de enviar.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </label>
+                                  <label
+                                    className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background px-4 py-3 cursor-pointer"
+                                    htmlFor={`${id}-adult`}
+                                  >
+                                    <RadioGroupItem
+                                      value="adult"
+                                      id={`${id}-adult`}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="text-sm font-medium text-foreground">
+                                      7 anos ou mais
+                                    </div>
+                                  </label>
+                                </RadioGroup>
+                                {showChildAgeError && (
+                                  <p className="text-xs text-destructive">
+                                    Confirme a faixa etária de quem vai comparecer.
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </li>
                         );
                       })}
@@ -336,7 +458,7 @@ export function RSVP() {
                       <Button
                         type="button"
                         onClick={submitConfirmation}
-                        disabled={submitMutation.isPending}
+                        disabled={submitMutation.isPending || hasPendingChildAgeConfirmation}
                         className="rounded-full h-12 px-8 w-full sm:w-auto"
                       >
                         {submitMutation.isPending ? (

@@ -22,7 +22,8 @@ describe("WeddingRepository", () => {
               guestId: "grupo-amanda-cris--amanda",
               guestName: "Amanda",
               allowedPlusOnes: 0,
-              rsvpStatus: "pending"
+              rsvpStatus: "pending",
+              isChildSixOrYounger: true
             },
             {
               guestId: "grupo-amanda-cris--chris",
@@ -52,7 +53,8 @@ describe("WeddingRepository", () => {
             guestId: "grupo-amanda-cris--amanda",
             guestName: "Amanda",
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChildSixOrYounger: true
           },
           {
             guestId: "grupo-amanda-cris--chris",
@@ -87,7 +89,8 @@ describe("WeddingRepository", () => {
           guestResponses: [
             {
               guestId: "grupo-amanda-cris--amanda",
-              status: "attending"
+              status: "attending",
+              isChildSixOrYounger: true
             }
           ],
           attendingGuestCount: 1
@@ -103,7 +106,9 @@ describe("WeddingRepository", () => {
           entityType: "RsvpResponse",
           invitationCode: "ABCD2345",
           status: "attending",
-          attendingGuestCount: 1
+          attendingGuestCount: 1,
+          paidAttendingGuestCount: 0,
+          childSixOrYoungerAttendingCount: 1
         })
       );
     });
@@ -123,13 +128,30 @@ describe("WeddingRepository", () => {
                 guestId: "g1",
                 guestName: "Amanda",
                 allowedPlusOnes: 0,
-                rsvpStatus: "pending"
+                rsvpStatus: "pending",
+                isChildSixOrYounger: true
               },
               {
                 guestId: "g2",
                 guestName: "Chris",
                 allowedPlusOnes: 0,
                 rsvpStatus: "attending"
+              }
+            ]
+          },
+          {
+            entityType: "RsvpResponse",
+            householdId: "grupo-amanda-cris",
+            guestResponses: [
+              {
+                guestId: "g1",
+                status: "attending",
+                isChildSixOrYounger: true
+              },
+              {
+                guestId: "g2",
+                status: "declined",
+                isChildSixOrYounger: false
               }
             ]
           }
@@ -140,7 +162,7 @@ describe("WeddingRepository", () => {
       const rows = await repository.exportGuests();
 
       const command = send.mock.calls[0][0] as ScanCommand;
-      expect(command.input.FilterExpression).toBe("entityType = :entityType");
+      expect(command.input.FilterExpression).toBe("entityType = :invitationType OR entityType = :rsvpType");
       expect(rows).toHaveLength(2);
       expect(rows[0]).toEqual({
         householdId: "grupo-amanda-cris",
@@ -149,10 +171,14 @@ describe("WeddingRepository", () => {
         guestName: "Amanda",
         phoneNumber: undefined,
         rsvpStatus: "pending",
-        allowedPlusOnes: 0
+        allowedPlusOnes: 0,
+        attending: true,
+        isChildSixOrYoungerSeed: true,
+        isChildSixOrYoungerConfirmed: true
       });
       expect(rows[1].guestName).toBe("Chris");
       expect(rows[1].rsvpStatus).toBe("attending");
+      expect(rows[1].attending).toBe(false);
     });
   });
 });

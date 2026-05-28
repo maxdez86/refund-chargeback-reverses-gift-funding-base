@@ -31,8 +31,8 @@ const baseRequest: RsvpSubmissionRequest = {
   householdId: "household-001",
   submittedBy: "Maria Silva",
   guestResponses: [
-    { guestId: "guest-001", status: "attending" },
-    { guestId: "guest-002", status: "declined" }
+    { guestId: "guest-001", status: "attending", isChildSixOrYounger: true },
+    { guestId: "guest-002", status: "declined", isChildSixOrYounger: false }
   ],
   attendingGuestCount: 1,
   note: "Temos restricao alimentar."
@@ -57,13 +57,23 @@ describe("RsvpService", () => {
       expect.objectContaining({
         to: "casamento@brimax.life",
         subject: "Nova confirmacao de presenca: Familia Silva",
-        text: expect.stringContaining("Maria Silva: vai comparecer"),
+        text: expect.stringContaining("Maria Silva: vai comparecer (6 anos ou menos)"),
         html: expect.stringContaining("Enviado automaticamente por brimax.life.")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Joao Silva: nao vai comparecer")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Pagantes: 0")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Criancas 6 anos ou menos: 1")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
@@ -164,5 +174,27 @@ describe("RsvpService", () => {
     );
 
     errorSpy.mockRestore();
+  });
+
+  it("rejects when the attending count does not match guest responses", async () => {
+    const repository = {
+      getInvitationByCode: vi.fn().mockResolvedValue(baseInvitation),
+      upsertRsvp: vi.fn()
+    };
+    const emailService = {
+      sendEmail: vi.fn()
+    };
+    const service = new RsvpService(repository as never, emailService as never);
+
+    await expect(
+      service.submit({
+        ...baseRequest,
+        attendingGuestCount: 0
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409
+    });
+    expect(repository.upsertRsvp).not.toHaveBeenCalled();
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
 });

@@ -224,6 +224,9 @@ describe("official web app", () => {
     // the Cloudflare widget script can't load there.
     expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345", null);
 
+    for (const button of screen.getAllByLabelText("7 anos ou mais")) {
+      fireEvent.click(button);
+    }
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
     expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();
     expect(submitRsvpMock).toHaveBeenCalledTimes(1);
@@ -231,7 +234,11 @@ describe("official web app", () => {
     expect(payload).toMatchObject({
       invitationCode: "ABCD2345",
       householdId: "grupo-debora-nael",
-      attendingGuestCount: 2
+      attendingGuestCount: 2,
+      guestResponses: [
+        expect.objectContaining({ isChildSixOrYounger: false }),
+        expect.objectContaining({ isChildSixOrYounger: false })
+      ]
     });
   });
 
@@ -258,11 +265,6 @@ describe("official web app", () => {
       "href",
       expect.stringContaining("google.com/maps")
     );
-
-    fireEvent.click(screen.getByRole("button", { name: /Reproduzir Tour 360 do Villa Valentim/i }));
-
-    await waitFor(() =>
-      expect(screen.getByTitle("Tour 360 do Villa Valentim")).toBeInTheDocument()
-    );
+    expect(document.querySelector('video[src="/media/local/tour-360-villa-valentim.mp4"]')).toBeInTheDocument();
   });
 });

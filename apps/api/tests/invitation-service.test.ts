@@ -14,7 +14,8 @@ describe("InvitationService", () => {
             guestId: "grupo-amanda-cris--amanda",
             guestName: "Amanda",
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChildSixOrYounger: true
           }
         ]
       })
@@ -26,6 +27,7 @@ describe("InvitationService", () => {
     expect(repository.getInvitationByCode).toHaveBeenCalledWith("ABCD2345");
     expect(result.householdName).toBe("Amanda e Chris");
     expect(result.guests).toHaveLength(1);
+    expect(result.guests[0]?.isChildSixOrYounger).toBe(true);
   });
 
   it("normalizes incoming codes to trimmed uppercase before lookup", async () => {

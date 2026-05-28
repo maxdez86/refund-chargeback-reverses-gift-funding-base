@@ -12,27 +12,27 @@ import { resourceName, resolveStage } from "../packages/config/src";
 type HouseholdSeed = {
   householdId: string;
   householdName: string;
-  guestNames: string[];
+  guests: Array<string | { guestName: string; isChildSixOrYounger?: boolean }>;
 };
 
 const households: HouseholdSeed[] = [
-  { householdId: "grupo-amanda-cris", householdName: "Amanda e Chris", guestNames: ["Amanda", "Chris"] },
-  { householdId: "grupo-fabi-fernando", householdName: "Fabi e Fernando", guestNames: ["Fabi", "Fernando"] },
-  { householdId: "grupo-tami-marcos", householdName: "Tami e Marcos", guestNames: ["Tami", "Marcos"] },
-  { householdId: "grupo-elis-son", householdName: "Elís e Son", guestNames: ["Elís", "Son"] },
-  { householdId: "grupo-kelly-sa", householdName: "Kelly e Sá", guestNames: ["Kelly", "Sá"] },
-  { householdId: "grupo-lila-welton", householdName: "Lila e Welton", guestNames: ["Lila", "Welton"] },
-  { householdId: "grupo-nilza-cerqueira", householdName: "Nilza e Cerqueira", guestNames: ["Nilza", "Cerqueira"] },
-  { householdId: "grupo-debora-nael", householdName: "Débora e Nael", guestNames: ["Débora", "Nael"] },
-  { householdId: "grupo-nessa-carlos", householdName: "Nessa e Carlos", guestNames: ["Nessa", "Carlos"] },
-  { householdId: "grupo-nuza-sid", householdName: "Nuza e Sid", guestNames: ["Nuza", "Sid"] },
-  { householdId: "grupo-carol-higor", householdName: "Carol e Higor", guestNames: ["Carol", "Higor"] },
-  { householdId: "grupo-alice", householdName: "Alice", guestNames: ["Alice"] },
-  { householdId: "grupo-raquel", householdName: "Raquel", guestNames: ["Raquel"] },
-  { householdId: "grupo-julia", householdName: "Julia", guestNames: ["Julia"] },
-  { householdId: "grupo-drielly", householdName: "Drielly", guestNames: ["Drielly"] },
-  { householdId: "grupo-ronaldo", householdName: "Ronaldo", guestNames: ["Ronaldo"] },
-  { householdId: "grupo-cristiane-juliano", householdName: "Cristiane e Juliano", guestNames: ["Cristiane", "Juliano"] }
+  { householdId: "grupo-amanda-cris", householdName: "Amanda e Chris", guests: ["Amanda", "Chris"] },
+  { householdId: "grupo-fabi-fernando", householdName: "Fabi e Fernando", guests: ["Fabi", "Fernando"] },
+  { householdId: "grupo-tami-marcos", householdName: "Tami e Marcos", guests: ["Tami", "Marcos"] },
+  { householdId: "grupo-elis-son", householdName: "Elís e Son", guests: ["Elís", "Son"] },
+  { householdId: "grupo-kelly-sa", householdName: "Kelly e Sá", guests: ["Kelly", "Sá"] },
+  { householdId: "grupo-lila-welton", householdName: "Lila e Welton", guests: ["Lila", "Welton"] },
+  { householdId: "grupo-nilza-cerqueira", householdName: "Nilza e Cerqueira", guests: ["Nilza", "Cerqueira"] },
+  { householdId: "grupo-debora-nael", householdName: "Débora e Nael", guests: ["Débora", "Nael"] },
+  { householdId: "grupo-nessa-carlos", householdName: "Nessa e Carlos", guests: ["Nessa", "Carlos"] },
+  { householdId: "grupo-nuza-sid", householdName: "Nuza e Sid", guests: ["Nuza", "Sid"] },
+  { householdId: "grupo-carol-higor", householdName: "Carol e Higor", guests: ["Carol", "Higor"] },
+  { householdId: "grupo-alice", householdName: "Alice", guests: ["Alice"] },
+  { householdId: "grupo-raquel", householdName: "Raquel", guests: ["Raquel"] },
+  { householdId: "grupo-julia", householdName: "Julia", guests: ["Julia"] },
+  { householdId: "grupo-drielly", householdName: "Drielly", guests: ["Drielly"] },
+  { householdId: "grupo-ronaldo", householdName: "Ronaldo", guests: ["Ronaldo"] },
+  { householdId: "grupo-cristiane-juliano", householdName: "Cristiane e Juliano", guests: ["Cristiane", "Juliano"] }
 ];
 
 // Canonical invitation code: 2 letters + 4 digits from a confusion-free
@@ -61,6 +61,10 @@ function slugify(value: string): string {
 
 function buildGuestId(householdId: string, guestName: string): string {
   return `${householdId}--${slugify(guestName)}`;
+}
+
+function normalizeGuestSeed(input: string | { guestName: string; isChildSixOrYounger?: boolean }) {
+  return typeof input === "string" ? { guestName: input } : input;
 }
 
 const stage = resolveStage(process.env.STAGE);
@@ -99,12 +103,18 @@ async function main() {
 
   for (const household of households) {
     const invitationCode = codeByHousehold.get(household.householdId)!;
-    const guests = household.guestNames.map((guestName) => ({
-      guestId: buildGuestId(household.householdId, guestName),
-      guestName,
-      allowedPlusOnes: 0,
-      rsvpStatus: "pending" as const
-    }));
+    const guests = household.guests.map((guestInput) => {
+      const guest = normalizeGuestSeed(guestInput);
+      return {
+        guestId: buildGuestId(household.householdId, guest.guestName),
+        guestName: guest.guestName,
+        allowedPlusOnes: 0,
+        rsvpStatus: "pending" as const,
+        ...(typeof guest.isChildSixOrYounger === "boolean"
+          ? { isChildSixOrYounger: guest.isChildSixOrYounger }
+          : {})
+      };
+    });
 
     await client.send(
       new PutCommand({

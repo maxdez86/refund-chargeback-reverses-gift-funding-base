@@ -8,7 +8,10 @@ export const AdminGuestExportRowSchema = z.object({
   guestName: z.string(),
   phoneNumber: z.string().optional(),
   rsvpStatus: z.string(),
-  allowedPlusOnes: z.number().int().nonnegative()
+  allowedPlusOnes: z.number().int().nonnegative(),
+  attending: z.boolean().optional(),
+  isChildSixOrYoungerSeed: z.boolean().optional(),
+  isChildSixOrYoungerConfirmed: z.boolean().optional()
 });
 
 export type AdminGuestExportRow = z.infer<typeof AdminGuestExportRowSchema>;

@@ -84,6 +84,7 @@ describe("RSVP section", () => {
     expect(stateLabels[0].textContent).toBe("Vai comparecer");
     expect(stateLabels[1].textContent).toBe("Não vai");
     expect(screen.getByText("1 pessoa confirmada")).toBeInTheDocument();
+    expect(screen.getByText("Confirme a faixa etária")).toBeInTheDocument();
   });
 
   it("submits the household with note and shows the success state", async () => {
@@ -125,6 +126,7 @@ describe("RSVP section", () => {
 
     // Uncheck Chris by clicking the row label.
     fireEvent.click(screen.getByText("Chris"));
+    fireEvent.click(screen.getByLabelText("7 anos ou mais"));
     fireEvent.change(screen.getByLabelText(/Recado para os noivos/i), {
       target: { value: "Chegamos no sábado!" }
     });
@@ -138,8 +140,8 @@ describe("RSVP section", () => {
         householdId: "grupo-amanda-cris",
         submittedBy: "g1",
         guestResponses: [
-          { guestId: "g1", status: "attending" },
-          { guestId: "g2", status: "declined" }
+          { guestId: "g1", status: "attending", isChildSixOrYounger: false },
+          { guestId: "g2", status: "declined", isChildSixOrYounger: false }
         ],
         attendingGuestCount: 1,
         note: "Chegamos no sábado!"
@@ -193,11 +195,42 @@ describe("RSVP section", () => {
 
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
+    expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("7 anos ou mais"));
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("boom"));
     expect(
       screen.queryByText(/Recebemos sua confirmação com carinho!/i)
     ).not.toBeInTheDocument();
+  });
+
+  it("preselects the child option when the invitation seed marks a guest as 6 or younger", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitationCode: "ABCD2345",
+      householdId: "grupo-amanda-cris",
+      householdName: "Amanda e Chris",
+      guests: [
+        {
+          guestId: "g1",
+          guestName: "Amanda",
+          allowedPlusOnes: 0,
+          rsvpStatus: "attending",
+          isChildSixOrYounger: true
+        }
+      ]
+    });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    expect(screen.getByText(/Preenchido com base no cadastro/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeEnabled();
   });
 });

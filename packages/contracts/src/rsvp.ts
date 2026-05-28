@@ -5,6 +5,7 @@ import { InvitationCodeSchema } from "./invitation-code";
 export const RsvpGuestAnswerSchema = z.object({
   guestId: z.string().min(1),
   status: RsvpStatusSchema,
+  isChildSixOrYounger: z.boolean(),
   mealPreference: z.string().min(1).optional(),
   note: z.string().max(500).optional()
 });
