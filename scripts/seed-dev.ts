@@ -26,7 +26,7 @@ const households: HouseholdSeed[] = [
   { householdId: "grupo-debora-nael", householdName: "Débora e Nael", guestNames: ["Débora", "Nael"] },
   { householdId: "grupo-nessa-carlos", householdName: "Nessa e Carlos", guestNames: ["Nessa", "Carlos"] },
   { householdId: "grupo-nuza-sid", householdName: "Nuza e Sid", guestNames: ["Nuza", "Sid"] },
-  { householdId: "grupo-carol-igor", householdName: "Carol e Igor", guestNames: ["Carol", "Igor"] },
+  { householdId: "grupo-carol-higor", householdName: "Carol e Higor", guestNames: ["Carol", "Higor"] },
   { householdId: "grupo-alice", householdName: "Alice", guestNames: ["Alice"] },
   { householdId: "grupo-raquel", householdName: "Raquel", guestNames: ["Raquel"] },
   { householdId: "grupo-julia", householdName: "Julia", guestNames: ["Julia"] },

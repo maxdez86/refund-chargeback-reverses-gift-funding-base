@@ -100,13 +100,31 @@ describe("official web app", () => {
   it("opens the gift dialog flow", async () => {
     render(<App />);
 
-    fireEvent.click((await screen.findAllByRole("button", { name: /Contribuir|Escolher presente/i }))[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Escolher presente" }));
 
     expect(
       await screen.findByRole("heading", { name: /PIX Teste|4 Toalhas de Banho|Armário de Cozinha/i })
     ).toBeInTheDocument();
 
+    expect(screen.getByTestId("gift-dialog-content").className).toContain("max-h-[92vh]");
+    expect(screen.getByTestId("gift-dialog-image-frame")).toBeInTheDocument();
     expect(screen.queryByLabelText("Seu e-mail")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeEnabled();
+  });
+
+  it("opens the fractional gift dialog with the dialog-specific image frame", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Contribuir" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Armário de Cozinha" })
+    ).toBeInTheDocument();
+
+    const imageFrame = screen.getByTestId("gift-dialog-image-frame");
+    expect(imageFrame).toBeInTheDocument();
+    expect(imageFrame.className).toContain("min-h-[15rem]");
+    expect(screen.getByTestId("gift-dialog-content").className).toContain("overflow-y-auto");
     expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeEnabled();
   });
 
@@ -149,6 +167,18 @@ describe("official web app", () => {
 
     expect(await screen.findByText("1 cota restante")).toBeInTheDocument();
     expect(screen.getByText("97%")).toBeInTheDocument();
+  });
+
+  it("keeps the gift card image markup unchanged after the dialog refactor", async () => {
+    render(<App />);
+
+    const cardHeading = await screen.findByText("4 Toalhas de Banho");
+    const cardPicture = cardHeading
+      .closest("article")
+      ?.querySelector('picture[data-media-policy-section="presentes"]');
+
+    expect(cardPicture).toBeInTheDocument();
+    expect(cardPicture?.querySelector("img")?.className).toContain("p-2");
   });
 
   it("looks up an invitation by code and submits a confirmation", async () => {

@@ -86,6 +86,21 @@ const GIFT_CARD_IMAGE_PRESENTATION: Record<string, GiftImagePresentation> = {
   },
 };
 
+const GIFT_DIALOG_IMAGE_PRESENTATION: Record<string, GiftImagePresentation> = {
+  "g-batedeira": {
+    containerClassName: "bg-[#f7f4ee]",
+    imageClassName: "object-contain object-center scale-[1.08]",
+  },
+  "g-liquidificador": {
+    containerClassName: "bg-[#f7f4ee]",
+    imageClassName: "object-contain object-center scale-[1.06]",
+  },
+  "g-travesseiros": {
+    containerClassName: "bg-[#f7f1e8]",
+    imageClassName: "object-contain object-center scale-[1.08]",
+  },
+};
+
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -318,6 +333,7 @@ function GiftDialog({
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
+  const imagePresentation = GIFT_DIALOG_IMAGE_PRESENTATION[gift?.id ?? ""];
 
   useEffect(() => {
     setQuantity(1);
@@ -411,7 +427,10 @@ function GiftDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg bg-background rounded-2xl">
+      <DialogContent
+        data-testid="gift-dialog-content"
+        className="max-h-[92vh] overflow-y-auto sm:max-h-[min(90vh,48rem)] sm:max-w-lg bg-background rounded-2xl"
+      >
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl text-foreground">
             {gift.name}
@@ -433,14 +452,22 @@ function GiftDialog({
           )}
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-center max-h-48 sm:max-h-56 rounded-xl overflow-hidden bg-muted">
+        <div className="space-y-3 sm:space-y-4">
+          <div
+            data-testid="gift-dialog-image-frame"
+            className={`flex min-h-[15rem] items-center justify-center rounded-xl overflow-hidden px-3 py-2 sm:min-h-[18rem] sm:px-4 sm:py-3 ${
+              imagePresentation?.containerClassName ?? "bg-muted"
+            }`}
+          >
             <ResponsivePhoto
               section="presentes"
               sources={buildSharedWidthImageSources("presentes", gift.imageSlug, PRESENTES_DIALOG_IMAGE_SIZES)}
               fallbackSrc={buildSharedWidthImageFallbackSrc("presentes", gift.imageSlug)}
               alt={gift.name}
-              className="object-contain max-h-48 sm:max-h-56 w-auto"
+              pictureClassName="flex h-full w-full items-center justify-center"
+              className={`h-full max-h-[14rem] w-full sm:max-h-[17rem] ${
+                imagePresentation?.imageClassName ?? "object-contain object-center"
+              }`}
             />
           </div>
 

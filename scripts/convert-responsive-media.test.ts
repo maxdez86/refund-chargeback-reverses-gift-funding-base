@@ -14,7 +14,7 @@ import {
 const manifest = {
   sections: {
     story: {
-      "pedido-namoro": [],
+      "o-ultimo-primeiro-beijo": [],
     },
     padrinhos: {
       alice: [],
@@ -111,7 +111,7 @@ test("buildConversionPlan resolves hero and footer device targets without a slug
 
 test("convertResponsiveMedia writes the full output set for a shared-width section", () =>
   withTempDir((tempDir) => {
-    const sourcePath = path.join(tempDir, "images/old/story/pedido-namoro.jpeg");
+    const sourcePath = path.join(tempDir, "images/old/story/o-ultimo-primeiro-beijo.jpeg");
     createFixtureImage(sourcePath);
 
     const plan = buildConversionPlan({
@@ -121,6 +121,7 @@ test("convertResponsiveMedia writes the full output set for a shared-width secti
       manifest,
     });
 
+    assert.equal(plan.slug, "o-ultimo-primeiro-beijo");
     convertResponsiveMedia(plan);
 
     for (const variant of plan.variants) {
