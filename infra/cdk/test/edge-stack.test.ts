@@ -17,7 +17,7 @@ describe("EdgeStack", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs("AWS::S3::Bucket", 1);
+    template.resourceCountIs("AWS::S3::Bucket", 2);
     template.resourceCountIs("AWS::CloudFront::Distribution", 1);
 
     expect(template.toJSON()).toBeDefined();

@@ -109,3 +109,17 @@ export function phoneLookupIndex(phoneNumber: string) {
     GSI1SK: "PROFILE"
   };
 }
+
+export function guestMessageFeedKey(createdAt: string, messageId: string) {
+  return {
+    PK: "GUEST_MESSAGES",
+    SK: `MESSAGE#${createdAt}#${messageId}`
+  };
+}
+
+export function guestMessageLookupKey(messageId: string) {
+  return {
+    PK: `GUEST_MESSAGE#${messageId}`,
+    SK: "LOOKUP"
+  };
+}

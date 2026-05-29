@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const getGiftsMock = vi.fn();
+const listGuestMessagesMock = vi.fn();
 const fetchInvitationMock = vi.fn();
 const submitRsvpMock = vi.fn();
 const executeTurnstileMock = vi.fn();
@@ -9,6 +10,12 @@ const executeTurnstileMock = vi.fn();
 vi.mock("@/lib/gifts-api", () => ({
   giftsQueryKey: ["gifts"],
   getGifts: (...args: unknown[]) => getGiftsMock(...args)
+}));
+
+vi.mock("@/lib/guest-messages-api", () => ({
+  guestMessagesQueryKey: ["guest-messages"],
+  listGuestMessages: (...args: unknown[]) => listGuestMessagesMock(...args),
+  createGuestMessage: vi.fn()
 }));
 
 vi.mock("@/lib/rsvp-api", async () => {
@@ -39,6 +46,10 @@ describe("official web app", () => {
     executeTurnstileMock.mockReset().mockResolvedValue(null);
     fetchInvitationMock.mockReset();
     submitRsvpMock.mockReset();
+    listGuestMessagesMock.mockReset().mockResolvedValue({
+      messages: [],
+      nextCursor: null
+    });
     getGiftsMock.mockReset().mockResolvedValue([
       {
         id: "g-toalhas-banho",
@@ -83,6 +94,7 @@ describe("official web app", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Lista de Presentes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sua presença é o nosso maior presente" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recados para os Noivos" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tire suas dúvidas." })).toBeInTheDocument();
     expect(await screen.findByText("4 Toalhas de Banho")).toBeInTheDocument();
     expect(document.querySelector('picture[data-media-policy-section="hero"] source[srcset="/media/hero/mobile.avif"]')).toBeInTheDocument();

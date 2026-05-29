@@ -17,6 +17,7 @@ import { Padrinhos } from "@/components/sections/Padrinhos";
 import { Fornecedores } from "@/components/sections/Fornecedores";
 import { Presentes } from "@/components/sections/Presentes";
 import { RSVP } from "@/components/sections/RSVP";
+import { GuestMessages } from "@/components/sections/GuestMessages";
 import { FAQ } from "@/components/sections/FAQ";
 import { Footer } from "@/components/sections/Footer";
 
@@ -115,6 +116,7 @@ function Home() {
         <Fornecedores />
         <Presentes />
         <RSVP />
+        <GuestMessages />
         <FAQ />
       </main>
       <Footer />

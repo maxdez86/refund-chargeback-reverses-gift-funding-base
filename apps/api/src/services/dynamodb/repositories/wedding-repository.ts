@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -7,6 +8,8 @@ import {
   type DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
 import type {
+  CreateGuestMessageRequest,
+  GuestMessage,
   AdminGuestExportRow,
   GuestProfile,
   HouseholdInvitation,
@@ -14,6 +17,8 @@ import type {
 } from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import {
+  guestMessageFeedKey,
+  guestMessageLookupKey,
   invitationKeys,
   phoneLookupIndex,
   rsvpKeys,
@@ -21,9 +26,24 @@ import {
 } from "../key-builder";
 import { GSI1_NAME, TABLE_PRIMARY_KEY, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
+import { AppError } from "../../../lib/errors";
 import { deriveRsvpCounts, toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
 
 type ItemRecord = Record<string, unknown>;
+type GuestMessageFeedItem = ItemRecord & {
+  entityType: "GuestMessage";
+  authorName: string;
+  createdAt: string;
+  message: string;
+  messageId: string;
+};
+
+type GuestMessageLookupItem = ItemRecord & {
+  entityType: "GuestMessageLookup";
+  feedPK: string;
+  feedSK: string;
+  messageId: string;
+};
 
 export class WeddingRepository {
   constructor(
@@ -94,6 +114,104 @@ export class WeddingRepository {
     );
 
     return updatedAt;
+  }
+
+  async listGuestMessages(cursor?: string | null, limit = 50) {
+    const response = await this.documentClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: `${TABLE_PRIMARY_KEY} = :pk`,
+        ExpressionAttributeValues: {
+          ":pk": "GUEST_MESSAGES"
+        },
+        ExclusiveStartKey: decodeGuestMessagesCursor(cursor),
+        Limit: limit,
+        ScanIndexForward: false
+      })
+    );
+
+    const messages = ((response.Items ?? []) as GuestMessageFeedItem[]).map((item) => ({
+      messageId: item.messageId,
+      authorName: item.authorName,
+      message: item.message,
+      createdAt: item.createdAt
+    }));
+
+    return {
+      messages,
+      nextCursor: encodeGuestMessagesCursor(response.LastEvaluatedKey as ItemRecord | undefined)
+    };
+  }
+
+  async createGuestMessage(input: CreateGuestMessageRequest): Promise<GuestMessage> {
+    const createdAt = new Date().toISOString();
+    const messageId = crypto.randomUUID();
+    const feedKey = guestMessageFeedKey(createdAt, messageId);
+    const lookupKey = guestMessageLookupKey(messageId);
+
+    const message: GuestMessage = {
+      messageId,
+      authorName: input.authorName,
+      message: input.message,
+      createdAt
+    };
+
+    await this.documentClient.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          ...feedKey,
+          entityType: "GuestMessage",
+          ...message
+        }
+      })
+    );
+
+    await this.documentClient.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          ...lookupKey,
+          entityType: "GuestMessageLookup",
+          messageId,
+          feedPK: feedKey.PK,
+          feedSK: feedKey.SK
+        }
+      })
+    );
+
+    return message;
+  }
+
+  async deleteGuestMessage(messageId: string) {
+    const lookupResult = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: guestMessageLookupKey(messageId)
+      })
+    );
+
+    const lookupItem = lookupResult.Item as GuestMessageLookupItem | undefined;
+    if (!lookupItem) {
+      throw new AppError("Guest message not found.", 404);
+    }
+
+    await this.documentClient.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: lookupItem.feedPK,
+          SK: lookupItem.feedSK
+        }
+      })
+    );
+
+    await this.documentClient.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: guestMessageLookupKey(messageId)
+      })
+    );
   }
 
   async recordWebhookEventIfNew(provider: string, eventId: string, ttlInSeconds = 86_400) {
@@ -170,5 +288,26 @@ export class WeddingRepository {
         rsvp: group.rsvp
       });
     });
+  }
+}
+
+function encodeGuestMessagesCursor(lastEvaluatedKey?: ItemRecord) {
+  if (!lastEvaluatedKey) {
+    return null;
+  }
+
+  return Buffer.from(JSON.stringify(lastEvaluatedKey), "utf8").toString("base64");
+}
+
+function decodeGuestMessagesCursor(cursor?: string | null) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  try {
+    const decoded = Buffer.from(cursor, "base64").toString("utf8");
+    return JSON.parse(decoded) as ItemRecord;
+  } catch {
+    throw new AppError("Invalid guest messages cursor.", 400);
   }
 }

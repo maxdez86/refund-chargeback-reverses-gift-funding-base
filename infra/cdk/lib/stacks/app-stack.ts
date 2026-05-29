@@ -115,7 +115,12 @@ export class AppStack extends cdk.Stack {
           "x-turnstile-token",
           "x-rsvp-lookup-proof"
         ],
-        allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.DELETE,
+          apigwv2.CorsHttpMethod.OPTIONS
+        ],
         allowOrigins: ["https://brimax.life", "https://www.brimax.life"],
         maxAge: cdk.Duration.minutes(10)
       }
@@ -155,6 +160,10 @@ export class AppStack extends cdk.Stack {
           ThrottlingRateLimit: 1
         },
         "POST /payments/{paymentId}/message": {
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 1
+        },
+        "POST /guest-messages": {
           ThrottlingBurstLimit: 5,
           ThrottlingRateLimit: 1
         }
@@ -205,6 +214,30 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
+    const getGuestMessagesFn = new nodejs.NodejsFunction(this, "GetGuestMessagesFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/guest-messages-get/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const createGuestMessagesFn = new nodejs.NodejsFunction(this, "CreateGuestMessagesFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/guest-messages-create/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const deleteGuestMessageFn = new nodejs.NodejsFunction(this, "DeleteGuestMessageFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-guest-message-delete/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10)
+    });
     const paymentMessageFn = new nodejs.NodejsFunction(this, "PaymentMessageFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-message/handler.ts"),
       environment: commonEnvironment,
@@ -233,6 +266,7 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
+      memorySize: 1024,
       projectRoot,
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
@@ -255,6 +289,9 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(createPaymentFn);
     props.table.grantReadData(getPaymentFn);
     props.table.grantReadData(getGiftsFn);
+    props.table.grantReadData(getGuestMessagesFn);
+    props.table.grantReadWriteData(createGuestMessagesFn);
+    props.table.grantReadWriteData(deleteGuestMessageFn);
     props.table.grantReadWriteData(paymentMessageFn);
     props.table.grantReadWriteData(asaasWebhookFn);
     props.table.grantReadWriteData(webhookProcessorFn);
@@ -268,10 +305,12 @@ export class AppStack extends cdk.Stack {
     lookupProofSecret.grantRead(invitationGetFn);
     lookupProofSecret.grantRead(rsvpFn);
     turnstileSecret.grantRead(invitationGetFn);
+    turnstileSecret.grantRead(createGuestMessagesFn);
     const sesSendPolicy = new iam.PolicyStatement({
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: ["*"]
     });
+    createGuestMessagesFn.addToRolePolicy(sesSendPolicy);
     paymentMessageFn.addToRolePolicy(sesSendPolicy);
     webhookProcessorFn.addToRolePolicy(sesSendPolicy);
     rsvpFn.addToRolePolicy(sesSendPolicy);
@@ -293,6 +332,30 @@ export class AppStack extends cdk.Stack {
       path: "/gifts",
       methods: [apigwv2.HttpMethod.GET],
       integration: new apigwv2Integrations.HttpLambdaIntegration("GetGiftsIntegration", getGiftsFn)
+    });
+    this.httpApi.addRoutes({
+      path: "/guest-messages",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "GetGuestMessagesIntegration",
+        getGuestMessagesFn
+      )
+    });
+    this.httpApi.addRoutes({
+      path: "/guest-messages",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "CreateGuestMessagesIntegration",
+        createGuestMessagesFn
+      )
+    });
+    this.httpApi.addRoutes({
+      path: "/admin/guest-messages/{messageId}",
+      methods: [apigwv2.HttpMethod.DELETE],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "DeleteGuestMessageIntegration",
+        deleteGuestMessageFn
+      )
     });
     this.httpApi.addRoutes({
       path: "/payments/{paymentId}/message",

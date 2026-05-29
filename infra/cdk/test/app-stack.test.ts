@@ -34,7 +34,7 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
-    template.resourceCountIs("AWS::Lambda::Function", 9);
+    template.resourceCountIs("AWS::Lambda::Function", 12);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments"
@@ -44,6 +44,15 @@ describe("AppStack", () => {
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /gifts"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /guest-messages"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /guest-messages"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "DELETE /admin/guest-messages/{messageId}"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments/{paymentId}/message"
