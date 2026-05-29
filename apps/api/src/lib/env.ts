@@ -7,6 +7,7 @@ type Env = {
   emailFrom: string;
   emailConfigurationSetName?: string;
   hostedCheckoutSuccessUrl: string;
+  lookupProofSecretArn: string;
   rsvpNotificationTo: string;
   turnstileSecretArn: string;
   webhookQueueUrl: string;
@@ -42,6 +43,7 @@ export function getEnv(): Env {
     emailFrom: process.env.EMAIL_FROM ?? contactEmail,
     emailConfigurationSetName: process.env.EMAIL_CONFIGURATION_SET_NAME?.trim() || undefined,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
+    lookupProofSecretArn: process.env.LOOKUP_PROOF_SECRET_ARN ?? "",
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
     turnstileSecretArn: process.env.TURNSTILE_SECRET_ARN ?? "",
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",

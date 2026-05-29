@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,6 +21,8 @@ import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
+const NAVIGATION_OFFSET = 80;
+const SUCCESS_SCROLL_RELEASE_DELAY_MS = 500;
 
 type LookupState =
   | { kind: "idle" }
@@ -51,26 +53,47 @@ function initialChildAgeSelections(invitation: HouseholdInvitation): ChildAgeSel
 export function RSVP() {
   const [codeInput, setCodeInput] = useState("");
   const [lookup, setLookup] = useState<LookupState>({ kind: "idle" });
+  const [lookupProof, setLookupProof] = useState<string | null>(null);
+  const [isVerifyingLookup, setIsVerifyingLookup] = useState(false);
   const [selections, setSelections] = useState<Record<string, boolean>>({});
   const [childAgeSelections, setChildAgeSelections] = useState<ChildAgeSelections>({});
   const [childAgeErrorGuestId, setChildAgeErrorGuestId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
+  const [cardMinHeight, setCardMinHeight] = useState<number | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const guestDetailRefs = useRef<Record<string, HTMLLIElement | null>>({});
+  const successScrollFrameRef = useRef<number | null>(null);
+  const successScrollReleaseTimeoutRef = useRef<number | null>(null);
 
-  const consumeTurnstileToken = (): string | null => {
-    if (!TURNSTILE_SITE_KEY) return null;
-    const token = turnstileRef.current?.getToken() ?? null;
-    // Tokens are single-use; trigger a fresh challenge for the next action.
-    turnstileRef.current?.reset();
-    return token;
+  const clearSuccessTransitionLock = () => {
+    if (successScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(successScrollFrameRef.current);
+      successScrollFrameRef.current = null;
+    }
+    if (successScrollReleaseTimeoutRef.current !== null) {
+      window.clearTimeout(successScrollReleaseTimeoutRef.current);
+      successScrollReleaseTimeoutRef.current = null;
+    }
+    setCardMinHeight(null);
+  };
+
+  const clearLookupSession = () => {
+    clearSuccessTransitionLock();
+    setLookup({ kind: "idle" });
+    setLookupProof(null);
+    setSelections({});
+    setChildAgeSelections({});
+    setChildAgeErrorGuestId(null);
+    setSubmitted(null);
   };
 
   const submitMutation = useMutation({
-    mutationFn: (input: RsvpSubmissionRequest) =>
-      submitRsvp(input, consumeTurnstileToken()),
+    mutationFn: (input: RsvpSubmissionRequest) => submitRsvp(input, lookupProof),
     onSuccess: (_response, variables) => {
       if (lookup.kind !== "found") return;
+      const currentCardHeight = cardRef.current?.getBoundingClientRect().height ?? 0;
       const confirmations = lookup.invitation.guests.map((g) => ({
         guestId: g.guestId,
         guestName: g.guestName,
@@ -78,6 +101,7 @@ export function RSVP() {
           variables.guestResponses.find((r) => r.guestId === g.guestId)?.status ===
           "attending",
       }));
+      setCardMinHeight(currentCardHeight > 0 ? currentCardHeight : null);
       setSubmitted({ invitation: lookup.invitation, confirmations });
     },
     onError: (error) => {
@@ -85,17 +109,21 @@ export function RSVP() {
         error instanceof RsvpApiError
           ? error.message
           : "Não conseguimos enviar sua confirmação agora.";
+      if (
+        error instanceof RsvpApiError &&
+        error.status === 403 &&
+        error.message.startsWith("Verificação do convite")
+      ) {
+        clearLookupSession();
+      }
       toast.error(message);
     },
   });
 
   const reset = () => {
     setCodeInput("");
-    setLookup({ kind: "idle" });
-    setSelections({});
-    setChildAgeSelections({});
-    setChildAgeErrorGuestId(null);
-    setSubmitted(null);
+    clearLookupSession();
+    setIsVerifyingLookup(false);
     submitMutation.reset();
   };
 
@@ -104,14 +132,21 @@ export function RSVP() {
     const normalized = normalizeInvitationCode(codeInput);
     if (!normalized) return;
 
-    setLookup({ kind: "loading" });
+    clearSuccessTransitionLock();
+    setIsVerifyingLookup(true);
+    setLookupProof(null);
     setSubmitted(null);
 
+    setLookup({ kind: "loading" });
+
     try {
-      const invitation = await fetchInvitation(normalized, consumeTurnstileToken());
-      setLookup({ kind: "found", invitation });
-      setSelections(initialSelections(invitation));
-      setChildAgeSelections(initialChildAgeSelections(invitation));
+      const turnstileToken = (await turnstileRef.current?.execute()) ?? null;
+      setLookup({ kind: "loading" });
+      const response = await fetchInvitation(normalized, turnstileToken);
+      setLookup({ kind: "found", invitation: response.invitation });
+      setLookupProof(response.lookupProof);
+      setSelections(initialSelections(response.invitation));
+      setChildAgeSelections(initialChildAgeSelections(response.invitation));
       setChildAgeErrorGuestId(null);
     } catch (error) {
       if (error instanceof RsvpApiError && error.status === 404) {
@@ -124,6 +159,9 @@ export function RSVP() {
           : "Não conseguimos consultar o convite agora.";
       toast.error(message);
       setLookup({ kind: "error", message });
+    } finally {
+      setIsVerifyingLookup(false);
+      turnstileRef.current?.reset();
     }
   };
 
@@ -181,9 +219,41 @@ export function RSVP() {
     );
   }, [childAgeSelections, lookup, selections]);
 
+  useEffect(() => {
+    if (!submitted) return;
+
+    successScrollFrameRef.current = window.requestAnimationFrame(() => {
+      const section = sectionRef.current;
+      if (!section) return;
+
+      const top = Math.max(
+        section.getBoundingClientRect().top + window.scrollY - NAVIGATION_OFFSET,
+        0
+      );
+      window.scrollTo({ top, behavior: "smooth" });
+
+      successScrollReleaseTimeoutRef.current = window.setTimeout(() => {
+        setCardMinHeight(null);
+        successScrollReleaseTimeoutRef.current = null;
+      }, SUCCESS_SCROLL_RELEASE_DELAY_MS);
+    });
+
+    return () => {
+      if (successScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(successScrollFrameRef.current);
+        successScrollFrameRef.current = null;
+      }
+      if (successScrollReleaseTimeoutRef.current !== null) {
+        window.clearTimeout(successScrollReleaseTimeoutRef.current);
+        successScrollReleaseTimeoutRef.current = null;
+      }
+    };
+  }, [submitted]);
+
   return (
     <section
       id="confirmar-presenca"
+      ref={sectionRef}
       className="py-24 md:py-32 bg-secondary/30 border-t border-border/30"
     >
       <div className="container mx-auto px-6">
@@ -201,11 +271,13 @@ export function RSVP() {
           </motion.div>
 
           <motion.div
+            ref={cardRef}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8, delay: 0.2 }}
             className="bg-card p-8 md:p-10 rounded-3xl shadow-sm border border-border/50"
+            style={cardMinHeight ? { minHeight: `${cardMinHeight}px` } : undefined}
           >
             {submitted ? (
               <SuccessState
@@ -225,7 +297,7 @@ export function RSVP() {
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Input
                       id="rsvp-code"
-                      placeholder="Ex.: AB2345"
+                      placeholder="Ex.: AB1234"
                       value={codeInput}
                       onChange={(e) =>
                         setCodeInput(e.target.value.toUpperCase())
@@ -241,10 +313,11 @@ export function RSVP() {
                       className="rounded-full h-12 px-6 sm:px-8"
                       disabled={
                         lookup.kind === "loading" ||
+                        isVerifyingLookup ||
                         normalizeInvitationCode(codeInput).length === 0
                       }
                     >
-                      {lookup.kind === "loading" ? (
+                      {lookup.kind === "loading" || isVerifyingLookup ? (
                         <Loader2
                           className="h-4 w-4 mr-2 animate-spin"
                           aria-hidden="true"
@@ -252,13 +325,19 @@ export function RSVP() {
                       ) : (
                         <Search className="h-4 w-4 mr-2" aria-hidden="true" />
                       )}
-                      Localizar convite
+                      {isVerifyingLookup
+                        ? "Verificando…"
+                        : lookup.kind === "loading"
+                          ? "Localizando…"
+                          : "Localizar convite"}
                     </Button>
                   </div>
                   <Turnstile
                     ref={turnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
-                    className="flex justify-center pt-2"
+                    execution="execute"
+                    appearance="interaction-only"
+                    className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2"
                   />
                 </form>
 
@@ -284,15 +363,7 @@ export function RSVP() {
 
                 {lookup.kind === "found" && (
                   <div className="mt-8 space-y-6">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <div className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
-                          Convite localizado
-                        </div>
-                        <div className="font-serif text-2xl text-foreground mt-1">
-                          {lookup.invitation.householdName}
-                        </div>
-                      </div>
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         onClick={reset}
@@ -479,10 +550,6 @@ function SuccessState({
         <h3 className="font-serif text-2xl md:text-3xl text-foreground">
           Recebemos sua confirmação com carinho!
         </h3>
-        <p className="text-sm text-muted-foreground mt-2">
-          Convite de{" "}
-          <span className="text-foreground">{invitation.householdName}</span>
-        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">

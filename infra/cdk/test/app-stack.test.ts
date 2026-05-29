@@ -30,7 +30,7 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
     template.resourceCountIs("AWS::SQS::Queue", 2);
-    template.resourceCountIs("AWS::SecretsManager::Secret", 3);
+    template.resourceCountIs("AWS::SecretsManager::Secret", 4);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
@@ -64,6 +64,13 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::SecretsManager::Secret", {
       Name: "/dev/brimax/asaas/webhook-token",
       SecretString: "{\"token\":\"asaas-webhook-token-test\"}"
+    });
+    template.hasResourceProperties("AWS::SecretsManager::Secret", {
+      Name: "/dev/brimax/rsvp/lookup-proof-secret",
+      GenerateSecretString: Match.objectLike({
+        ExcludePunctuation: true,
+        GenerateStringKey: "secretKey"
+      })
     });
     template.hasResourceProperties("AWS::SES::EmailIdentity", {
       EmailIdentity: "casamento@brimax.life"
@@ -125,6 +132,7 @@ describe("AppStack", () => {
           CONTACT_EMAIL: "casamento@brimax.life",
           EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
           EMAIL_CONFIGURATION_SET_NAME: Match.anyValue(),
+          LOOKUP_PROOF_SECRET_ARN: Match.anyValue(),
           RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }

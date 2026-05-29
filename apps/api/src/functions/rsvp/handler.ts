@@ -1,9 +1,10 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { ZodError } from "zod";
+import { RsvpSubmissionRequestSchema } from "@brimax/contracts";
 import { RsvpService } from "../../domain/rsvp-service";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
-import { verifyTurnstile } from "../../lib/turnstile";
+import { verifyLookupProof } from "../../lib/lookup-proof";
 
 const service = new RsvpService();
 
@@ -11,8 +12,6 @@ export async function handler(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   try {
-    await verifyTurnstile(event);
-
     const idempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
     let requestBody: unknown;
     try {
@@ -20,7 +19,9 @@ export async function handler(event: APIGatewayProxyEventV2) {
     } catch {
       throw new AppError("Invalid JSON body.", 400);
     }
-    const { response, notificationSent } = await service.submit(requestBody);
+    const parsedRequest = RsvpSubmissionRequestSchema.parse(requestBody);
+    await verifyLookupProof(event, parsedRequest.invitationCode);
+    const { response, notificationSent } = await service.submit(parsedRequest);
 
     console.info(
       JSON.stringify({

@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const executeTurnstileMock = vi.fn();
 const fetchInvitationMock = vi.fn();
 const submitRsvpMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -25,6 +27,16 @@ vi.mock("sonner", () => ({
   }
 }));
 
+vi.mock("@/components/Turnstile", () => ({
+  Turnstile: forwardRef((_props: unknown, ref) => {
+    useImperativeHandle(ref, () => ({
+      execute: () => executeTurnstileMock(),
+      reset: vi.fn()
+    }));
+    return <div data-testid="turnstile-widget" />;
+  })
+}));
+
 import { RSVP } from "@/components/sections/RSVP";
 
 function renderWithClient(node: React.ReactNode) {
@@ -36,9 +48,15 @@ function renderWithClient(node: React.ReactNode) {
 
 describe("RSVP section", () => {
   beforeEach(() => {
+    executeTurnstileMock.mockReset().mockResolvedValue(null);
     fetchInvitationMock.mockReset();
     submitRsvpMock.mockReset();
     toastErrorMock.mockReset();
+    Object.defineProperty(window, "scrollY", {
+      writable: true,
+      configurable: true,
+      value: 0
+    });
   });
 
   it("disables the lookup button when no code is entered", () => {
@@ -46,26 +64,31 @@ describe("RSVP section", () => {
     expect(
       screen.getByRole("button", { name: /Localizar convite/i })
     ).toBeDisabled();
+    expect(executeTurnstileMock).not.toHaveBeenCalled();
   });
 
   it("pre-fills selections from prior rsvpStatus when re-editing", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Débora e Nael",
-      guests: [
-        {
-          guestId: "g1",
-          guestName: "Débora",
-          allowedPlusOnes: 0,
-          rsvpStatus: "attending"
-        },
-        {
-          guestId: "g2",
-          guestName: "Nael",
-          allowedPlusOnes: 0,
-          rsvpStatus: "declined"
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Débora e Nael",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Débora",
+            allowedPlusOnes: 0,
+            rsvpStatus: "attending"
+          },
+          {
+            guestId: "g2",
+            guestName: "Nael",
+            allowedPlusOnes: 0,
+            rsvpStatus: "declined"
+          }
+        ]
+      },
+      lookupProof: "proof-1",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
 
     renderWithClient(<RSVP />);
@@ -76,7 +99,9 @@ describe("RSVP section", () => {
     fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
 
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+    expect(executeTurnstileMock).toHaveBeenCalledTimes(1);
 
+    expect(screen.queryByText("Convite localizado")).not.toBeInTheDocument();
     expect(screen.getByText("Débora")).toBeInTheDocument();
     expect(screen.getByText("Nael")).toBeInTheDocument();
     const stateLabels = screen.getAllByText(/Vai comparecer|Não vai/);
@@ -88,22 +113,26 @@ describe("RSVP section", () => {
 
   it("submits the household and shows the success state", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Amanda e Chris",
-      guests: [
-        {
-          guestId: "g1",
-          guestName: "Amanda",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        },
-        {
-          guestId: "g2",
-          guestName: "Chris",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          },
+          {
+            guestId: "g2",
+            guestName: "Chris",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-2",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
     submitRsvpMock.mockResolvedValueOnce({
       ok: true,
@@ -112,7 +141,27 @@ describe("RSVP section", () => {
       updatedAt: "2026-05-14T00:00:00.000Z"
     });
 
+    const scrollToSpy = vi.spyOn(window, "scrollTo");
+    Object.defineProperty(window, "scrollY", {
+      writable: true,
+      configurable: true,
+      value: 200
+    });
+
     renderWithClient(<RSVP />);
+    const section = document.getElementById("confirmar-presenca");
+    expect(section).not.toBeNull();
+    vi.spyOn(section!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 120,
+      top: 120,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({})
+    });
 
     fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
       target: { value: "abcd2345" }
@@ -127,6 +176,10 @@ describe("RSVP section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
     await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    await waitFor(() =>
+      expect(scrollToSpy).toHaveBeenCalledWith({ top: 240, behavior: "smooth" })
+    );
+    expect(screen.queryByText(/Convite de/i)).not.toBeInTheDocument();
     expect(submitRsvpMock).toHaveBeenCalledWith(
       {
         invitationCode: "ABCD2345",
@@ -137,10 +190,7 @@ describe("RSVP section", () => {
         ],
         attendingGuestCount: 1
       },
-      // The Turnstile widget cannot mount in jsdom (the CDN script never loads),
-      // so consumeTurnstileToken() returns null and that's what the RSVP form
-      // passes through to submitRsvp.
-      null
+      "proof-2"
     );
   });
 
@@ -163,16 +213,20 @@ describe("RSVP section", () => {
   it("surfaces a toast when the submit fails", async () => {
     const { RsvpApiError } = await import("@/lib/rsvp-api");
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Amanda e Chris",
-      guests: [
-        {
-          guestId: "g1",
-          guestName: "Amanda",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-3",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
     submitRsvpMock.mockRejectedValueOnce(new RsvpApiError("boom", 500));
 
@@ -198,17 +252,21 @@ describe("RSVP section", () => {
 
   it("preselects the child option when the invitation seed marks a guest as 6 or younger", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Amanda e Chris",
-      guests: [
-        {
-          guestId: "g1",
-          guestName: "Amanda",
-          allowedPlusOnes: 0,
-          rsvpStatus: "attending",
-          isChildSixOrYounger: true
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "attending",
+            isChildSixOrYounger: true
+          }
+        ]
+      },
+      lookupProof: "proof-4",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
 
     renderWithClient(<RSVP />);
@@ -226,16 +284,20 @@ describe("RSVP section", () => {
 
   it("does not render a free-text RSVP message field", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Amanda e Chris",
-      guests: [
-        {
-          guestId: "g1",
-          guestName: "Amanda",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-5",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
 
     renderWithClient(<RSVP />);
@@ -248,5 +310,37 @@ describe("RSVP section", () => {
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
     expect(screen.queryByLabelText(/Esquecemos de algum especial/i)).not.toBeInTheDocument();
+  });
+
+  it("runs Turnstile only when lookup starts", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-6",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+
+    renderWithClient(<RSVP />);
+
+    expect(executeTurnstileMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    expect(executeTurnstileMock).toHaveBeenCalledTimes(1);
   });
 });

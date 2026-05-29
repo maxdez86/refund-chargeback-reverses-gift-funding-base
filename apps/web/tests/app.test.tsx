@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const getGiftsMock = vi.fn();
 const fetchInvitationMock = vi.fn();
 const submitRsvpMock = vi.fn();
+const executeTurnstileMock = vi.fn();
 
 vi.mock("@/lib/gifts-api", () => ({
   giftsQueryKey: ["gifts"],
@@ -20,10 +22,21 @@ vi.mock("@/lib/rsvp-api", async () => {
   };
 });
 
+vi.mock("@/components/Turnstile", () => ({
+  Turnstile: forwardRef((_props: unknown, ref) => {
+    useImperativeHandle(ref, () => ({
+      execute: () => executeTurnstileMock(),
+      reset: vi.fn()
+    }));
+    return <div data-testid="turnstile-widget" />;
+  })
+}));
+
 import App from "../src/App";
 
 describe("official web app", () => {
   beforeEach(() => {
+    executeTurnstileMock.mockReset().mockResolvedValue(null);
     fetchInvitationMock.mockReset();
     submitRsvpMock.mockReset();
     getGiftsMock.mockReset().mockResolvedValue([
@@ -183,22 +196,26 @@ describe("official web app", () => {
 
   it("looks up an invitation by code and submits a confirmation", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
-      invitationCode: "ABCD2345",
-      householdName: "Débora e Nael",
-      guests: [
-        {
-          guestId: "grupo-debora-nael--debora",
-          guestName: "Débora",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        },
-        {
-          guestId: "grupo-debora-nael--nael",
-          guestName: "Nael",
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        }
-      ]
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Débora e Nael",
+        guests: [
+          {
+            guestId: "grupo-debora-nael--debora",
+            guestName: "Débora",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          },
+          {
+            guestId: "grupo-debora-nael--nael",
+            guestName: "Nael",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-app-1",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
     });
     submitRsvpMock.mockResolvedValueOnce({
       ok: true,
@@ -217,9 +234,8 @@ describe("official web app", () => {
     expect(
       await screen.findByText("Confirme quais convidados do seu convite irão comparecer:")
     ).toBeInTheDocument();
+    expect(screen.queryByText("Convite localizado")).not.toBeInTheDocument();
     expect(screen.getByText("Débora")).toBeInTheDocument();
-    // RSVP passes (code, turnstileToken) — token is null in jsdom because
-    // the Cloudflare widget script can't load there.
     expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345", null);
 
     fireEvent.click(screen.getByText("Débora"));
@@ -229,8 +245,10 @@ describe("official web app", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
     expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Convite de/i)).not.toBeInTheDocument();
     expect(submitRsvpMock).toHaveBeenCalledTimes(1);
     const payload = submitRsvpMock.mock.calls[0][0];
+    const lookupProof = submitRsvpMock.mock.calls[0][1];
     expect(payload).toMatchObject({
       invitationCode: "ABCD2345",
       attendingGuestCount: 2,
@@ -239,6 +257,7 @@ describe("official web app", () => {
         expect.objectContaining({ isChildSixOrYounger: false })
       ]
     });
+    expect(lookupProof).toBe("proof-app-1");
   });
 
   it("renders the not-found state when the code does not match", async () => {

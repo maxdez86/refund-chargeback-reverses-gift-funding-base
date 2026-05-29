@@ -11,17 +11,21 @@ describe("rsvp-api", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          invitationCode: "AB2345",
-          householdName: "Amanda e Chris",
-          guests: [
-            {
-              guestId: "g1",
-              guestName: "Amanda",
-              allowedPlusOnes: 0,
-              rsvpStatus: "pending",
-              isChildSixOrYounger: true
-            }
-          ]
+          invitation: {
+            invitationCode: "AB2345",
+            householdName: "Amanda e Chris",
+            guests: [
+              {
+                guestId: "g1",
+                guestName: "Amanda",
+                allowedPlusOnes: 0,
+                rsvpStatus: "pending",
+                isChildSixOrYounger: true
+              }
+            ]
+          },
+          lookupProof: "proof-1",
+          lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
         }),
         { status: 200, headers: { "content-type": "application/json" } }
       )
@@ -33,9 +37,10 @@ describe("rsvp-api", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.example.com/invitation/AB2345"
     );
-    expect(invitation.householdName).toBe("Amanda e Chris");
-    expect(invitation.guests).toHaveLength(1);
-    expect(invitation.guests[0]?.isChildSixOrYounger).toBe(true);
+    expect(invitation.invitation.householdName).toBe("Amanda e Chris");
+    expect(invitation.invitation.guests).toHaveLength(1);
+    expect(invitation.invitation.guests[0]?.isChildSixOrYounger).toBe(true);
+    expect(invitation.lookupProof).toBe("proof-1");
   });
 
   it("fetchInvitation throws RsvpApiError with status=404 when not found", async () => {
@@ -60,7 +65,7 @@ describe("rsvp-api", () => {
   it("fetchInvitation rejects a malformed payload", async () => {
     vi.stubEnv("VITE_API_URL", "https://api.example.com");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ invitationCode: "AB2345" }), {
+      new Response(JSON.stringify({ invitation: { invitationCode: "AB2345" } }), {
         status: 200,
         headers: { "content-type": "application/json" }
       })
@@ -87,12 +92,15 @@ describe("rsvp-api", () => {
     );
 
     const { submitRsvp } = await import("@/lib/rsvp-api");
-    const response = await submitRsvp({
-      invitationCode: "AB2345",
-      submittedBy: "g1",
-      guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
-      attendingGuestCount: 1
-    });
+    const response = await submitRsvp(
+      {
+        invitationCode: "AB2345",
+        submittedBy: "g1",
+        guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
+        attendingGuestCount: 1
+      },
+      "proof-1"
+    );
 
     expect(response.status).toBe("attending");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -104,6 +112,7 @@ describe("rsvp-api", () => {
     expect(headers["idempotency-key"]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     );
+    expect(headers["x-rsvp-lookup-proof"]).toBe("proof-1");
   });
 
   it("submitRsvp surfaces server errors as RsvpApiError", async () => {

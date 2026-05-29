@@ -1,7 +1,7 @@
 import {
-  HouseholdInvitationSchema,
+  InvitationLookupResponseSchema,
+  type InvitationLookupResponse,
   RsvpSubmissionResponseSchema,
-  type HouseholdInvitation,
   type RsvpSubmissionRequest,
   type RsvpSubmissionResponse,
 } from "@brimax/contracts";
@@ -22,7 +22,7 @@ export function normalizeInvitationCode(code: string): string {
 export async function fetchInvitation(
   code: string,
   turnstileToken?: string | null
-): Promise<HouseholdInvitation> {
+): Promise<InvitationLookupResponse> {
   if (!API_URL) {
     throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
   }
@@ -40,7 +40,7 @@ export async function fetchInvitation(
     throw new RsvpApiError(message, response.status);
   }
 
-  const parsed = HouseholdInvitationSchema.safeParse(body);
+  const parsed = InvitationLookupResponseSchema.safeParse(body);
   if (!parsed.success) {
     throw new RsvpApiError("Resposta inválida do servidor de convites.");
   }
@@ -50,7 +50,7 @@ export async function fetchInvitation(
 
 export async function submitRsvp(
   input: RsvpSubmissionRequest,
-  turnstileToken?: string | null
+  lookupProof?: string | null
 ): Promise<RsvpSubmissionResponse> {
   if (!API_URL) {
     throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
@@ -60,8 +60,8 @@ export async function submitRsvp(
     "content-type": "application/json",
     "idempotency-key": crypto.randomUUID(),
   };
-  if (turnstileToken) {
-    headers["x-turnstile-token"] = turnstileToken;
+  if (lookupProof) {
+    headers["x-rsvp-lookup-proof"] = lookupProof;
   }
 
   const response = await fetch(`${API_URL}/rsvp`, {

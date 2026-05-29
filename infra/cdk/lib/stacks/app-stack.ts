@@ -51,6 +51,15 @@ export class AppStack extends cdk.Stack {
         JSON.stringify({ secretKey: props.turnstileSecretKey })
       )
     });
+    const lookupProofSecret = new secretsmanager.Secret(this, "LookupProofSecret", {
+      secretName: `/${props.stage}/brimax/rsvp/lookup-proof-secret`,
+      generateSecretString: {
+        excludePunctuation: true,
+        generateStringKey: "secretKey",
+        passwordLength: 64,
+        secretStringTemplate: JSON.stringify({})
+      }
+    });
     const asaasWebhookSecret = new secretsmanager.Secret(this, "AsaasWebhookSecret", {
       secretName: `/${props.stage}/brimax/asaas/webhook-token`,
       secretStringValue: cdk.SecretValue.unsafePlainText(
@@ -100,7 +109,12 @@ export class AppStack extends cdk.Stack {
     this.httpApi = new apigwv2.HttpApi(this, "PublicHttpApi", {
       apiName: `brimax-${props.stage}-api`,
       corsPreflight: {
-        allowHeaders: ["content-type", "idempotency-key", "x-turnstile-token"],
+        allowHeaders: [
+          "content-type",
+          "idempotency-key",
+          "x-turnstile-token",
+          "x-rsvp-lookup-proof"
+        ],
         allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
         allowOrigins: ["https://brimax.life", "https://www.brimax.life"],
         maxAge: cdk.Duration.minutes(10)
@@ -156,6 +170,7 @@ export class AppStack extends cdk.Stack {
           : "https://sandbox.asaas.com/checkoutSession/show",
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
+      LOOKUP_PROOF_SECRET_ARN: lookupProofSecret.secretArn,
       TURNSTILE_SECRET_ARN: turnstileSecret.secretArn,
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
@@ -250,8 +265,9 @@ export class AppStack extends cdk.Stack {
     asaasApiSecret.grantRead(createPaymentFn);
     asaasApiSecret.grantRead(webhookProcessorFn);
     asaasWebhookSecret.grantRead(asaasWebhookFn);
+    lookupProofSecret.grantRead(invitationGetFn);
+    lookupProofSecret.grantRead(rsvpFn);
     turnstileSecret.grantRead(invitationGetFn);
-    turnstileSecret.grantRead(rsvpFn);
     const sesSendPolicy = new iam.PolicyStatement({
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: ["*"]

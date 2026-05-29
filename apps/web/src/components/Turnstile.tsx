@@ -4,17 +4,20 @@ type TurnstileApi = {
   render: (
     container: HTMLElement,
     options: {
-      sitekey: string;
-      theme?: "light" | "dark" | "auto";
-      size?: "normal" | "compact" | "invisible";
+      appearance?: "always" | "execute" | "interaction-only";
       callback?: (token: string) => void;
-      "error-callback"?: () => void;
+      "error-callback"?: (errorCode?: string) => void;
       "expired-callback"?: () => void;
+      execution?: "render" | "execute";
+      sitekey: string;
+      size?: "normal" | "compact" | "flexible";
+      theme?: "light" | "dark" | "auto";
     }
   ) => string;
-  reset: (widgetId: string) => void;
+  execute: (widgetId: string) => void;
   getResponse: (widgetId: string) => string | undefined;
   remove: (widgetId: string) => void;
+  reset: (widgetId: string) => void;
 };
 
 declare global {
@@ -24,33 +27,43 @@ declare global {
 }
 
 export type TurnstileHandle = {
-  /** Returns the current token, or null if the widget hasn't issued one yet. */
-  getToken: () => string | null;
-  /** Resets the widget so it issues a fresh token. Tokens are single-use. */
+  execute: () => Promise<string | null>;
   reset: () => void;
 };
 
 type Props = {
-  siteKey: string;
+  appearance?: "always" | "execute" | "interaction-only";
   className?: string;
+  execution?: "render" | "execute";
+  onError?: (errorCode?: string) => void;
+  onExpire?: () => void;
+  siteKey: string;
 };
 
 /**
- * Renders the Cloudflare Turnstile widget. The CDN script is loaded from
- * index.html; this component polls until window.turnstile is available, then
- * mounts a widget into its container and exposes getToken/reset via ref.
- *
- * If siteKey is empty (e.g. VITE_TURNSTILE_SITE_KEY unset in tests/local dev),
- * the widget renders nothing and getToken always returns null — the API client
- * will then omit the x-turnstile-token header, and the backend (which only
- * enforces when TURNSTILE_SECRET_ARN is set) treats the call as unprotected.
+ * Renders the Cloudflare Turnstile widget with explicit control over when the
+ * challenge executes. This keeps the widget hidden until the caller asks for a
+ * token, while still allowing Cloudflare to show an interactive prompt if the
+ * visitor looks suspicious.
  */
 export const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile(
-  { siteKey, className },
+  {
+    appearance = "always",
+    className,
+    execution = "render",
+    onError,
+    onExpire,
+    siteKey,
+  },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const widgetReadyRef = useRef<Promise<string> | null>(null);
+  const executeResolverRef = useRef<{
+    reject: (error: Error) => void;
+    resolve: (token: string | null) => void;
+  } | null>(null);
 
   useEffect(() => {
     if (!siteKey) {
@@ -60,56 +73,113 @@ export const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile(
     let cancelled = false;
     let pollTimer: number | undefined;
 
-    const tryRender = () => {
-      if (cancelled) return;
-      const api = window.turnstile;
-      const container = containerRef.current;
-      if (!api || !container) {
-        pollTimer = window.setTimeout(tryRender, 150);
-        return;
-      }
-      if (widgetIdRef.current) {
-        return;
-      }
-      widgetIdRef.current = api.render(container, {
-        sitekey: siteKey,
-        theme: "auto",
-        size: "normal",
-      });
-    };
+    widgetReadyRef.current = new Promise<string>((resolve, reject) => {
+      const tryRender = () => {
+        if (cancelled) {
+          reject(new Error("Turnstile initialization cancelled."));
+          return;
+        }
 
-    tryRender();
+        const api = window.turnstile;
+        const container = containerRef.current;
+        if (!api || !container) {
+          pollTimer = window.setTimeout(tryRender, 150);
+          return;
+        }
+
+        if (widgetIdRef.current) {
+          resolve(widgetIdRef.current);
+          return;
+        }
+
+        widgetIdRef.current = api.render(container, {
+          appearance,
+          callback: (token) => {
+            executeResolverRef.current?.resolve(token);
+            executeResolverRef.current = null;
+          },
+          "error-callback": (errorCode) => {
+            onError?.(errorCode);
+            executeResolverRef.current?.reject(
+              new Error(errorCode || "Turnstile validation failed.")
+            );
+            executeResolverRef.current = null;
+          },
+          "expired-callback": () => {
+            onExpire?.();
+            executeResolverRef.current?.reject(
+              new Error("Turnstile validation expired.")
+            );
+            executeResolverRef.current = null;
+          },
+          execution,
+          sitekey: siteKey,
+          size: "normal",
+          theme: "auto",
+        });
+
+        resolve(widgetIdRef.current);
+      };
+
+      tryRender();
+    });
 
     return () => {
       cancelled = true;
       if (pollTimer) {
         window.clearTimeout(pollTimer);
       }
+      executeResolverRef.current?.reject(
+        new Error("Turnstile removed before verification completed.")
+      );
+      executeResolverRef.current = null;
       const api = window.turnstile;
       if (api && widgetIdRef.current) {
         api.remove(widgetIdRef.current);
-        widgetIdRef.current = null;
       }
+      widgetIdRef.current = null;
+      widgetReadyRef.current = null;
     };
-  }, [siteKey]);
+  }, [appearance, execution, onError, onExpire, siteKey]);
 
   useImperativeHandle(
     ref,
     () => ({
-      getToken: () => {
+      execute: async () => {
+        if (!siteKey) {
+          return null;
+        }
+
+        const ready = widgetReadyRef.current;
+        if (!ready) {
+          throw new Error("Turnstile indisponível.");
+        }
+
+        const widgetId = await ready;
         const api = window.turnstile;
-        const id = widgetIdRef.current;
-        if (!api || !id) return null;
-        return api.getResponse(id) ?? null;
+        if (!api) {
+          throw new Error("Turnstile indisponível.");
+        }
+
+        const currentToken = api.getResponse(widgetId) ?? null;
+        if (currentToken) {
+          return currentToken;
+        }
+
+        return await new Promise<string | null>((resolve, reject) => {
+          executeResolverRef.current = { resolve, reject };
+          api.execute(widgetId);
+        });
       },
       reset: () => {
         const api = window.turnstile;
         const id = widgetIdRef.current;
         if (!api || !id) return;
+        executeResolverRef.current = null;
         api.reset(id);
       },
     }),
-    []
+    [siteKey]
   );
 
   if (!siteKey) {
