@@ -12,7 +12,6 @@ export const RsvpGuestAnswerSchema = z.object({
 
 export const RsvpSubmissionRequestSchema = z.object({
   invitationCode: InvitationCodeSchema,
-  householdId: z.string().min(1),
   submittedBy: z.string().min(1),
   guestResponses: z.array(RsvpGuestAnswerSchema).min(1),
   attendingGuestCount: z.number().int().nonnegative(),
@@ -22,7 +21,6 @@ export const RsvpSubmissionRequestSchema = z.object({
 export const RsvpSubmissionResponseSchema = z.object({
   ok: z.literal(true),
   invitationCode: z.string(),
-  householdId: z.string(),
   status: RsvpStatusSchema,
   updatedAt: z.string()
 });

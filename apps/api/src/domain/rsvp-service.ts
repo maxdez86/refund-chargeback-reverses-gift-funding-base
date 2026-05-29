@@ -34,13 +34,17 @@ export class RsvpService {
       throw new AppError("Invitation not found.", 404);
     }
 
-    if (invitation.householdId !== parsed.householdId) {
-      throw new AppError("Invitation does not match the provided household.", 409);
-    }
-
     const counts = deriveRsvpCounts(parsed);
     if (parsed.attendingGuestCount !== counts.attendingGuestCount) {
       throw new AppError("Attending guest count does not match guest responses.", 409);
+    }
+
+    const invitationGuestIds = new Set(invitation.guests.map((guest) => guest.guestId));
+    if (
+      parsed.guestResponses.length !== invitation.guests.length ||
+      parsed.guestResponses.some((response) => !invitationGuestIds.has(response.guestId))
+    ) {
+      throw new AppError("RSVP payload does not match the invitation guests.", 409);
     }
 
     const status: GuestProfile["rsvpStatus"] = deriveOverallRsvpStatus(parsed);
@@ -60,7 +64,6 @@ export class RsvpService {
         JSON.stringify({
           event: "RSVP_EMAIL_FAILED",
           invitationCode: parsed.invitationCode,
-          householdId: parsed.householdId,
           message: error instanceof Error ? error.message : "Unknown RSVP email error"
         })
       );
@@ -70,7 +73,6 @@ export class RsvpService {
       response: RsvpSubmissionResponseSchema.parse({
         ok: true,
         invitationCode: parsed.invitationCode,
-        householdId: parsed.householdId,
         status,
         updatedAt
       }),
@@ -102,9 +104,8 @@ function buildRsvpNotificationText(
   return [
     "Nova confirmacao de presenca recebida pelo site.",
     "",
-    `Grupo: ${invitation?.householdName ?? request.householdId}`,
+    `Grupo: ${invitation?.householdName ?? request.invitationCode}`,
     `Codigo do convite: ${request.invitationCode}`,
-    `Household ID: ${request.householdId}`,
     `Status geral: ${status}`,
     `Pessoas confirmadas: ${counts.attendingGuestCount}`,
     `Pagantes: ${counts.paidAttendingGuestCount}`,
@@ -140,9 +141,8 @@ function buildRsvpNotificationHtml(
   return renderEmailDocument(
     '<p style="margin:0 0 12px;">Oi, Brida &amp; Max!</p>' +
       '<p style="margin:0 0 16px;">Nova confirmacao de presenca recebida pelo site.</p>' +
-      renderDetailLine("Grupo", invitation?.householdName ?? request.householdId) +
+      renderDetailLine("Grupo", invitation?.householdName ?? request.invitationCode) +
       renderDetailLine("Codigo do convite", request.invitationCode) +
-      renderDetailLine("Household ID", request.householdId) +
       renderDetailLine("Status geral", status) +
       renderDetailLine("Pessoas confirmadas", String(counts.attendingGuestCount)) +
       renderDetailLine("Pagantes", String(counts.paidAttendingGuestCount)) +

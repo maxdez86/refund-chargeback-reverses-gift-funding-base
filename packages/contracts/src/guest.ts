@@ -5,7 +5,6 @@ export const RsvpStatusSchema = z.enum(["pending", "attending", "declined"]);
 
 export const GuestProfileSchema = z.object({
   invitationCode: InvitationCodeSchema,
-  householdId: z.string().min(1),
   guestId: z.string().min(1),
   guestName: z.string().min(1),
   phoneNumber: z.string().min(8).optional(),
@@ -26,7 +25,6 @@ export const GuestSummarySchema = z.object({
 
 export const HouseholdInvitationSchema = z.object({
   invitationCode: InvitationCodeSchema,
-  householdId: z.string().min(1),
   householdName: z.string().min(1),
   guests: z.array(GuestSummarySchema).min(1)
 });

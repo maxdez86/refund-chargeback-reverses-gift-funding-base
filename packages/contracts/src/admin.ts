@@ -2,7 +2,7 @@ import { z } from "zod";
 import { InvitationCodeSchema } from "./invitation-code";
 
 export const AdminGuestExportRowSchema = z.object({
-  householdId: z.string(),
+  householdName: z.string(),
   guestId: z.string(),
   invitationCode: InvitationCodeSchema,
   guestName: z.string(),

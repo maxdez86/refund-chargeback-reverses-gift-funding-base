@@ -12,7 +12,6 @@ describe("rsvp-api", () => {
       new Response(
         JSON.stringify({
           invitationCode: "AB2345",
-          householdId: "grupo-amanda-cris",
           householdName: "Amanda e Chris",
           guests: [
             {
@@ -80,7 +79,6 @@ describe("rsvp-api", () => {
         JSON.stringify({
           ok: true,
           invitationCode: "AB2345",
-          householdId: "grupo-amanda-cris",
           status: "attending",
           updatedAt: "2026-05-14T00:00:00.000Z"
         }),
@@ -91,7 +89,6 @@ describe("rsvp-api", () => {
     const { submitRsvp } = await import("@/lib/rsvp-api");
     const response = await submitRsvp({
       invitationCode: "AB2345",
-      householdId: "grupo-amanda-cris",
       submittedBy: "g1",
       guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
       attendingGuestCount: 1
@@ -119,7 +116,6 @@ describe("rsvp-api", () => {
     await expect(
       submitRsvp({
         invitationCode: "AB2345",
-        householdId: "grupo-amanda-cris",
         submittedBy: "g1",
         guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
         attendingGuestCount: 1

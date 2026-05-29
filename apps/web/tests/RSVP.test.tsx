@@ -51,7 +51,6 @@ describe("RSVP section", () => {
   it("pre-fills selections from prior rsvpStatus when re-editing", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-debora-nael",
       householdName: "Débora e Nael",
       guests: [
         {
@@ -90,7 +89,6 @@ describe("RSVP section", () => {
   it("submits the household and shows the success state", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
       householdName: "Amanda e Chris",
       guests: [
         {
@@ -110,7 +108,6 @@ describe("RSVP section", () => {
     submitRsvpMock.mockResolvedValueOnce({
       ok: true,
       invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
       status: "attending",
       updatedAt: "2026-05-14T00:00:00.000Z"
     });
@@ -133,7 +130,6 @@ describe("RSVP section", () => {
     expect(submitRsvpMock).toHaveBeenCalledWith(
       {
         invitationCode: "ABCD2345",
-        householdId: "grupo-amanda-cris",
         submittedBy: "g1",
         guestResponses: [
           { guestId: "g1", status: "attending", isChildSixOrYounger: false },
@@ -168,7 +164,6 @@ describe("RSVP section", () => {
     const { RsvpApiError } = await import("@/lib/rsvp-api");
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
       householdName: "Amanda e Chris",
       guests: [
         {
@@ -204,7 +199,6 @@ describe("RSVP section", () => {
   it("preselects the child option when the invitation seed marks a guest as 6 or younger", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
       householdName: "Amanda e Chris",
       guests: [
         {
@@ -233,7 +227,6 @@ describe("RSVP section", () => {
   it("does not render a free-text RSVP message field", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-amanda-cris",
       householdName: "Amanda e Chris",
       guests: [
         {

@@ -26,7 +26,6 @@ export async function handler(event: APIGatewayProxyEventV2) {
       JSON.stringify({
         metric: "RSVP_SUBMITTED",
         invitationCode: response.invitationCode,
-        householdId: response.householdId,
         status: response.status,
         notificationSent,
         idempotencyKeyPresent: Boolean(idempotencyKey?.trim())
@@ -36,8 +35,7 @@ export async function handler(event: APIGatewayProxyEventV2) {
     console.info(
       JSON.stringify({
         metric: notificationSent ? "RSVP_EMAIL_SENT" : "RSVP_EMAIL_SKIPPED",
-        invitationCode: response.invitationCode,
-        householdId: response.householdId
+        invitationCode: response.invitationCode
       })
     );
 

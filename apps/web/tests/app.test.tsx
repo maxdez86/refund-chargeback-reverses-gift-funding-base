@@ -184,7 +184,6 @@ describe("official web app", () => {
   it("looks up an invitation by code and submits a confirmation", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
-      householdId: "grupo-debora-nael",
       householdName: "Débora e Nael",
       guests: [
         {
@@ -204,7 +203,6 @@ describe("official web app", () => {
     submitRsvpMock.mockResolvedValueOnce({
       ok: true,
       invitationCode: "ABCD2345",
-      householdId: "grupo-debora-nael",
       status: "attending",
       updatedAt: "2026-05-14T00:00:00.000Z"
     });
@@ -224,7 +222,9 @@ describe("official web app", () => {
     // the Cloudflare widget script can't load there.
     expect(fetchInvitationMock).toHaveBeenCalledWith("ABCD2345", null);
 
-    for (const button of screen.getAllByLabelText("7 anos ou mais")) {
+    fireEvent.click(screen.getByText("Débora"));
+    fireEvent.click(screen.getByText("Nael"));
+    for (const button of await screen.findAllByLabelText("7 anos ou mais")) {
       fireEvent.click(button);
     }
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
@@ -233,7 +233,6 @@ describe("official web app", () => {
     const payload = submitRsvpMock.mock.calls[0][0];
     expect(payload).toMatchObject({
       invitationCode: "ABCD2345",
-      householdId: "grupo-debora-nael",
       attendingGuestCount: 2,
       guestResponses: [
         expect.objectContaining({ isChildSixOrYounger: false }),

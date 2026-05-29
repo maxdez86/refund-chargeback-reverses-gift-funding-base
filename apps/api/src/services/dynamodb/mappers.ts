@@ -14,10 +14,39 @@ type RsvpCounts = {
   childSixOrYoungerAttendingCount: number;
 };
 
+type GroupedInvitationItems = {
+  invitation: UnknownRecord;
+  guests: UnknownRecord[];
+  rsvp?: UnknownRecord;
+};
+
+function toEffectiveGuestSummary(
+  guest: UnknownRecord,
+  response?: { status?: unknown; isChildSixOrYounger?: unknown }
+): GuestSummary {
+  const status = response?.status;
+
+  return {
+    guestId: String(guest.guestId ?? ""),
+    guestName: String(guest.guestName ?? ""),
+    allowedPlusOnes: Number(guest.allowedPlusOnes ?? 0),
+    rsvpStatus:
+      status === "attending" || status === "declined"
+        ? status
+        : ((guest.rsvpStatus as GuestSummary["rsvpStatus"]) ?? "pending"),
+    isChildSixOrYounger:
+      typeof response?.isChildSixOrYounger === "boolean"
+        ? response.isChildSixOrYounger
+        : typeof guest.isChildSixOrYounger === "boolean"
+          ? guest.isChildSixOrYounger
+          : undefined,
+    dietaryNotes: guest.dietaryNotes ? String(guest.dietaryNotes) : undefined
+  };
+}
+
 export function toGuestProfile(item: UnknownRecord): GuestProfile {
   return {
     invitationCode: String(item.invitationCode ?? ""),
-    householdId: String(item.householdId ?? ""),
     guestId: String(item.guestId ?? ""),
     guestName: String(item.guestName ?? ""),
     phoneNumber: item.phoneNumber ? String(item.phoneNumber) : undefined,
@@ -31,65 +60,89 @@ export function toGuestProfile(item: UnknownRecord): GuestProfile {
   };
 }
 
-export function toHouseholdInvitation(item: UnknownRecord): HouseholdInvitation {
-  const rawGuests = Array.isArray(item.guests) ? (item.guests as UnknownRecord[]) : [];
-  const guests: GuestSummary[] = rawGuests.map((guest) => ({
-    guestId: String(guest.guestId ?? ""),
-    guestName: String(guest.guestName ?? ""),
-    allowedPlusOnes: Number(guest.allowedPlusOnes ?? 0),
-    rsvpStatus: (guest.rsvpStatus as GuestSummary["rsvpStatus"]) ?? "pending",
-    isChildSixOrYounger:
-      typeof guest.isChildSixOrYounger === "boolean"
-        ? guest.isChildSixOrYounger
-        : undefined,
-    dietaryNotes: guest.dietaryNotes ? String(guest.dietaryNotes) : undefined
-  }));
+export function toHouseholdInvitation({
+  invitation,
+  guests,
+  rsvp
+}: GroupedInvitationItems): HouseholdInvitation {
+  const responsesByGuestId = new Map<string, { status?: unknown; isChildSixOrYounger?: unknown }>(
+    Array.isArray(rsvp?.guestResponses)
+      ? (rsvp.guestResponses as UnknownRecord[]).map((response) => [
+          String(response.guestId ?? ""),
+          {
+            status: response.status,
+            isChildSixOrYounger: response.isChildSixOrYounger
+          }
+        ])
+      : []
+  );
 
   return {
-    invitationCode: String(item.invitationCode ?? ""),
-    householdId: String(item.householdId ?? ""),
-    householdName: String(item.householdName ?? ""),
-    guests
+    invitationCode: String(invitation.invitationCode ?? ""),
+    householdName: String(invitation.householdName ?? ""),
+    guests: guests
+      .slice()
+      .sort(
+        (left, right) =>
+          Number(left.sortOrder ?? Number.MAX_SAFE_INTEGER) -
+          Number(right.sortOrder ?? Number.MAX_SAFE_INTEGER)
+      )
+      .map((guest) =>
+        toEffectiveGuestSummary(guest, responsesByGuestId.get(String(guest.guestId ?? "")))
+      )
   };
 }
 
-export function toAdminExportRows(item: UnknownRecord): AdminGuestExportRow[] {
-  const householdId = String(item.householdId ?? "");
-  const invitationCode = String(item.invitationCode ?? "");
-  const phoneNumber = item.phoneNumber ? String(item.phoneNumber) : undefined;
-  const rawGuests = Array.isArray(item.guests) ? (item.guests as UnknownRecord[]) : [];
-  const rawGuestResponses = Array.isArray(item.rsvpGuestResponses)
-    ? (item.rsvpGuestResponses as UnknownRecord[])
-    : [];
+export function toAdminExportRows({
+  invitation,
+  guests,
+  rsvp
+}: GroupedInvitationItems): AdminGuestExportRow[] {
+  const invitationCode = String(invitation.invitationCode ?? "");
+  const householdName = String(invitation.householdName ?? "");
   const responsesByGuestId = new Map(
-    rawGuestResponses.map((response) => [
-      String(response.guestId ?? ""),
-      {
-        attending: response.status === "attending",
-        isChildSixOrYoungerConfirmed:
-          typeof response.isChildSixOrYounger === "boolean"
-            ? response.isChildSixOrYounger
-            : undefined
-      }
-    ])
+    Array.isArray(rsvp?.guestResponses)
+      ? (rsvp.guestResponses as UnknownRecord[]).map((response) => [
+          String(response.guestId ?? ""),
+          {
+            attending: response.status === "attending",
+            isChildSixOrYoungerConfirmed:
+              typeof response.isChildSixOrYounger === "boolean"
+                ? response.isChildSixOrYounger
+                : undefined
+          }
+        ])
+      : []
   );
 
-  return rawGuests.map((guest) => ({
-    householdId,
-    guestId: String(guest.guestId ?? ""),
-    invitationCode,
-    guestName: String(guest.guestName ?? ""),
-    phoneNumber,
-    rsvpStatus: String(guest.rsvpStatus ?? "pending"),
-    allowedPlusOnes: Number(guest.allowedPlusOnes ?? 0),
-    attending: responsesByGuestId.get(String(guest.guestId ?? ""))?.attending,
-    isChildSixOrYoungerSeed:
-      typeof guest.isChildSixOrYounger === "boolean"
-        ? guest.isChildSixOrYounger
-        : undefined,
-    isChildSixOrYoungerConfirmed: responsesByGuestId.get(String(guest.guestId ?? ""))
-      ?.isChildSixOrYoungerConfirmed
-  }));
+  return guests
+    .slice()
+    .sort(
+      (left, right) =>
+        Number(left.sortOrder ?? Number.MAX_SAFE_INTEGER) -
+        Number(right.sortOrder ?? Number.MAX_SAFE_INTEGER)
+    )
+    .map((guest) => ({
+      householdName,
+      guestId: String(guest.guestId ?? ""),
+      invitationCode,
+      guestName: String(guest.guestName ?? ""),
+      phoneNumber: guest.phoneNumber ? String(guest.phoneNumber) : undefined,
+      rsvpStatus:
+        (responsesByGuestId.get(String(guest.guestId ?? ""))?.attending === true
+          ? "attending"
+          : responsesByGuestId.has(String(guest.guestId ?? ""))
+            ? "declined"
+            : String(guest.rsvpStatus ?? "pending")) ?? "pending",
+      allowedPlusOnes: Number(guest.allowedPlusOnes ?? 0),
+      attending: responsesByGuestId.get(String(guest.guestId ?? ""))?.attending,
+      isChildSixOrYoungerSeed:
+        typeof guest.isChildSixOrYounger === "boolean"
+          ? guest.isChildSixOrYounger
+          : undefined,
+      isChildSixOrYoungerConfirmed: responsesByGuestId.get(String(guest.guestId ?? ""))
+        ?.isChildSixOrYoungerConfirmed
+    }));
 }
 
 export function deriveOverallRsvpStatus(request: RsvpSubmissionRequest): GuestProfile["rsvpStatus"] {

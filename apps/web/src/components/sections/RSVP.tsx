@@ -160,7 +160,6 @@ export function RSVP() {
 
     const payload: RsvpSubmissionRequest = {
       invitationCode: invitation.invitationCode,
-      householdId: invitation.householdId,
       submittedBy,
       guestResponses,
       attendingGuestCount,

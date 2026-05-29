@@ -8,7 +8,6 @@ process.env.CONTACT_EMAIL = "casamento@brimax.life";
 
 const baseInvitation = {
   invitationCode: "AB2345",
-  householdId: "household-001",
   householdName: "Familia Silva",
   guests: [
     {
@@ -28,7 +27,6 @@ const baseInvitation = {
 
 const baseRequest: RsvpSubmissionRequest = {
   invitationCode: "AB2345",
-  householdId: "household-001",
   submittedBy: "Maria Silva",
   guestResponses: [
     { guestId: "guest-001", status: "attending", isChildSixOrYounger: true },
@@ -126,12 +124,9 @@ describe("RsvpService", () => {
     expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("rejects when the invitation household does not match the payload", async () => {
+  it("rejects when the RSVP payload does not match the invitation guests", async () => {
     const repository = {
-      getInvitationByCode: vi.fn().mockResolvedValue({
-        ...baseInvitation,
-        householdId: "household-999"
-      }),
+      getInvitationByCode: vi.fn().mockResolvedValue(baseInvitation),
       upsertRsvp: vi.fn()
     };
     const emailService = {
@@ -139,7 +134,14 @@ describe("RsvpService", () => {
     };
     const service = new RsvpService(repository as never, emailService as never);
 
-    await expect(service.submit(baseRequest)).rejects.toMatchObject({
+    await expect(
+      service.submit({
+        ...baseRequest,
+        guestResponses: [
+          { guestId: "guest-404", status: "attending", isChildSixOrYounger: false }
+        ]
+      })
+    ).rejects.toMatchObject({
       statusCode: 409
     });
     expect(repository.upsertRsvp).not.toHaveBeenCalled();

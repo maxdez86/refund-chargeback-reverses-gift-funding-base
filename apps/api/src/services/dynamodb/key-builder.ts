@@ -12,16 +12,16 @@ export function householdKeys(householdId: string) {
   };
 }
 
-export function guestKeys(householdId: string, guestId: string) {
+export function guestKeys(invitationCode: string, guestId: string) {
   return {
-    PK: `HOUSEHOLD#${householdId}`,
+    PK: `INVITATION#${invitationCode}`,
     SK: `GUEST#${guestId}`
   };
 }
 
-export function rsvpKeys(householdId: string) {
+export function rsvpKeys(invitationCode: string) {
   return {
-    PK: `HOUSEHOLD#${householdId}`,
+    PK: `INVITATION#${invitationCode}`,
     SK: "RSVP#CURRENT"
   };
 }

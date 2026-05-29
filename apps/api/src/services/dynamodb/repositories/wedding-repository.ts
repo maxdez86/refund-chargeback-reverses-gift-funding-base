@@ -19,9 +19,11 @@ import {
   rsvpKeys,
   webhookKeys
 } from "../key-builder";
-import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
+import { GSI1_NAME, TABLE_PRIMARY_KEY, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
 import { deriveRsvpCounts, toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
+
+type ItemRecord = Record<string, unknown>;
 
 export class WeddingRepository {
   constructor(
@@ -31,13 +33,26 @@ export class WeddingRepository {
 
   async getInvitationByCode(invitationCode: string): Promise<HouseholdInvitation | null> {
     const result = await this.documentClient.send(
-      new GetCommand({
+      new QueryCommand({
         TableName: this.tableName,
-        Key: invitationKeys(invitationCode)
+        KeyConditionExpression: `${TABLE_PRIMARY_KEY} = :pk`,
+        ExpressionAttributeValues: {
+          ":pk": invitationKeys(invitationCode).PK
+        }
       })
     );
 
-    return result.Item ? toHouseholdInvitation(result.Item as Record<string, unknown>) : null;
+    const items = (result.Items ?? []) as ItemRecord[];
+    const invitation = items.find((item) => item.entityType === "Invitation");
+    if (!invitation) {
+      return null;
+    }
+
+    return toHouseholdInvitation({
+      invitation,
+      guests: items.filter((item) => item.entityType === "InvitationGuest") as ItemRecord[],
+      rsvp: items.find((item) => item.entityType === "RsvpResponse")
+    });
   }
 
   async getGuestProfilesByPhoneNumber(phoneNumber: string): Promise<GuestProfile[]> {
@@ -64,10 +79,9 @@ export class WeddingRepository {
       new PutCommand({
         TableName: this.tableName,
         Item: {
-          ...rsvpKeys(request.householdId),
+          ...rsvpKeys(request.invitationCode),
           entityType: "RsvpResponse",
           invitationCode: request.invitationCode,
-          householdId: request.householdId,
           submittedBy: request.submittedBy,
           guestResponses: request.guestResponses,
           attendingGuestCount: counts.attendingGuestCount,
@@ -113,30 +127,48 @@ export class WeddingRepository {
     const result = await this.documentClient.send(
       new ScanCommand({
         TableName: this.tableName,
-        FilterExpression: "entityType = :invitationType OR entityType = :rsvpType",
+        FilterExpression:
+          "entityType = :invitationType OR entityType = :guestType OR entityType = :rsvpType",
         ExpressionAttributeValues: {
           ":invitationType": "Invitation",
+          ":guestType": "InvitationGuest",
           ":rsvpType": "RsvpResponse"
         }
       })
     );
 
-    const invitations = (result.Items ?? []).filter(
-      (item) => item.entityType === "Invitation"
-    ) as Record<string, unknown>[];
-    const rsvps = (result.Items ?? []).filter(
-      (item) => item.entityType === "RsvpResponse"
-    ) as Record<string, unknown>[];
-    const rsvpByHouseholdId = new Map(
-      rsvps.map((item) => [String(item.householdId ?? ""), item])
-    );
+    const groups = new Map<
+      string,
+      { invitation?: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord }
+    >();
 
-    return invitations.flatMap((item) =>
-      toAdminExportRows({
-        ...item,
-        rsvpGuestResponses:
-          rsvpByHouseholdId.get(String(item.householdId ?? ""))?.guestResponses ?? []
-      })
-    );
+    for (const item of (result.Items ?? []) as ItemRecord[]) {
+      const invitationCode = String(item.invitationCode ?? "");
+      if (!invitationCode) {
+        continue;
+      }
+
+      const group = groups.get(invitationCode) ?? { guests: [] };
+      if (item.entityType === "Invitation") {
+        group.invitation = item;
+      } else if (item.entityType === "InvitationGuest") {
+        group.guests.push(item);
+      } else if (item.entityType === "RsvpResponse") {
+        group.rsvp = item;
+      }
+      groups.set(invitationCode, group);
+    }
+
+    return [...groups.values()].flatMap((group) => {
+      if (!group.invitation) {
+        return [];
+      }
+
+      return toAdminExportRows({
+        invitation: group.invitation,
+        guests: group.guests,
+        rsvp: group.rsvp
+      });
+    });
   }
 }

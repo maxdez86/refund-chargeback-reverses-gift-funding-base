@@ -7,7 +7,6 @@ describe("InvitationService", () => {
     const repository = {
       getInvitationByCode: vi.fn().mockResolvedValue({
         invitationCode: "ABCD2345",
-        householdId: "grupo-amanda-cris",
         householdName: "Amanda e Chris",
         guests: [
           {
@@ -34,7 +33,6 @@ describe("InvitationService", () => {
     const repository = {
       getInvitationByCode: vi.fn().mockResolvedValue({
         invitationCode: "ABCD2345",
-        householdId: "grupo-amanda-cris",
         householdName: "Amanda e Chris",
         guests: [
           {
