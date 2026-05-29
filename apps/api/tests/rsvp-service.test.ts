@@ -34,8 +34,7 @@ const baseRequest: RsvpSubmissionRequest = {
     { guestId: "guest-001", status: "attending", isChildSixOrYounger: true },
     { guestId: "guest-002", status: "declined", isChildSixOrYounger: false }
   ],
-  attendingGuestCount: 1,
-  note: "Temos restricao alimentar."
+  attendingGuestCount: 1
 };
 
 describe("RsvpService", () => {
@@ -76,16 +75,11 @@ describe("RsvpService", () => {
         text: expect.stringContaining("Criancas 6 anos ou menos: 1")
       })
     );
-    expect(emailService.sendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("Recado:\nTemos restricao alimentar.")
-      })
-    );
     expect(result.response.status).toBe("attending");
     expect(result.notificationSent).toBe(true);
   });
 
-  it("includes a fallback message when no note is provided", async () => {
+  it("accepts note for compatibility but ignores it in notifications", async () => {
     const repository = {
       getInvitationByCode: vi.fn().mockResolvedValue(baseInvitation),
       upsertRsvp: vi.fn().mockResolvedValue("2026-01-01T00:00:00.000Z")
@@ -97,17 +91,17 @@ describe("RsvpService", () => {
 
     await service.submit({
       ...baseRequest,
-      note: undefined
+      note: "Temos restricao alimentar."
     });
 
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("Recado:\nNenhum recado enviado.")
+        text: expect.not.stringContaining("Recado:")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        html: expect.stringContaining("Nenhum recado enviado.")
+        html: expect.not.stringContaining("Recado:")
       })
     );
   });

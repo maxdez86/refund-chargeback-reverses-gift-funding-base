@@ -87,7 +87,7 @@ describe("RSVP section", () => {
     expect(screen.getByText("Confirme a faixa etária")).toBeInTheDocument();
   });
 
-  it("submits the household with note and shows the success state", async () => {
+  it("submits the household and shows the success state", async () => {
     fetchInvitationMock.mockResolvedValueOnce({
       invitationCode: "ABCD2345",
       householdId: "grupo-amanda-cris",
@@ -124,12 +124,8 @@ describe("RSVP section", () => {
 
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
-    // Uncheck Chris by clicking the row label.
-    fireEvent.click(screen.getByText("Chris"));
+    fireEvent.click(screen.getByText("Amanda"));
     fireEvent.click(screen.getByLabelText("7 anos ou mais"));
-    fireEvent.change(screen.getByLabelText(/Recado para os noivos/i), {
-      target: { value: "Chegamos no sábado!" }
-    });
 
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
@@ -143,8 +139,7 @@ describe("RSVP section", () => {
           { guestId: "g1", status: "attending", isChildSixOrYounger: false },
           { guestId: "g2", status: "declined", isChildSixOrYounger: false }
         ],
-        attendingGuestCount: 1,
-        note: "Chegamos no sábado!"
+        attendingGuestCount: 1
       },
       // The Turnstile widget cannot mount in jsdom (the CDN script never loads),
       // so consumeTurnstileToken() returns null and that's what the RSVP form
@@ -195,7 +190,8 @@ describe("RSVP section", () => {
 
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
-    expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeEnabled();
+    fireEvent.click(screen.getByText("Amanda"));
     fireEvent.click(screen.getByLabelText("7 anos ou mais"));
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
@@ -232,5 +228,32 @@ describe("RSVP section", () => {
 
     expect(screen.getByText(/Preenchido com base no cadastro/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeEnabled();
+  });
+
+  it("does not render a free-text RSVP message field", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitationCode: "ABCD2345",
+      householdId: "grupo-amanda-cris",
+      householdName: "Amanda e Chris",
+      guests: [
+        {
+          guestId: "g1",
+          guestName: "Amanda",
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending"
+        }
+      ]
+    });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    expect(screen.queryByLabelText(/Esquecemos de algum especial/i)).not.toBeInTheDocument();
   });
 });

@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 
@@ -39,7 +38,7 @@ type ChildAgeSelections = Record<string, boolean | undefined>;
 
 function initialSelections(invitation: HouseholdInvitation): Record<string, boolean> {
   return Object.fromEntries(
-    invitation.guests.map((g) => [g.guestId, g.rsvpStatus !== "declined"])
+    invitation.guests.map((g) => [g.guestId, g.rsvpStatus === "attending"])
   );
 }
 
@@ -55,7 +54,6 @@ export function RSVP() {
   const [selections, setSelections] = useState<Record<string, boolean>>({});
   const [childAgeSelections, setChildAgeSelections] = useState<ChildAgeSelections>({});
   const [childAgeErrorGuestId, setChildAgeErrorGuestId] = useState<string | null>(null);
-  const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const guestDetailRefs = useRef<Record<string, HTMLLIElement | null>>({});
@@ -97,7 +95,6 @@ export function RSVP() {
     setSelections({});
     setChildAgeSelections({});
     setChildAgeErrorGuestId(null);
-    setNote("");
     setSubmitted(null);
     submitMutation.reset();
   };
@@ -116,7 +113,6 @@ export function RSVP() {
       setSelections(initialSelections(invitation));
       setChildAgeSelections(initialChildAgeSelections(invitation));
       setChildAgeErrorGuestId(null);
-      setNote("");
     } catch (error) {
       if (error instanceof RsvpApiError && error.status === 404) {
         setLookup({ kind: "not-found" });
@@ -168,7 +164,6 @@ export function RSVP() {
       submittedBy,
       guestResponses,
       attendingGuestCount,
-      ...(note.trim() ? { note: note.trim() } : {}),
     };
 
     submitMutation.mutate(payload);
@@ -361,9 +356,6 @@ export function RSVP() {
                                   <p className="text-sm font-medium text-foreground">
                                     Confirme a faixa etária
                                   </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Precisamos saber se {guest.guestName} tem 6 anos ou menos.
-                                  </p>
                                 </div>
                                 <RadioGroup
                                   value={
@@ -429,24 +421,6 @@ export function RSVP() {
                         );
                       })}
                     </ul>
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="rsvp-note"
-                        className="text-sm font-medium text-foreground block"
-                      >
-                        Recado para os noivos (opcional)
-                      </label>
-                      <Textarea
-                        id="rsvp-note"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        maxLength={500}
-                        rows={3}
-                        placeholder="Algo que a gente precisa saber? Restrições, transporte, etc."
-                        className="bg-background rounded-xl"
-                      />
-                    </div>
 
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
                       <span className="text-sm text-muted-foreground">

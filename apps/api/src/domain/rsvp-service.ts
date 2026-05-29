@@ -12,8 +12,7 @@ import { EmailService } from "../services/email/client";
 import {
   escapeHtml,
   renderDetailLine,
-  renderEmailDocument,
-  renderMultilineText
+  renderEmailDocument
 } from "../services/email/html";
 
 type RsvpSubmitResult = {
@@ -114,10 +113,7 @@ function buildRsvpNotificationText(
     `Atualizado em: ${updatedAt}`,
     "",
     "Convidados:",
-    ...guestLines,
-    "",
-    "Recado:",
-    request.note?.trim() ? request.note.trim() : "Nenhum recado enviado."
+    ...guestLines
   ].join("\n");
 }
 
@@ -158,10 +154,6 @@ function buildRsvpNotificationHtml(
       renderDetailLine("Atualizado em", updatedAt) +
       '<p style="margin:16px 0 8px;"><strong>Convidados:</strong></p>' +
       `<ul style="margin:0 0 16px 20px;padding:0;">${guestItems}</ul>` +
-      '<p style="margin:0 0 8px;"><strong>Recado:</strong></p>' +
-      `<p style="margin:0 0 16px;">${renderMultilineText(
-        request.note?.trim() ? request.note.trim() : "Nenhum recado enviado."
-      )}</p>` +
       '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
   );
 }
