@@ -5,7 +5,10 @@ import {
   ListGuestMessagesResponseSchema
 } from "@brimax/contracts";
 
-const API_URL = import.meta.env.VITE_API_URL;
+// In dev, call the same-origin `/api` base so the Vite dev server proxies the
+// request to the deployed API (avoids the prod CORS allowlist, which excludes
+// localhost). Production builds use the absolute VITE_API_URL as before.
+const API_URL = import.meta.env.DEV ? "/api" : import.meta.env.VITE_API_URL;
 
 export class GuestMessagesApiError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -26,7 +29,9 @@ export async function listGuestMessages(cursor?: string | null): Promise<GuestMe
     throw new GuestMessagesApiError("API URL não configurada (VITE_API_URL).");
   }
 
-  const url = new URL(`${API_URL}/guest-messages`);
+  // Base is only used when API_URL is relative (the dev `/api` proxy base);
+  // an absolute VITE_API_URL (prod) ignores it, so behavior is unchanged there.
+  const url = new URL(`${API_URL}/guest-messages`, window.location.origin);
   if (cursor) {
     url.searchParams.set("cursor", cursor);
   }

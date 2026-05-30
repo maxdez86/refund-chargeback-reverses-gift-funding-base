@@ -12,10 +12,12 @@ const event = {
 const mapsQuery = encodeURIComponent(`${event.venue}, ${event.address}`);
 const mapsDirectionsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 const tourVideoUrl = mediaFileUrl("local", "tour-360-villa-valentim.mp4");
+const tourPosterUrl = mediaFileUrl("local", "tour-360-villa-valentim.jpg");
 
 export function Local() {
   const [copied, setCopied] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [videoBlocked, setVideoBlocked] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -23,7 +25,53 @@ export function Local() {
     if (!video) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       video.pause();
+      setVideoBlocked(true);
+      return;
     }
+
+    // WebKit/iOS gates muted-autoplay on the live `muted` IDL property at the
+    // moment play() is called; React's declarative `muted` can be momentarily
+    // unset on first render, so set it imperatively before playing.
+    video.muted = true;
+    video.defaultMuted = true;
+
+    let watchdog: number | undefined;
+    let cancelled = false;
+    const startTime = video.currentTime;
+    const clearWatchdog = () => {
+      if (watchdog !== undefined) {
+        window.clearTimeout(watchdog);
+        watchdog = undefined;
+      }
+    };
+    // Authoritative success signal is currentTime advancing — WebKit can fire
+    // `playing` then immediately stall (e.g. Low Power Mode).
+    const onTimeUpdate = () => {
+      if (video.currentTime > startTime + 0.05) {
+        clearWatchdog();
+        if (!cancelled) setVideoBlocked(false);
+        video.removeEventListener("timeupdate", onTimeUpdate);
+      }
+    };
+    video.addEventListener("timeupdate", onTimeUpdate);
+
+    Promise.resolve(video.play())
+      .then(() => {
+        watchdog = window.setTimeout(() => {
+          if (!cancelled && video.currentTime <= startTime + 0.05) {
+            setVideoBlocked(true);
+          }
+        }, 1500);
+      })
+      .catch(() => {
+        if (!cancelled) setVideoBlocked(true);
+      });
+
+    return () => {
+      cancelled = true;
+      clearWatchdog();
+      video.removeEventListener("timeupdate", onTimeUpdate);
+    };
   }, []);
 
   const downloadCalendarInvite = () => {
@@ -84,17 +132,27 @@ export function Local() {
       className="local-v4 relative min-h-[100svh] overflow-hidden bg-[#111111] text-[#fbf7f0]"
     >
       <div className="absolute inset-0">
-        <video
-          ref={videoRef}
-          src={tourVideoUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          aria-hidden="true"
-          className="h-full w-full object-cover"
-        />
+        {videoBlocked ? (
+          <img
+            src={tourPosterUrl}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            src={tourVideoUrl}
+            poster={tourPosterUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
+        )}
         <div className="local-v4-gradient absolute inset-0" />
       </div>
 

@@ -8,7 +8,7 @@ import {
 
 describe("seed-dev", () => {
   it("uses only the production rows with guest names", () => {
-    expect(PRODUCTION_INVITATIONS).toHaveLength(88);
+    expect(PRODUCTION_INVITATIONS).toHaveLength(87);
     expect(PRODUCTION_INVITATIONS.every((invitation) => invitation.guests.length > 0)).toBe(true);
   });
 

@@ -5,8 +5,8 @@ import {
   PutCommand,
   QueryCommand
 } from "@aws-sdk/lib-dynamodb";
-import { invitationKeys, guestKeys, rsvpKeys } from "../apps/api/src/services/dynamodb/key-builder.ts";
-import { TABLE_PRIMARY_KEY, TABLE_SORT_KEY } from "../apps/api/src/services/dynamodb/table.ts";
+import { invitationKeys, guestKeys } from "../apps/api/src/services/dynamodb/key-builder.ts";
+import { TABLE_PRIMARY_KEY } from "../apps/api/src/services/dynamodb/table.ts";
 import { INVITATION_CODE_REGEX } from "../packages/contracts/src/invitation-code.ts";
 import { pathToFileURL } from "node:url";
 

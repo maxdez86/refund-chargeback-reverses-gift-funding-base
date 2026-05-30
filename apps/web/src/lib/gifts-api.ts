@@ -1,7 +1,10 @@
 import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
 import { PaymentApiError } from "@/lib/payments-api";
 
-const API_URL = import.meta.env.VITE_API_URL;
+// In dev, use the same-origin `/api` base so the Vite dev server read-only
+// proxies the request to the deployed API (the prod CORS allowlist excludes
+// localhost). Production builds use the absolute VITE_API_URL as before.
+const API_URL = import.meta.env.DEV ? "/api" : import.meta.env.VITE_API_URL;
 
 export const giftsQueryKey = ["gifts"] as const;
 

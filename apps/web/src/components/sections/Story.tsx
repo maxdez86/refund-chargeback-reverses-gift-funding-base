@@ -184,14 +184,6 @@ export function Story() {
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
-  const scrollToPrev = useCallback(() => {
-    const el = document.querySelector("#contagem");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
-  }, []);
-
   const scrollToNext = useCallback(() => {
     const el = document.querySelector("#review");
     if (!el) return;

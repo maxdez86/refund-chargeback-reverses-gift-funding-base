@@ -284,7 +284,6 @@ export function RSVP() {
           >
             {submitted ? (
               <SuccessState
-                invitation={submitted.invitation}
                 confirmations={submitted.confirmations}
                 onReset={reset}
               />
@@ -529,11 +528,9 @@ export function RSVP() {
 }
 
 function SuccessState({
-  invitation,
   confirmations,
   onReset,
 }: {
-  invitation: HouseholdInvitation;
   confirmations: { guestId: string; guestName: string; attending: boolean }[];
   onReset: () => void;
 }) {

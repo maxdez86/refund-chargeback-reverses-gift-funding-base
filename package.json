@@ -31,6 +31,8 @@
     "opentofu:ses-dns:plan": "bash scripts/landing-opentofu.sh ses-dns plan",
     "reset:payments:test-data": "bash scripts/reset-payments-test-data.sh",
     "reset:gifts:catalog": "bash scripts/reset-gift-catalog.sh",
+    "reset:wedding:fresh-start": "bash scripts/reset-wedding-fresh-start.sh --apply",
+    "reset:wedding:fresh-start:dry-run": "bash scripts/reset-wedding-fresh-start.sh dry-run",
     "seed:gifts:catalog": "node --experimental-strip-types scripts/lib/seed-gift-catalog.ts",
     "synth": "pnpm build:web && pnpm --filter @brimax/infra-cdk cdk synth",
     "test:payments:negative": "bash scripts/test-payments-negative.sh",
