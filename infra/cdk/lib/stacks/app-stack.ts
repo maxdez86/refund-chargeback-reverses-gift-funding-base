@@ -315,7 +315,7 @@ export class AppStack extends cdk.Stack {
     webhookProcessorFn.addToRolePolicy(sesSendPolicy);
     rsvpFn.addToRolePolicy(sesSendPolicy);
 
-    this.httpApi.addRoutes({
+    const createPaymentRoutes = this.httpApi.addRoutes({
       path: "/payments",
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration(
@@ -341,7 +341,7 @@ export class AppStack extends cdk.Stack {
         getGuestMessagesFn
       )
     });
-    this.httpApi.addRoutes({
+    const createGuestMessagesRoutes = this.httpApi.addRoutes({
       path: "/guest-messages",
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration(
@@ -357,7 +357,7 @@ export class AppStack extends cdk.Stack {
         deleteGuestMessageFn
       )
     });
-    this.httpApi.addRoutes({
+    const paymentMessageRoutes = this.httpApi.addRoutes({
       path: "/payments/{paymentId}/message",
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration(
@@ -373,7 +373,7 @@ export class AppStack extends cdk.Stack {
         asaasWebhookFn
       )
     });
-    this.httpApi.addRoutes({
+    const invitationRoutes = this.httpApi.addRoutes({
       path: "/invitation/{code}",
       methods: [apigwv2.HttpMethod.GET],
       integration: new apigwv2Integrations.HttpLambdaIntegration(
@@ -381,11 +381,19 @@ export class AppStack extends cdk.Stack {
         invitationGetFn
       )
     });
-    this.httpApi.addRoutes({
+    const rsvpRoutes = this.httpApi.addRoutes({
       path: "/rsvp",
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration("RsvpIntegration", rsvpFn)
     });
+
+    if (defaultStage) {
+      addStageRouteDependency(defaultStage, invitationRoutes);
+      addStageRouteDependency(defaultStage, rsvpRoutes);
+      addStageRouteDependency(defaultStage, paymentMessageRoutes);
+      addStageRouteDependency(defaultStage, createGuestMessagesRoutes);
+      addStageRouteDependency(defaultStage, createPaymentRoutes);
+    }
 
     this.addMetricFilters(createPaymentFn.logGroup, "create-payment");
     this.addMetricFilters(asaasWebhookFn.logGroup, "asaas-webhook");
@@ -525,5 +533,14 @@ export class AppStack extends cdk.Stack {
       filterPattern: logs.FilterPattern.literal('"PAYMENT_STATE_TRANSITION"'),
       metricValue: "1"
     });
+  }
+}
+
+function addStageRouteDependency(stage: apigwv2.CfnStage, routes: apigwv2.HttpRoute[]) {
+  for (const route of routes) {
+    const routeResource = route.node.defaultChild;
+    if (routeResource) {
+      stage.node.addDependency(routeResource);
+    }
   }
 }
