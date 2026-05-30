@@ -46,7 +46,9 @@ function initialSelections(invitation: HouseholdInvitation): Record<string, bool
 
 function initialChildAgeSelections(invitation: HouseholdInvitation): ChildAgeSelections {
   return Object.fromEntries(
-    invitation.guests.map((g) => [g.guestId, g.isChildSixOrYounger])
+    invitation.guests
+      .filter((g) => g.isChild)
+      .map((g) => [g.guestId, g.isChildSixOrYounger])
   );
 }
 
@@ -169,7 +171,7 @@ export function RSVP() {
     if (lookup.kind !== "found") return;
     const invitation = lookup.invitation;
     const firstMissingAgeGuest = invitation.guests.find(
-      (g) => selections[g.guestId] && typeof childAgeSelections[g.guestId] !== "boolean"
+      (g) => g.isChild && selections[g.guestId] && typeof childAgeSelections[g.guestId] !== "boolean"
     );
 
     if (firstMissingAgeGuest) {
@@ -186,7 +188,7 @@ export function RSVP() {
       status: (selections[g.guestId] ? "attending" : "declined") as
         | "attending"
         | "declined",
-      isChildSixOrYounger: childAgeSelections[g.guestId] ?? false,
+      isChildSixOrYounger: g.isChild ? (childAgeSelections[g.guestId] ?? false) : false,
     }));
     const attendingGuestCount = guestResponses.filter(
       (r) => r.status === "attending"
@@ -214,6 +216,7 @@ export function RSVP() {
     if (lookup.kind !== "found") return false;
     return lookup.invitation.guests.some(
       (guest) =>
+        guest.isChild &&
         selections[guest.guestId] &&
         typeof childAgeSelections[guest.guestId] !== "boolean"
     );
@@ -386,6 +389,7 @@ export function RSVP() {
                         const showChildAgeError =
                           childAgeErrorGuestId === guest.guestId &&
                           checked &&
+                          guest.isChild &&
                           typeof childAgeValue !== "boolean";
                         return (
                           <li
@@ -420,11 +424,11 @@ export function RSVP() {
                               </span>
                             </label>
 
-                            {checked && (
+                            {checked && guest.isChild && (
                               <div className="mt-4 rounded-2xl border border-border/60 bg-secondary/20 p-4 space-y-3">
                                 <div className="space-y-1">
                                   <p className="text-sm font-medium text-foreground">
-                                    Confirme a faixa etária
+                                    Confirme a faixa etária da criança
                                   </p>
                                 </div>
                                 <RadioGroup
@@ -459,11 +463,6 @@ export function RSVP() {
                                       <div className="text-sm font-medium text-foreground">
                                         6 anos ou menos
                                       </div>
-                                      {guest.isChildSixOrYounger && (
-                                        <div className="text-xs text-muted-foreground">
-                                          Preenchido com base no cadastro. Confira antes de enviar.
-                                        </div>
-                                      )}
                                     </div>
                                   </label>
                                   <label
@@ -482,7 +481,7 @@ export function RSVP() {
                                 </RadioGroup>
                                 {showChildAgeError && (
                                   <p className="text-xs text-destructive">
-                                    Confirme a faixa etária de quem vai comparecer.
+                                    Confirme a faixa etária da criança que vai comparecer.
                                   </p>
                                 )}
                               </div>

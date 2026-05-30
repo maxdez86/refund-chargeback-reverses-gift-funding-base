@@ -252,9 +252,7 @@ describe("official web app", () => {
 
     fireEvent.click(screen.getByText("Débora"));
     fireEvent.click(screen.getByText("Nael"));
-    for (const button of await screen.findAllByLabelText("7 anos ou mais")) {
-      fireEvent.click(button);
-    }
+    expect(screen.queryByText("Confirme a faixa etária da criança")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
     expect(await screen.findByText(/Recebemos sua confirmação com carinho!/i)).toBeInTheDocument();
     expect(screen.queryByText(/Convite de/i)).not.toBeInTheDocument();

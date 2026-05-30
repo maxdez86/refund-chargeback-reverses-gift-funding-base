@@ -34,12 +34,9 @@ function toEffectiveGuestSummary(
       status === "attending" || status === "declined"
         ? status
         : ((guest.rsvpStatus as GuestSummary["rsvpStatus"]) ?? "pending"),
+    isChild: typeof guest.isChild === "boolean" ? guest.isChild : undefined,
     isChildSixOrYounger:
-      typeof response?.isChildSixOrYounger === "boolean"
-        ? response.isChildSixOrYounger
-        : typeof guest.isChildSixOrYounger === "boolean"
-          ? guest.isChildSixOrYounger
-          : undefined,
+      typeof response?.isChildSixOrYounger === "boolean" ? response.isChildSixOrYounger : undefined,
     dietaryNotes: guest.dietaryNotes ? String(guest.dietaryNotes) : undefined
   };
 }
@@ -52,6 +49,7 @@ export function toGuestProfile(item: UnknownRecord): GuestProfile {
     phoneNumber: item.phoneNumber ? String(item.phoneNumber) : undefined,
     allowedPlusOnes: Number(item.allowedPlusOnes ?? 0),
     rsvpStatus: (item.rsvpStatus as GuestProfile["rsvpStatus"]) ?? "pending",
+    isChild: typeof item.isChild === "boolean" ? item.isChild : undefined,
     isChildSixOrYounger:
       typeof item.isChildSixOrYounger === "boolean"
         ? item.isChildSixOrYounger
@@ -136,10 +134,7 @@ export function toAdminExportRows({
             : String(guest.rsvpStatus ?? "pending")) ?? "pending",
       allowedPlusOnes: Number(guest.allowedPlusOnes ?? 0),
       attending: responsesByGuestId.get(String(guest.guestId ?? ""))?.attending,
-      isChildSixOrYoungerSeed:
-        typeof guest.isChildSixOrYounger === "boolean"
-          ? guest.isChildSixOrYounger
-          : undefined,
+      isChildSeed: typeof guest.isChild === "boolean" ? guest.isChild : undefined,
       isChildSixOrYoungerConfirmed: responsesByGuestId.get(String(guest.guestId ?? ""))
         ?.isChildSixOrYoungerConfirmed
     }));

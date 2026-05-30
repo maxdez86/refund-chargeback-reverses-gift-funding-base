@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 type SeedGuest = {
   guestName: string;
   slot: number;
+  isChild?: boolean;
 };
 
 type SeedInvitation = {
@@ -73,7 +74,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Débora Andrade", slot: 1 },
       { guestName: "Nael Silva", slot: 2 },
-      { guestName: "Heitor Andrade", slot: 3 }
+      { guestName: "Heitor Andrade", slot: 3, isChild: true }
     ]
   },
   {
@@ -82,7 +83,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Denise Andrade", slot: 1 },
       { guestName: "Gustavo", slot: 2 },
-      { guestName: "Maya Alice Andrade", slot: 3 }
+      { guestName: "Maya Alice Andrade", slot: 3, isChild: true }
     ]
   },
   {
@@ -103,7 +104,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "Samantha Furtuoso e Marido Samantha",
     guests: [
       { guestName: "Samantha Furtuoso", slot: 1 },
-      { guestName: "Marido Samantha", slot: 2 }
+      { guestName: "Yrai Labate", slot: 2 }
     ]
   },
   {
@@ -127,8 +128,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "José Filho e família",
     guests: [
       { guestName: "José Filho", slot: 1 },
-      { guestName: "Estela Soares", slot: 2 },
-      { guestName: "Manuela Soares", slot: 3 }
+      { guestName: "Estela Soares", slot: 2, isChild: true },
+      { guestName: "Manuela Soares", slot: 3, isChild: true }
     ]
   },
   {
@@ -136,9 +137,9 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "Vanessa Andrade e família",
     guests: [
       { guestName: "Vanessa Andrade", slot: 1 },
-      { guestName: "Carlos", slot: 2 },
-      { guestName: "Carlos Henrique", slot: 3 },
-      { guestName: "Vinicius", slot: 4 }
+      { guestName: "Manoel Carlos", slot: 2 },
+      { guestName: "Carlos Henrique", slot: 3, isChild: true },
+      { guestName: "Vinicius Andrade", slot: 4, isChild: true }
     ]
   },
   {
@@ -304,7 +305,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Gabriela Garcia", slot: 1 },
       { guestName: "Rodrigo Silva", slot: 2 },
-      { guestName: "Akin", slot: 3 }
+      { guestName: "Akin", slot: 3, isChild: true }
     ]
   },
   {
@@ -330,7 +331,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Elís Guimarães", slot: 1 },
       { guestName: "Emerson Guimarães", slot: 2 },
-      { guestName: "Luiza", slot: 3 },
+      { guestName: "Luiza", slot: 3, isChild: true },
       { guestName: "Samuel Soares", slot: 4 }
     ]
   },
@@ -348,7 +349,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Fernando Macedo", slot: 1 },
       { guestName: "Fabiola Zampieri", slot: 2 },
-      { guestName: "Arthur", slot: 3 }
+      { guestName: "Arthur", slot: 3, isChild: true }
     ]
   },
   {
@@ -366,9 +367,9 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Anderson", slot: 1 },
       { guestName: "Rebeca", slot: 2 },
-      { guestName: "Michelly", slot: 3 },
-      { guestName: "Davi", slot: 4 },
-      { guestName: "Esther", slot: 5 }
+      { guestName: "Michelly", slot: 3, isChild: true },
+      { guestName: "Davi", slot: 4, isChild: true },
+      { guestName: "Esther", slot: 5, isChild: true }
     ]
   },
   {
@@ -377,8 +378,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Jessica", slot: 1 },
       { guestName: "Odair", slot: 2 },
-      { guestName: "Lívia", slot: 3 },
-      { guestName: "Heitor", slot: 4 }
+      { guestName: "Lívia", slot: 3, isChild: true },
+      { guestName: "Heitor", slot: 4, isChild: true }
     ]
   },
   {
@@ -443,8 +444,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Rafa", slot: 1 },
       { guestName: "Thaís", slot: 2 },
-      { guestName: "Stella", slot: 3 },
-      { guestName: "Selena", slot: 4 }
+      { guestName: "Stella", slot: 3, isChild: true },
+      { guestName: "Selena", slot: 4, isChild: true }
     ]
   },
   {
@@ -453,7 +454,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Rafa", slot: 1 },
       { guestName: "Andreia", slot: 2 },
-      { guestName: "Ana Clara", slot: 3 }
+      { guestName: "Ana Clara", slot: 3, isChild: true }
     ]
   },
   {
@@ -467,8 +468,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Fernando", slot: 1 },
       { guestName: "Anne", slot: 2 },
-      { guestName: "Rafa", slot: 3 },
-      { guestName: "Fefa", slot: 4 }
+      { guestName: "Rafa", slot: 3, isChild: true },
+      { guestName: "Fefa", slot: 4, isChild: true }
     ]
   },
   {
@@ -477,8 +478,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Tati", slot: 1 },
       { guestName: "Bruno", slot: 2 },
-      { guestName: "Julia", slot: 3 },
-      { guestName: "Mel", slot: 4 }
+      { guestName: "Julia", slot: 3, isChild: true },
+      { guestName: "Mel", slot: 4, isChild: true }
     ]
   },
   {
@@ -487,8 +488,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Karen", slot: 1 },
       { guestName: "Julio", slot: 2 },
-      { guestName: "Marina", slot: 3 },
-      { guestName: "Enteado", slot: 4 }
+      { guestName: "Marina", slot: 3, isChild: true },
+      { guestName: "Enteado", slot: 4, isChild: true }
     ]
   },
   {
@@ -497,7 +498,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Deborah", slot: 1 },
       { guestName: "Fábio", slot: 2 },
-      { guestName: "Matteo", slot: 3 }
+      { guestName: "Matteo", slot: 3, isChild: true }
     ]
   },
   {
@@ -506,16 +507,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Mauro", slot: 1 },
       { guestName: "Karn", slot: 2 },
-      { guestName: "Mateo", slot: 3 }
-    ]
-  },
-  {
-    invitationCode: "JN9846",
-    householdName: "Fernando e família",
-    guests: [
-      { guestName: "Fernando", slot: 1 },
-      { guestName: "Fabi", slot: 2 },
-      { guestName: "Arthur", slot: 3 }
+      { guestName: "Mateo", slot: 3, isChild: true }
     ]
   },
   {
@@ -532,7 +524,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Rodrigo", slot: 1 },
       { guestName: "Lea", slot: 2 },
-      { guestName: "Kauê", slot: 3 }
+      { guestName: "Kauê", slot: 3, isChild: true }
     ]
   },
   {
@@ -541,7 +533,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Emerson", slot: 1 },
       { guestName: "Flávia", slot: 2 },
-      { guestName: "André", slot: 3 }
+      { guestName: "André", slot: 3, isChild: true }
     ]
   },
   {
@@ -556,8 +548,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     invitationCode: "PA3675",
     householdName: "Eduardo e Day",
     guests: [
-      { guestName: "Eduardo", slot: 1 },
-      { guestName: "Day", slot: 2 }
+      { guestName: "Eduardo Lima", slot: 1 },
+      { guestName: "Day Moura", slot: 2 }
     ]
   },
   {
@@ -671,7 +663,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Rafael", slot: 1 },
       { guestName: "Esposa", slot: 2 },
-      { guestName: "Filho", slot: 3 }
+      { guestName: "Filho", slot: 3, isChild: true }
     ]
   },
   {
@@ -680,8 +672,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Vanda", slot: 1 },
       { guestName: "Denilson", slot: 2 },
-      { guestName: "Júlia", slot: 3 },
-      { guestName: "Eduarda", slot: 4 }
+      { guestName: "Júlia", slot: 3, isChild: true },
+      { guestName: "Eduarda", slot: 4, isChild: true }
     ]
   },
   {
@@ -807,7 +799,8 @@ export async function seedInvitations(
             guestName: guest.guestName,
             sortOrder: guest.slot,
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChild: guest.isChild ?? false
           }
         })
       );

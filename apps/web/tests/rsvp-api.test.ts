@@ -20,7 +20,7 @@ describe("rsvp-api", () => {
                 guestName: "Amanda",
                 allowedPlusOnes: 0,
                 rsvpStatus: "pending",
-                isChildSixOrYounger: true
+                isChild: true
               }
             ]
           },
@@ -39,7 +39,7 @@ describe("rsvp-api", () => {
     );
     expect(invitation.invitation.householdName).toBe("Amanda e Chris");
     expect(invitation.invitation.guests).toHaveLength(1);
-    expect(invitation.invitation.guests[0]?.isChildSixOrYounger).toBe(true);
+    expect(invitation.invitation.guests[0]?.isChild).toBe(true);
     expect(invitation.lookupProof).toBe("proof-1");
   });
 

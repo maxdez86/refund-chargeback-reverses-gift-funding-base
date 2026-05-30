@@ -108,7 +108,7 @@ describe("RSVP section", () => {
     expect(stateLabels[0].textContent).toBe("Vai comparecer");
     expect(stateLabels[1].textContent).toBe("Não vai");
     expect(screen.getByText("1 pessoa confirmada")).toBeInTheDocument();
-    expect(screen.getByText("Confirme a faixa etária")).toBeInTheDocument();
+    expect(screen.queryByText("Confirme a faixa etária da criança")).not.toBeInTheDocument();
   });
 
   it("submits the household and shows the success state", async () => {
@@ -121,7 +121,8 @@ describe("RSVP section", () => {
             guestId: "g1",
             guestName: "Amanda",
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChild: true
           },
           {
             guestId: "g2",
@@ -221,7 +222,8 @@ describe("RSVP section", () => {
             guestId: "g1",
             guestName: "Amanda",
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChild: true
           }
         ]
       },
@@ -261,6 +263,7 @@ describe("RSVP section", () => {
             guestName: "Amanda",
             allowedPlusOnes: 0,
             rsvpStatus: "attending",
+            isChild: true,
             isChildSixOrYounger: true
           }
         ]
@@ -278,8 +281,63 @@ describe("RSVP section", () => {
 
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
-    expect(screen.getByText(/Preenchido com base no cadastro/i)).toBeInTheDocument();
+    expect(screen.getByText("Confirme a faixa etária da criança")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Preenchido com base na sua confirmação anterior/i)
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeEnabled();
+  });
+
+  it("does not ask for age confirmation for attending non-child guests", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-4b",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+    submitRsvpMock.mockResolvedValueOnce({
+      ok: true,
+      invitationCode: "ABCD2345",
+      status: "attending",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    fireEvent.click(screen.getByText("Amanda"));
+
+    expect(screen.queryByText("Confirme a faixa etária da criança")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar confirmação" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+
+    await waitFor(() =>
+      expect(submitRsvpMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          guestResponses: [
+            { guestId: "g1", status: "attending", isChildSixOrYounger: false }
+          ]
+        }),
+        "proof-4b"
+      )
+    );
   });
 
   it("does not render a free-text RSVP message field", async () => {

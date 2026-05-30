@@ -58,7 +58,7 @@ describe("seed-dev", () => {
           invitationCode: "AB2345",
           householdName: "Amanda e Chris",
           guests: [
-            { guestName: "Amanda", slot: 1 },
+            { guestName: "Amanda", slot: 1, isChild: true },
             { guestName: "Chris", slot: 2 }
           ]
         }
@@ -93,7 +93,17 @@ describe("seed-dev", () => {
         guestId: "AB2345--guest-01",
         guestName: "Amanda",
         sortOrder: 1,
-        rsvpStatus: "pending"
+        rsvpStatus: "pending",
+        isChild: true
+      })
+    );
+
+    const adultGuestPut = send.mock.calls[5][0] as PutCommand;
+    expect(adultGuestPut.input.Item).toEqual(
+      expect.objectContaining({
+        guestId: "AB2345--guest-02",
+        guestName: "Chris",
+        isChild: false
       })
     );
   });

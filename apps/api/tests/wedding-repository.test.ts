@@ -28,7 +28,7 @@ describe("WeddingRepository", () => {
             sortOrder: 1,
             allowedPlusOnes: 0,
             rsvpStatus: "pending",
-            isChildSixOrYounger: true
+            isChild: true
           },
           {
             PK: "INVITATION#ABCD2345",
@@ -61,7 +61,7 @@ describe("WeddingRepository", () => {
             guestName: "Amanda",
             allowedPlusOnes: 0,
             rsvpStatus: "pending",
-            isChildSixOrYounger: true
+            isChild: true
           },
           {
             guestId: "ABCD2345--guest-02",
@@ -92,7 +92,8 @@ describe("WeddingRepository", () => {
             guestName: "Amanda",
             sortOrder: 1,
             allowedPlusOnes: 0,
-            rsvpStatus: "pending"
+            rsvpStatus: "pending",
+            isChild: true
           },
           {
             PK: "INVITATION#ABCD2345",
@@ -135,6 +136,7 @@ describe("WeddingRepository", () => {
           guestName: "Amanda",
           allowedPlusOnes: 0,
           rsvpStatus: "attending",
+          isChild: true,
           isChildSixOrYounger: true
         },
         {
@@ -211,7 +213,7 @@ describe("WeddingRepository", () => {
             sortOrder: 1,
             allowedPlusOnes: 0,
             rsvpStatus: "pending",
-            isChildSixOrYounger: true
+            isChild: true
           },
           {
             entityType: "InvitationGuest",
@@ -258,7 +260,7 @@ describe("WeddingRepository", () => {
         rsvpStatus: "attending",
         allowedPlusOnes: 0,
         attending: true,
-        isChildSixOrYoungerSeed: true,
+        isChildSeed: true,
         isChildSixOrYoungerConfirmed: true
       });
       expect(rows[1]).toEqual(

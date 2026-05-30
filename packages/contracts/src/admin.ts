@@ -10,7 +10,7 @@ export const AdminGuestExportRowSchema = z.object({
   rsvpStatus: z.string(),
   allowedPlusOnes: z.number().int().nonnegative(),
   attending: z.boolean().optional(),
-  isChildSixOrYoungerSeed: z.boolean().optional(),
+  isChildSeed: z.boolean().optional(),
   isChildSixOrYoungerConfirmed: z.boolean().optional()
 });
 

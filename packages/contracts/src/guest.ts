@@ -10,6 +10,7 @@ export const GuestProfileSchema = z.object({
   phoneNumber: z.string().min(8).optional(),
   allowedPlusOnes: z.number().int().nonnegative(),
   rsvpStatus: RsvpStatusSchema,
+  isChild: z.boolean().optional(),
   isChildSixOrYounger: z.boolean().optional(),
   dietaryNotes: z.string().optional()
 });
@@ -19,6 +20,7 @@ export const GuestSummarySchema = z.object({
   guestName: z.string().min(1),
   allowedPlusOnes: z.number().int().nonnegative(),
   rsvpStatus: RsvpStatusSchema,
+  isChild: z.boolean().optional(),
   isChildSixOrYounger: z.boolean().optional(),
   dietaryNotes: z.string().optional()
 });
