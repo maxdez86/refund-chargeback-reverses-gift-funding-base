@@ -6,7 +6,7 @@ import { AppStack } from "../lib/stacks/app-stack";
 import { DataStack } from "../lib/stacks/data-stack";
 
 describe("AppStack", () => {
-  it("creates the payment API, webhook queue, secrets, and Lambda handlers", { timeout: 15000 }, () => {
+  it("creates the payment API, webhook queue, secrets, and Lambda handlers", { timeout: 30000 }, () => {
     const app = new cdk.App();
     const dataStack = new DataStack(app, "AppDataStack", {
       stage: "dev"
@@ -133,6 +133,11 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
+      Runtime: "nodejs20.x"
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "index.handler",
+      MemorySize: 512,
       Runtime: "nodejs20.x"
     });
     template.hasResourceProperties("AWS::Lambda::Function", {

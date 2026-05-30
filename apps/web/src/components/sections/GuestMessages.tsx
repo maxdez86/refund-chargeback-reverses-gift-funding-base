@@ -33,7 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
 const NAVIGATION_OFFSET = 80;
 const MESSAGE_MAX_LENGTH = 320;
-const MESSAGE_PREVIEW_MAX_HEIGHT_PX = 176;
+const MESSAGE_PREVIEW_MAX_HEIGHT_PX = 344;
+const CARD_HEIGHT_CLASS = "h-[28rem] md:h-[29rem]";
 
 type FormState = {
   authorName: string;
@@ -94,15 +95,12 @@ function ComposeCard({
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className="relative flex min-h-[20rem] flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-6 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]">
-        <div className="mb-5 border-b border-[#e6d9c4] pb-4">
+      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+        <div className="mb-2 border-b border-[#e6d9c4] pb-2">
           <p className="font-serif text-[1.45rem] text-foreground">Deixe seu recado</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Escreva uma mensagem carinhosa para os noivos.
-          </p>
         </div>
 
-        <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-2">
           <div className="space-y-2">
             <label htmlFor="guest-message-author" className="text-sm font-medium text-foreground">
               Seu nome
@@ -114,7 +112,7 @@ function ComposeCard({
               onChange={(e) => onChange("authorName", e.target.value)}
               maxLength={60}
               autoComplete="name"
-              className="h-12 rounded-xl bg-background"
+              className="h-11 rounded-xl bg-background"
               placeholder="Seu nome"
             />
           </div>
@@ -133,15 +131,15 @@ function ComposeCard({
               value={form.message}
               onChange={(e) => onChange("message", e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
               maxLength={MESSAGE_MAX_LENGTH}
-              className="min-h-[8.5rem] flex-1 rounded-2xl bg-background px-4 py-3 text-sm leading-7"
-              placeholder="Escreva aqui seu recado."
+              className="min-h-[6rem] flex-1 rounded-2xl bg-background px-4 py-3 text-sm leading-6"
+              placeholder="Escreva uma mensagem carinhosa para os noivos."
             />
           </div>
 
-          <div className="pt-1">
+          <div>
             <Button
               type="submit"
-              className="h-12 w-full rounded-full px-8"
+              className="h-11 w-full rounded-full px-7"
               disabled={
                 isSubmitting ||
                 isVerifying ||
@@ -198,19 +196,19 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
         transition={{ duration: 0.55, delay: Math.min(index, 3) * 0.08 }}
         data-recado-card
       >
-        <div className="relative flex min-h-[20rem] flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-6 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]">
+        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
           <Quote
             aria-hidden="true"
-            className="absolute right-5 top-5 h-12 w-12 text-[#d6ae64]/20"
+            className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/20 md:right-5 md:top-5 md:h-12 md:w-12"
           />
-          <div className="mb-5 border-b border-[#e6d9c4] pb-4">
+          <div className="mb-3 border-b border-[#e6d9c4] pb-2">
             <p className="font-serif text-[1.45rem] text-foreground">{message.authorName}</p>
           </div>
 
           <div className="relative flex-1">
             <p
               ref={contentRef}
-              className="whitespace-pre-line text-sm leading-7 text-muted-foreground"
+              className="whitespace-pre-line text-sm leading-6 text-muted-foreground"
               style={{ maxHeight: `${MESSAGE_PREVIEW_MAX_HEIGHT_PX}px`, overflow: "hidden" }}
             >
               {message.message}
@@ -220,7 +218,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
               <>
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#fffaf3] to-transparent"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#fffaf3] to-transparent"
                 />
                 <button
                   type="button"
@@ -233,7 +231,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
             )}
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#e6d9c4] pt-4 text-xs uppercase tracking-[0.18em] text-[#8e7553]">
+          <div className="mt-3 flex items-center justify-between gap-4 border-t border-[#e6d9c4] pt-2 text-xs uppercase tracking-[0.18em] text-[#8e7553]">
             <span>{dateLabel}</span>
             <span>{timeLabel}</span>
           </div>
@@ -271,8 +269,8 @@ function FeedbackCard({ children }: { children: React.ReactNode }) {
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className="flex min-h-[20rem] items-center justify-center rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-6 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]">
-        <div className="text-sm leading-7 text-muted-foreground">{children}</div>
+      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+        <div className="text-sm leading-6 text-muted-foreground">{children}</div>
       </div>
     </motion.article>
   );
@@ -425,27 +423,27 @@ export function GuestMessages() {
   return (
     <section
       id="recados"
-      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#f4eee5_0%,#efe4d4_100%)] py-24 md:py-32"
+      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#f4eee5_0%,#efe4d4_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
     >
       <div className="container mx-auto px-6">
-        <motion.div
-          className="text-center"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-        >
-          <span className="text-xs uppercase tracking-[0.32em] text-[#8e7553]">
-            Um carinho em palavras
-          </span>
-          <h2 className="mt-4 font-serif text-4xl text-foreground md:text-5xl">
-            Recados para os Noivos
-          </h2>
-        </motion.div>
+        <div className="relative mb-3 md:mb-4">
+          <motion.div
+            className="mx-auto text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+          >
+            <span className="text-xs uppercase tracking-[0.32em] text-[#8e7553]">
+              Um carinho em palavras
+            </span>
+            <h2 className="mt-2 font-serif text-4xl text-foreground md:text-5xl">
+              Recados para os Noivos
+            </h2>
+          </motion.div>
 
-        <div className="mt-12 mb-6 flex justify-end">
           {shouldShowControls && (
-            <div className="hidden items-center gap-3 md:flex">
+            <div className="absolute bottom-0 right-0 hidden shrink-0 items-center gap-3 md:flex">
               <Button
                 variant="outline"
                 size="icon"
@@ -479,7 +477,7 @@ export function GuestMessages() {
             aria-roledescription="carrossel"
             aria-label="Carrossel de recados para os noivos"
           >
-            <div className="flex items-stretch gap-5 pb-3 md:gap-5 lg:gap-6">
+            <div className="flex items-stretch gap-5 pb-1 md:gap-5 lg:gap-6">
               <ComposeCard
                 form={form}
                 isSubmitting={createMutation.isPending}
@@ -513,7 +511,7 @@ export function GuestMessages() {
         </div>
 
         {messagesQuery.hasNextPage && (
-          <div className="mt-8 flex justify-center">
+          <div className="mt-5 flex justify-center md:mt-6">
             <Button
               type="button"
               variant="outline"
@@ -533,7 +531,7 @@ export function GuestMessages() {
           </div>
         )}
 
-        <div className="mt-10 flex justify-center">
+        <div className="mt-3 flex justify-center md:mt-4">
           <Button
             variant="outline"
             size="icon"

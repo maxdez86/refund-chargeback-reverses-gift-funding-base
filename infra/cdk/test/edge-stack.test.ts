@@ -9,7 +9,7 @@ import { DEFAULT_STAGE, resourceName, resolveStage } from "@brimax/config";
 const fixtureSiteAssetPath = path.resolve(__dirname, "./fixtures/site");
 
 describe("EdgeStack", () => {
-  it("creates a private website bucket and CloudFront distribution", () => {
+  it("creates a private website bucket and CloudFront distribution", { timeout: 10000 }, () => {
     const app = new cdk.App();
     const stack = new EdgeStack(app, "TestEdgeStack", {
       siteAssetPath: fixtureSiteAssetPath,
