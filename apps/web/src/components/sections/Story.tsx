@@ -68,7 +68,7 @@ const chapters: Chapter[] = [
     id: "casa",
     title: "Casa comigo",
     text: "O pedido aconteceu nas alturas. Literalmente. O destino oficial da viagem era Brotas, mas ele dirigiu uma hora a mais até São Pedro. Durante seis meses, ele planejou tudo escondido: um balão exclusivo, um cenário lindo e a pergunta que mudaria nossas vidas. No dia, a chuva quase estragou todos os planos. Cancelamos o balão e ele entrou em pânico. Mas, no dia seguinte, o céu abriu. O balão subiu. E lá em cima, a mil metros de altura, ele me perguntou se eu queria passar o resto da vida ao lado dele.",
-    media: { kind: "video", file: "casa-comigo.mp4", posterAlt: "Noivado no balão" },
+    media: { kind: "image", slug: "casa-comigo", alt: "Noivado no balão" },
   },
   {
     id: "save",
