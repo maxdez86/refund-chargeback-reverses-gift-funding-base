@@ -17,12 +17,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
 const NAVIGATION_OFFSET = 80;
 const SUCCESS_SCROLL_RELEASE_DELAY_MS = 500;
+const MUSIC_NOTE_PREFIX = "Música sugerida: ";
+const MUSIC_SUGGESTION_MAX_LENGTH = 500 - MUSIC_NOTE_PREFIX.length;
 
 type LookupState =
   | { kind: "idle" }
@@ -34,6 +37,8 @@ type LookupState =
 type SubmittedState = {
   invitation: HouseholdInvitation;
   confirmations: { guestId: string; guestName: string; attending: boolean }[];
+  payload: RsvpSubmissionRequest;
+  musicSuggestion?: string;
 };
 
 type ChildAgeSelections = Record<string, boolean | undefined>;
@@ -104,7 +109,7 @@ export function RSVP() {
           "attending",
       }));
       setCardMinHeight(currentCardHeight > 0 ? currentCardHeight : null);
-      setSubmitted({ invitation: lookup.invitation, confirmations });
+      setSubmitted({ invitation: lookup.invitation, confirmations, payload: variables });
     },
     onError: (error) => {
       const message =
@@ -122,11 +127,46 @@ export function RSVP() {
     },
   });
 
+  const musicSuggestionMutation = useMutation({
+    mutationFn: async (musicSuggestion: string) => {
+      if (!submitted) {
+        throw new Error("RSVP ainda não confirmado.");
+      }
+
+      const payload: RsvpSubmissionRequest = {
+        ...submitted.payload,
+        note: `${MUSIC_NOTE_PREFIX}${musicSuggestion}`,
+      };
+
+      await submitRsvp(payload, lookupProof);
+      return { payload, musicSuggestion };
+    },
+    onSuccess: ({ payload, musicSuggestion }) => {
+      setSubmitted((current) =>
+        current
+          ? {
+              ...current,
+              payload,
+              musicSuggestion,
+            }
+          : current
+      );
+    },
+    onError: (error) => {
+      const message =
+        error instanceof RsvpApiError
+          ? error.message
+          : "Não conseguimos salvar sua música agora.";
+      toast.error(message);
+    },
+  });
+
   const reset = () => {
     setCodeInput("");
     clearLookupSession();
     setIsVerifyingLookup(false);
     submitMutation.reset();
+    musicSuggestionMutation.reset();
   };
 
   const handleLookup = async (e: React.FormEvent) => {
@@ -285,6 +325,11 @@ export function RSVP() {
             {submitted ? (
               <SuccessState
                 confirmations={submitted.confirmations}
+                musicSuggestion={submitted.musicSuggestion}
+                onSubmitMusicSuggestion={(musicSuggestion) =>
+                  musicSuggestionMutation.mutateAsync(musicSuggestion)
+                }
+                isSubmittingMusicSuggestion={musicSuggestionMutation.isPending}
                 onReset={reset}
               />
             ) : (
@@ -529,13 +574,40 @@ export function RSVP() {
 
 function SuccessState({
   confirmations,
+  musicSuggestion,
+  onSubmitMusicSuggestion,
+  isSubmittingMusicSuggestion,
   onReset,
 }: {
   confirmations: { guestId: string; guestName: string; attending: boolean }[];
+  musicSuggestion?: string;
+  onSubmitMusicSuggestion: (musicSuggestion: string) => Promise<unknown>;
+  isSubmittingMusicSuggestion: boolean;
   onReset: () => void;
 }) {
   const attending = confirmations.filter((c) => c.attending);
   const notAttending = confirmations.filter((c) => !c.attending);
+  const [musicStep, setMusicStep] = useState<"idle" | "editing" | "skipped">(
+    musicSuggestion ? "editing" : "idle"
+  );
+  const [musicInput, setMusicInput] = useState(musicSuggestion ?? "");
+
+  useEffect(() => {
+    if (!musicSuggestion) return;
+    setMusicInput(musicSuggestion);
+    setMusicStep("editing");
+  }, [musicSuggestion]);
+
+  const handleMusicSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = musicInput.trim();
+    if (!trimmed) return;
+    try {
+      await onSubmitMusicSuggestion(trimmed);
+    } catch {
+      // Error feedback is handled by the mutation toast.
+    }
+  };
 
   return (
     <div className="text-center py-6 space-y-6">
@@ -588,6 +660,111 @@ function SuccessState({
           )}
         </div>
       </div>
+
+      {musicSuggestion ? (
+        <div className="rounded-3xl border border-border/60 bg-secondary/20 p-6 text-left space-y-3">
+          <p className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+            Sua música
+          </p>
+          <h4 className="font-serif text-2xl text-foreground">
+            Qual música não pode faltar na festa para você?
+          </h4>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Obrigado por compartilhar esse pedacinho da pista com a gente.
+          </p>
+          <div className="rounded-2xl border border-border/60 bg-background px-4 py-3 text-foreground">
+            {musicSuggestion}
+          </div>
+        </div>
+      ) : musicStep === "skipped" ? null : musicStep === "editing" ? (
+        <form
+          onSubmit={handleMusicSubmit}
+          className="rounded-3xl border border-border/60 bg-secondary/20 p-6 text-left space-y-4"
+        >
+          <div className="space-y-2">
+            <p className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+              Um detalhe que amamos saber
+            </p>
+            <h4 className="font-serif text-2xl text-foreground">
+              Qual música não pode faltar na festa para você?
+            </h4>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Se quiser, conte pra gente uma música que vai fazer você lembrar desse dia na pista.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Textarea
+              value={musicInput}
+              onChange={(e) => setMusicInput(e.target.value.slice(0, MUSIC_SUGGESTION_MAX_LENGTH))}
+              placeholder="Ex.: Evidências - Chitãozinho & Xororó"
+              className="min-h-28 rounded-2xl bg-background"
+              maxLength={MUSIC_SUGGESTION_MAX_LENGTH}
+            />
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>Opcional. Até {MUSIC_SUGGESTION_MAX_LENGTH} caracteres.</span>
+              <span>{musicInput.trim().length}/{MUSIC_SUGGESTION_MAX_LENGTH}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              type="submit"
+              className="rounded-full"
+              disabled={isSubmittingMusicSuggestion || musicInput.trim().length === 0}
+            >
+              {isSubmittingMusicSuggestion ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                  Enviando…
+                </>
+              ) : (
+                "Enviar sugestão"
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full"
+              disabled={isSubmittingMusicSuggestion}
+              onClick={() => setMusicStep("skipped")}
+            >
+              Agora não
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <div className="rounded-3xl border border-border/60 bg-secondary/20 p-6 text-left space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+              Um detalhe que amamos saber
+            </p>
+            <h4 className="font-serif text-2xl text-foreground">
+              Qual música não pode faltar na festa para você?
+            </h4>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Se quiser, conte pra gente uma música que vai fazer você lembrar desse dia na pista.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              type="button"
+              className="rounded-full"
+              onClick={() => setMusicStep("editing")}
+            >
+              Sugerir uma música
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => setMusicStep("skipped")}
+            >
+              Agora não
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
         <Button variant="outline" onClick={onReset} className="rounded-full">

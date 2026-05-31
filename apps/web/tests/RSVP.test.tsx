@@ -177,6 +177,10 @@ describe("RSVP section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
 
     await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    expect(
+      screen.getByText("Qual música não pode faltar na festa para você?")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sugerir uma música" })).toBeInTheDocument();
     await waitFor(() =>
       expect(scrollToSpy).toHaveBeenCalledWith({ top: 240, behavior: "smooth" })
     );
@@ -193,6 +197,219 @@ describe("RSVP section", () => {
       },
       "proof-2"
     );
+  });
+
+  it("allows skipping the optional music suggestion after RSVP success", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-skip",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+    submitRsvpMock.mockResolvedValueOnce({
+      ok: true,
+      invitationCode: "ABCD2345",
+      status: "attending",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    fireEvent.click(screen.getByText("Amanda"));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+
+    await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    fireEvent.click(screen.getByRole("button", { name: "Agora não" }));
+
+    expect(screen.queryByRole("button", { name: "Sugerir uma música" })).not.toBeInTheDocument();
+    expect(submitRsvpMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits a music suggestion as a second optional RSVP request", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          },
+          {
+            guestId: "g2",
+            guestName: "Chris",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-music",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+    submitRsvpMock
+      .mockResolvedValueOnce({
+        ok: true,
+        invitationCode: "ABCD2345",
+        status: "attending",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        invitationCode: "ABCD2345",
+        status: "attending",
+        updatedAt: "2026-05-14T00:01:00.000Z"
+      });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    fireEvent.click(screen.getByText("Amanda"));
+    fireEvent.click(screen.getByText("Chris"));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+
+    await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    fireEvent.click(screen.getByRole("button", { name: "Sugerir uma música" }));
+
+    const textarea = screen.getByPlaceholderText("Ex.: Evidências - Chitãozinho & Xororó");
+    fireEvent.change(textarea, { target: { value: "Tempo Perdido - Legião Urbana" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar sugestão" }));
+
+    await screen.findByText("Obrigado por compartilhar esse pedacinho da pista com a gente.");
+    expect(screen.getByText("Tempo Perdido - Legião Urbana")).toBeInTheDocument();
+    expect(submitRsvpMock).toHaveBeenCalledTimes(2);
+    expect(submitRsvpMock).toHaveBeenNthCalledWith(
+      2,
+      {
+        invitationCode: "ABCD2345",
+        submittedBy: "g1",
+        guestResponses: [
+          { guestId: "g1", status: "attending", isChildSixOrYounger: false },
+          { guestId: "g2", status: "attending", isChildSixOrYounger: false }
+        ],
+        attendingGuestCount: 2,
+        note: "Música sugerida: Tempo Perdido - Legião Urbana"
+      },
+      "proof-music"
+    );
+  });
+
+  it("does not send an empty music suggestion", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-empty-music",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+    submitRsvpMock.mockResolvedValueOnce({
+      ok: true,
+      invitationCode: "ABCD2345",
+      status: "attending",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    fireEvent.click(screen.getByText("Amanda"));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+
+    await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    fireEvent.click(screen.getByRole("button", { name: "Sugerir uma música" }));
+
+    const submitSuggestionButton = screen.getByRole("button", { name: "Enviar sugestão" });
+    expect(submitSuggestionButton).toBeDisabled();
+    expect(submitRsvpMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a toast when saving the music suggestion fails", async () => {
+    const { RsvpApiError } = await import("@/lib/rsvp-api");
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "ABCD2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-music-error",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+    submitRsvpMock
+      .mockResolvedValueOnce({
+        ok: true,
+        invitationCode: "ABCD2345",
+        status: "attending",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      })
+      .mockRejectedValueOnce(new RsvpApiError("sem playlist", 500));
+
+    renderWithClient(<RSVP />);
+
+    fireEvent.change(screen.getByLabelText("Digite seu código de convite"), {
+      target: { value: "ABCD2345" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Localizar convite/i }));
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    fireEvent.click(screen.getByText("Amanda"));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar confirmação" }));
+
+    await screen.findByText(/Recebemos sua confirmação com carinho!/i);
+    fireEvent.click(screen.getByRole("button", { name: "Sugerir uma música" }));
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Evidências - Chitãozinho & Xororó"), {
+      target: { value: "Sina - Djavan" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar sugestão" }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("sem playlist"));
+    expect(screen.getByDisplayValue("Sina - Djavan")).toBeInTheDocument();
   });
 
   it("renders the not-found message when the API returns 404", async () => {

@@ -20,6 +20,8 @@ type RsvpSubmitResult = {
   notificationSent: boolean;
 };
 
+const MUSIC_NOTE_PREFIX = "Música sugerida: ";
+
 export class RsvpService {
   constructor(
     private readonly repository = new WeddingRepository(),
@@ -88,6 +90,7 @@ function buildRsvpNotificationText(
   updatedAt: string,
   counts: ReturnType<typeof deriveRsvpCounts>
 ) {
+  const musicSuggestion = getMusicSuggestionForDisplay(request.note);
   const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestLines = invitation?.guests.map((guest) => {
     const response = responsesByGuestId.get(guest.guestId);
@@ -112,6 +115,7 @@ function buildRsvpNotificationText(
     `Criancas 6 anos ou menos: ${counts.childSixOrYoungerAttendingCount}`,
     `Enviado por: ${request.submittedBy}`,
     `Atualizado em: ${updatedAt}`,
+    ...(musicSuggestion ? [`Sugestão musical: ${musicSuggestion}`] : []),
     "",
     "Convidados:",
     ...guestLines
@@ -125,6 +129,7 @@ function buildRsvpNotificationHtml(
   updatedAt: string,
   counts: ReturnType<typeof deriveRsvpCounts>
 ) {
+  const musicSuggestion = getMusicSuggestionForDisplay(request.note);
   const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestItems =
     invitation?.guests
@@ -152,8 +157,14 @@ function buildRsvpNotificationHtml(
       ) +
       renderDetailLine("Enviado por", request.submittedBy) +
       renderDetailLine("Atualizado em", updatedAt) +
+      (musicSuggestion ? renderDetailLine("Sugestão musical", musicSuggestion) : "") +
       '<p style="margin:16px 0 8px;"><strong>Convidados:</strong></p>' +
       `<ul style="margin:0 0 16px 20px;padding:0;">${guestItems}</ul>` +
       '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
   );
+}
+
+function getMusicSuggestionForDisplay(note?: string) {
+  if (!note) return undefined;
+  return note.startsWith(MUSIC_NOTE_PREFIX) ? note.slice(MUSIC_NOTE_PREFIX.length) : note;
 }

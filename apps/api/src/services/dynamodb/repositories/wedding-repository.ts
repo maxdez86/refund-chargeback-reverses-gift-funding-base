@@ -107,6 +107,7 @@ export class WeddingRepository {
           attendingGuestCount: counts.attendingGuestCount,
           paidAttendingGuestCount: counts.paidAttendingGuestCount,
           childSixOrYoungerAttendingCount: counts.childSixOrYoungerAttendingCount,
+          note: request.note,
           status,
           updatedAt
         }

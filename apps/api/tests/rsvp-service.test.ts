@@ -77,7 +77,7 @@ describe("RsvpService", () => {
     expect(result.notificationSent).toBe(true);
   });
 
-  it("accepts note for compatibility but ignores it in notifications", async () => {
+  it("includes the music suggestion in notifications and persists it", async () => {
     const repository = {
       getInvitationByCode: vi.fn().mockResolvedValue(baseInvitation),
       upsertRsvp: vi.fn().mockResolvedValue("2026-01-01T00:00:00.000Z")
@@ -87,19 +87,23 @@ describe("RsvpService", () => {
     };
     const service = new RsvpService(repository as never, emailService as never);
 
-    await service.submit({
+    const requestWithMusic = {
       ...baseRequest,
-      note: "Temos restricao alimentar."
-    });
+      note: "Música sugerida: Tempos Modernos - Lulu Santos"
+    };
+
+    await service.submit(requestWithMusic);
+
+    expect(repository.upsertRsvp).toHaveBeenCalledWith(requestWithMusic, "attending");
 
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.not.stringContaining("Recado:")
+        text: expect.stringContaining("Sugestão musical: Tempos Modernos - Lulu Santos")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        html: expect.not.stringContaining("Recado:")
+        html: expect.stringContaining("Tempos Modernos - Lulu Santos")
       })
     );
   });
