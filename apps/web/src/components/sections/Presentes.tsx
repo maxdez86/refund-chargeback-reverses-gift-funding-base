@@ -381,11 +381,19 @@ function GiftDialog({
       onReturnFromCheckout();
     };
 
-    window.addEventListener("pageshow", handleRuntimeReturn);
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) {
+        return;
+      }
+
+      handleRuntimeReturn();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("popstate", handleRuntimeReturn);
 
     return () => {
-      window.removeEventListener("pageshow", handleRuntimeReturn);
+      window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("popstate", handleRuntimeReturn);
     };
   }, [onReturnFromCheckout, open]);
@@ -724,14 +732,22 @@ export function Presentes() {
       setPendingPayment(readStoredPendingPayment());
     };
 
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) {
+        return;
+      }
+
+      refreshPendingPayment();
+    };
+
     window.addEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
     window.addEventListener("popstate", refreshPendingPayment);
-    window.addEventListener("pageshow", refreshPendingPayment);
+    window.addEventListener("pageshow", onPageShow);
 
     return () => {
       window.removeEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
       window.removeEventListener("popstate", refreshPendingPayment);
-      window.removeEventListener("pageshow", refreshPendingPayment);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, []);
 
@@ -829,11 +845,19 @@ export function Presentes() {
       }
     };
 
-    window.addEventListener("pageshow", handleRuntimeReturn);
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) {
+        return;
+      }
+
+      handleRuntimeReturn();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("popstate", handleRuntimeReturn);
 
     return () => {
-      window.removeEventListener("pageshow", handleRuntimeReturn);
+      window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("popstate", handleRuntimeReturn);
     };
   }, [handleCloseGiftDialog]);

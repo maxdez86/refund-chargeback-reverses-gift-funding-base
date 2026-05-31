@@ -198,11 +198,19 @@ export function PaymentConfirmationDialog() {
       }
     };
 
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) {
+        return;
+      }
+
+      refresh();
+    };
+
     window.addEventListener("popstate", refresh);
-    window.addEventListener("pageshow", refresh);
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       window.removeEventListener("popstate", refresh);
-      window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, []);
 

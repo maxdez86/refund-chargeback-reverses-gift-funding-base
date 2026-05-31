@@ -54,6 +54,15 @@ vi.mock("@/lib/payments-api", () => ({
 describe("Presentes", () => {
   const originalLocation = window.location;
 
+  function dispatchPageShow(persisted: boolean) {
+    const event = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(event, "persisted", {
+      configurable: true,
+      value: persisted,
+    });
+    window.dispatchEvent(event);
+  }
+
   function renderPresentes() {
     const queryClient = new QueryClient();
 
@@ -224,7 +233,7 @@ describe("Presentes", () => {
 
     window.history.replaceState({}, "", "/#presentes");
     act(() => {
-      window.dispatchEvent(new Event("pageshow"));
+      dispatchPageShow(true);
     });
 
     await waitFor(() => {
@@ -233,7 +242,7 @@ describe("Presentes", () => {
     expect(screen.getByText("Pagamento em andamento")).toBeInTheDocument();
   });
 
-  it("closes the gift modal on cancel callback return", async () => {
+  it("does not treat fresh cancel callback pageshow as browser-back cleanup", async () => {
     renderPresentes();
 
     await waitFor(() => {
@@ -248,15 +257,13 @@ describe("Presentes", () => {
 
     window.history.replaceState({}, "", "/#paymentId=payment-1&paymentStatus=cancel");
     act(() => {
-      window.dispatchEvent(new Event("pageshow"));
+      dispatchPageShow(false);
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Ir para o pagamento" })).not.toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeInTheDocument();
   });
 
-  it("closes the gift modal on success callback return", async () => {
+  it("does not treat fresh success callback pageshow as browser-back cleanup", async () => {
     renderPresentes();
 
     await waitFor(() => {
@@ -271,12 +278,10 @@ describe("Presentes", () => {
 
     window.history.replaceState({}, "", "/#paymentId=payment-1&paymentStatus=success");
     act(() => {
-      window.dispatchEvent(new Event("pageshow"));
+      dispatchPageShow(false);
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Ir para o pagamento" })).not.toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: "Ir para o pagamento" })).toBeInTheDocument();
   });
 
   it("removes the recovery surface when the stored payment is already canceled", async () => {

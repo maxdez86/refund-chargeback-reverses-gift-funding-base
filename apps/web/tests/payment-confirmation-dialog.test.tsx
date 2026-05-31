@@ -24,6 +24,15 @@ vi.mock("@/lib/payments-api", () => ({
 }));
 
 describe("PaymentConfirmationDialog", () => {
+  function dispatchPageShow(persisted: boolean) {
+    const event = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(event, "persisted", {
+      configurable: true,
+      value: persisted,
+    });
+    window.dispatchEvent(event);
+  }
+
   function renderDialog(extraContent?: ReactNode) {
     const queryClient = new QueryClient();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -192,7 +201,7 @@ describe("PaymentConfirmationDialog", () => {
 
     window.history.replaceState({}, "", "/#presentes");
     act(() => {
-      window.dispatchEvent(new Event("pageshow"));
+      dispatchPageShow(true);
     });
 
     await waitFor(() => {
@@ -230,7 +239,7 @@ describe("PaymentConfirmationDialog", () => {
     });
 
     act(() => {
-      window.dispatchEvent(new Event("pageshow"));
+      dispatchPageShow(true);
     });
 
     await waitFor(() => {
@@ -252,6 +261,73 @@ describe("PaymentConfirmationDialog", () => {
       screen.getByText("Não conseguimos confirmar o status do pagamento. Em caso de dúvida, fale com a gente.")
     ).toBeInTheDocument();
     expect(screen.queryByText("Confirmando seu pagamento…")).not.toBeInTheDocument();
+  });
+
+  it("keeps success confirmation open on fresh callback pageshow", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-fresh-success-1",
+      paymentMethod: "HOSTED",
+      status: "RECEIVED",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:05.000Z",
+      customerProfileStatus: "READY",
+    });
+
+    window.history.replaceState({}, "", "/#paymentId=payment-fresh-success-1&paymentStatus=success");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
+    });
+
+    act(() => {
+      dispatchPageShow(false);
+    });
+
+    expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
+  });
+
+  it("keeps cancel confirmation open on fresh callback pageshow", async () => {
+    window.history.replaceState({}, "", "/#paymentId=payment-fresh-cancel-1&paymentStatus=cancel");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+    });
+
+    act(() => {
+      dispatchPageShow(false);
+    });
+
+    expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+  });
+
+  it("keeps expired confirmation open on fresh callback pageshow", async () => {
+    window.history.replaceState({}, "", "/#paymentId=payment-fresh-expired-1&paymentStatus=expired");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Sessão expirada")).toBeInTheDocument();
+    });
+
+    act(() => {
+      dispatchPageShow(false);
+    });
+
+    expect(screen.getByText("Sessão expirada")).toBeInTheDocument();
   });
 
   it("removes payment params and returns to #presentes when the modal closes", async () => {
