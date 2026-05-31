@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
 import { giftsQueryKey } from "@/lib/gifts-api";
-import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
+import {
+  LAST_PAYMENT_ID_STORAGE_KEY,
+  openPaymentConfirmationDialog,
+} from "@/lib/payment-flow";
 
 const getPaymentMock = vi.fn();
 const createPaymentMessageMock = vi.fn();
@@ -110,7 +113,23 @@ describe("PaymentConfirmationDialog", () => {
     ).toBeInTheDocument();
   }, 10_000);
 
-  it("recovers the last payment from localStorage on cold load", async () => {
+  it("does not auto-open from localStorage alone", async () => {
+    window.localStorage.setItem(
+      LAST_PAYMENT_ID_STORAGE_KEY,
+      JSON.stringify({ paymentId: "payment-recovery-1", createdAt: Date.now() })
+    );
+
+    renderDialog();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Presente recebido!")).not.toBeInTheDocument();
+    expect(screen.queryByText("Confirmando seu pagamento…")).not.toBeInTheDocument();
+  });
+
+  it("can be opened programmatically for resumed confirmed payments", async () => {
     getPaymentMock.mockResolvedValue({
       paymentId: "payment-recovery-1",
       paymentMethod: "HOSTED",
@@ -130,17 +149,109 @@ describe("PaymentConfirmationDialog", () => {
       customerProfileStatus: "READY",
     });
 
-    window.localStorage.setItem(
-      LAST_PAYMENT_ID_STORAGE_KEY,
-      JSON.stringify({ paymentId: "payment-recovery-1", createdAt: Date.now() })
-    );
-
     renderDialog();
+
+    act(() => {
+      openPaymentConfirmationDialog({
+        paymentId: "payment-recovery-1",
+        paymentStatus: "success",
+      });
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
     });
-    expect(screen.getByText(/payment-recovery-1/)).toBeInTheDocument();
+  });
+
+  it("closes on pageshow when runtime URL is #presentes", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-back-1",
+      paymentMethod: "HOSTED",
+      status: "CREATED",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+
+    window.history.replaceState({}, "", "/#paymentId=payment-back-1&paymentStatus=success");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirmando seu pagamento…")).toBeInTheDocument();
+    });
+
+    window.history.replaceState({}, "", "/#presentes");
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Confirmando seu pagamento…")).not.toBeInTheDocument();
+    });
+  });
+
+  it("ignores stale captured initial hash on runtime refresh", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-stale-1",
+      paymentMethod: "HOSTED",
+      status: "CREATED",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+
+    const w = window as Window & { __brimaxInitialHash?: string };
+    w.__brimaxInitialHash = "#paymentId=payment-stale-1&paymentStatus=success";
+    window.history.replaceState({}, "", "/#presentes");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirmando seu pagamento…")).toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Confirmando seu pagamento…")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows fallback copy when success polling fails", async () => {
+    getPaymentMock.mockRejectedValue(new Error("network error"));
+
+    window.history.replaceState({}, "", "/#paymentId=payment-error-1&paymentStatus=success");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Status indisponível")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Não conseguimos confirmar o status do pagamento. Em caso de dúvida, fale com a gente.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Confirmando seu pagamento…")).not.toBeInTheDocument();
   });
 
   it("removes payment params and returns to #presentes when the modal closes", async () => {

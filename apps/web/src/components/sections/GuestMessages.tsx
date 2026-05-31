@@ -434,10 +434,7 @@ export function GuestMessages() {
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           >
-            <span className="text-xs uppercase tracking-[0.32em] text-[#8e7553]">
-              Um carinho em palavras
-            </span>
-            <h2 className="mt-2 font-serif text-4xl text-foreground md:text-5xl">
+            <h2 className="font-serif text-4xl text-foreground md:text-5xl">
               Recados para os Noivos
             </h2>
           </motion.div>

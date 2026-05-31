@@ -17,7 +17,11 @@ import {
   Heart,
 } from "lucide-react";
 import { toast } from "sonner";
-import { type CreatePaymentRequest, type Gift as GiftResource } from "@brimax/contracts";
+import {
+  type CreatePaymentRequest,
+  type Gift as GiftResource,
+  type PaymentStatus,
+} from "@brimax/contracts";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,8 +37,16 @@ import {
   buildSharedWidthImageFallbackSrc,
   buildSharedWidthImageSources,
 } from "@/lib/media";
-import { createPayment, PaymentApiError } from "@/lib/payments-api";
-import { LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
+import { createPayment, getPayment, PaymentApiError } from "@/lib/payments-api";
+import {
+  PAYMENT_FLOW_UPDATED_EVENT,
+  clearStoredPendingPayment,
+  openPaymentConfirmationDialog,
+  readCurrentPaymentReturn,
+  readStoredPendingPayment,
+  type StoredPendingPayment,
+  writeStoredPendingPayment,
+} from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
 
 type Gift = {
@@ -103,6 +115,22 @@ const GIFT_DIALOG_IMAGE_PRESENTATION: Record<string, GiftImagePresentation> = {
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function isTrustedAsaasCheckoutUrl(value: string) {
+  let checkoutUrl: URL;
+
+  try {
+    checkoutUrl = new URL(value);
+  } catch {
+    return false;
+  }
+
+  return checkoutUrl.protocol === "https:" && /(^|\.)asaas\.com$/.test(checkoutUrl.hostname);
+}
+
+function isPendingPaymentStatus(status: PaymentStatus) {
+  return status === "CREATED" || status === "AWAITING_PAYMENT" || status === "PROCESSING";
+}
 
 function isFullyFunded(g: Gift): boolean {
   if (g.fractional && g.totalParts != null && g.partsFunded != null) {
@@ -325,10 +353,12 @@ function GiftDialog({
   gift,
   open,
   onOpenChange,
+  onReturnFromCheckout,
 }: {
   gift: Gift | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onReturnFromCheckout: () => void;
 }) {
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -339,6 +369,26 @@ function GiftDialog({
     setQuantity(1);
     setSubmitting(false);
   }, [gift?.id, open]);
+
+  useEffect(() => {
+    const handleRuntimeReturn = () => {
+      if (!open) {
+        return;
+      }
+
+      setSubmitting(false);
+      setHowOpen(false);
+      onReturnFromCheckout();
+    };
+
+    window.addEventListener("pageshow", handleRuntimeReturn);
+    window.addEventListener("popstate", handleRuntimeReturn);
+
+    return () => {
+      window.removeEventListener("pageshow", handleRuntimeReturn);
+      window.removeEventListener("popstate", handleRuntimeReturn);
+    };
+  }, [onReturnFromCheckout, open]);
 
   if (!gift) return null;
 
@@ -375,13 +425,7 @@ function GiftDialog({
       if (!payment.checkout?.url) {
         throw new PaymentApiError("Checkout indisponível. Tente novamente.");
       }
-      let checkoutUrl: URL;
-      try {
-        checkoutUrl = new URL(payment.checkout.url);
-      } catch {
-        throw new PaymentApiError("Checkout URL inválida.");
-      }
-      if (checkoutUrl.protocol !== "https:" || !/(^|\.)asaas\.com$/.test(checkoutUrl.hostname)) {
+      if (!isTrustedAsaasCheckoutUrl(payment.checkout.url)) {
         throw new PaymentApiError("Checkout URL não confiável.");
       }
       const requestResolvedAt = performance.now();
@@ -397,11 +441,14 @@ function GiftDialog({
           redirectStartDelayMs: Math.round(redirectStartedAt - submitStartedAt)
         })
       );
-      window.localStorage.setItem(
-        LAST_PAYMENT_ID_STORAGE_KEY,
-        JSON.stringify({ paymentId: payment.paymentId, createdAt: Date.now() })
-      );
-      window.location.href = checkoutUrl.toString();
+      writeStoredPendingPayment({
+        paymentId: payment.paymentId,
+        createdAt: Date.now(),
+        checkoutUrl: payment.checkout.url,
+        giftName: gift.name,
+        amountCents: Math.round(contribution * 100),
+      });
+      window.location.href = payment.checkout.url;
     } catch (err) {
       console.info(
         JSON.stringify({
@@ -595,6 +642,10 @@ export function Presentes() {
   const [nextEnabled, setNextEnabled] = useState(true);
   const [activeGift, setActiveGift] = useState<Gift | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<StoredPendingPayment | null>(() =>
+    readStoredPendingPayment()
+  );
+  const [resumingPayment, setResumingPayment] = useState(false);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
@@ -668,10 +719,124 @@ export function Presentes() {
     return () => root.removeEventListener("wheel", onWheel);
   }, [emblaApi]);
 
+  useEffect(() => {
+    const refreshPendingPayment = () => {
+      setPendingPayment(readStoredPendingPayment());
+    };
+
+    window.addEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
+    window.addEventListener("popstate", refreshPendingPayment);
+    window.addEventListener("pageshow", refreshPendingPayment);
+
+    return () => {
+      window.removeEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
+      window.removeEventListener("popstate", refreshPendingPayment);
+      window.removeEventListener("pageshow", refreshPendingPayment);
+    };
+  }, []);
+
   const handleOpen = (g: Gift) => {
     setActiveGift(g);
     setDialogOpen(true);
   };
+
+  const handleCloseGiftDialog = useCallback(() => {
+    setDialogOpen(false);
+    setActiveGift(null);
+  }, []);
+
+  const handleDismissPendingPayment = () => {
+    clearStoredPendingPayment();
+    setPendingPayment(null);
+  };
+
+  const handleResumePendingPayment = async () => {
+    if (!pendingPayment || resumingPayment) {
+      return;
+    }
+
+    setResumingPayment(true);
+
+    try {
+      const payment = await getPayment(pendingPayment.paymentId);
+
+      if (isPendingPaymentStatus(payment.status)) {
+        const checkoutUrl = payment.checkout?.url ?? pendingPayment.checkoutUrl;
+
+        if (!checkoutUrl || !isTrustedAsaasCheckoutUrl(checkoutUrl)) {
+          throw new PaymentApiError("Não foi possível retomar este pagamento agora.");
+        }
+
+        writeStoredPendingPayment({
+          paymentId: payment.paymentId,
+          createdAt: pendingPayment.createdAt,
+          checkoutUrl,
+          giftName: payment.gift.name,
+          amountCents: payment.amountCents,
+        });
+        window.location.href = checkoutUrl;
+        return;
+      }
+
+      clearStoredPendingPayment();
+      setPendingPayment(null);
+
+      if (payment.status === "CONFIRMED" || payment.status === "RECEIVED") {
+        openPaymentConfirmationDialog({
+          paymentId: payment.paymentId,
+          paymentStatus: "success",
+        });
+        return;
+      }
+
+      if (payment.status === "CANCELED") {
+        toast.message("Este pagamento foi cancelado.");
+        return;
+      }
+
+      if (payment.status === "EXPIRED") {
+        toast.message("Esta sessão de pagamento expirou.");
+        return;
+      }
+
+      toast.message("Este pagamento não está mais disponível para retomada.");
+    } catch (error) {
+      const message =
+        error instanceof PaymentApiError
+          ? error.message
+          : "Não foi possível retomar o pagamento agora.";
+      toast.error(message);
+    } finally {
+      setResumingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleRuntimeReturn = () => {
+      const paymentReturn = readCurrentPaymentReturn();
+
+      if (!paymentReturn) {
+        handleCloseGiftDialog();
+        return;
+      }
+
+      if (
+        paymentReturn.paymentStatus === "success" ||
+        paymentReturn.paymentStatus === "cancel" ||
+        paymentReturn.paymentStatus === "expired"
+      ) {
+        handleCloseGiftDialog();
+      }
+    };
+
+    window.addEventListener("pageshow", handleRuntimeReturn);
+    window.addEventListener("popstate", handleRuntimeReturn);
+
+    return () => {
+      window.removeEventListener("pageshow", handleRuntimeReturn);
+      window.removeEventListener("popstate", handleRuntimeReturn);
+    };
+  }, [handleCloseGiftDialog]);
 
   return (
     <section
@@ -689,6 +854,40 @@ export function Presentes() {
           <h2 className="font-serif text-3xl md:text-5xl lg:text-5xl xl:text-6xl text-foreground">
             Se quiser nos presentear
           </h2>
+
+          {pendingPayment && (
+            <div className="mt-4 max-w-lg rounded-2xl border border-border/50 bg-card/90 p-4 shadow-sm">
+              <p className="text-sm font-medium text-foreground">
+                Pagamento em andamento
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Você iniciou um pagamento e pode retomá-lo quando quiser.
+                {pendingPayment.giftName ? ` Presente: ${pendingPayment.giftName}.` : ""}
+                {typeof pendingPayment.amountCents === "number"
+                  ? ` Valor: ${formatBRL(pendingPayment.amountCents / 100)}.`
+                  : ""}
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  className="rounded-full"
+                  onClick={() => void handleResumePendingPayment()}
+                  disabled={resumingPayment}
+                >
+                  {resumingPayment ? "Verificando pagamento..." : "Continuar pagamento"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={handleDismissPendingPayment}
+                  disabled={resumingPayment}
+                >
+                  Descartar
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end md:hidden">
             <Button
@@ -794,6 +993,7 @@ export function Presentes() {
         gift={activeGift}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        onReturnFromCheckout={handleCloseGiftDialog}
       />
     </section>
   );

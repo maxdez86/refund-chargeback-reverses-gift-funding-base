@@ -9,6 +9,7 @@ import {
 const heroCopy = {
   weekday: "Domingo",
   dateShort: "06.12.2026",
+  timeShort: "15:00",
   brideShort: "Brida",
   groomShort: "Max",
   tagline: "A medida do amor é amar sem medida.",
@@ -48,8 +49,8 @@ export function Hero() {
         transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 mx-auto max-w-4xl px-6 pt-24 text-center text-[#fbf7f0] md:pt-28"
       >
-        <p className="font-sans text-xs uppercase tracking-[0.4em] text-[#d6ae64]">
-          {heroCopy.weekday} · {heroCopy.dateShort}
+        <p className="font-sans text-xs uppercase tracking-[0.25em] text-[#d6ae64] sm:tracking-[0.4em]">
+          {heroCopy.weekday} · {heroCopy.dateShort} · {heroCopy.timeShort}
         </p>
         <h1 className="hero-v2-balance font-serif mt-6 text-[clamp(3.5rem,11vw,8.5rem)] leading-[0.95] tracking-tight">
           {heroCopy.brideShort}

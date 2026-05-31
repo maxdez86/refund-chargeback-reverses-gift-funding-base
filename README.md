@@ -34,7 +34,7 @@ pnpm synth
 Run the frontend locally and open it in your browser:
 
 ```bash
-pnpm dev:all-web
+pnpm build:web && pnpm dev:all-web
 ```
 
 This starts `apps/web` on `http://127.0.0.1:5173`.

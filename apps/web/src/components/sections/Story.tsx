@@ -43,7 +43,7 @@ const chapters: Chapter[] = [
   {
     id: "namoro",
     title: "Amor na prática",
-    text: "O amor foi acontecendo assim: cheio de pequenos momentos que viraram tudo. Em Belo Horizonte, durante uma viagem para assistir a um clássico de futebol, ele resolveu transformar sentimento em compromisso. Em um restaurante super chique, comigo de moletom, sem maquiagem, completamente desprevenida, ouvi ele dizer: “Tenho uma coisa pra você… fecha os olhos.” E foi assim que ele me pediu em namoro. Entre o prato principal e a sobremesa mais deliciosa que já comi na vida. Só nós dois, sendo exatamente quem sempre fomos um com o outro.",
+    text: "O amor foi acontecendo assim: cheio de pequenos momentos que viraram tudo. Em Belo Horizonte, durante uma viagem para assistir a um clássico de futebol, ele resolveu transformar sentimento em compromisso. Em um restaurante super chique, comigo de moletom, sem maquiagem, completamente desprevenida, ouvi ele dizer: “Tenho uma coisa pra você… fecha os olhos.” E foi assim que ele me pediu em namoro. Entre o prato principal e a sobremesa mais deliciosa que já comi na vida. Só nós dois, sendo exatamente quem sempre fomos um com o outro. Curiosamente, o pedido aconteceu sete meses depois do nosso primeiro encontro. Mas, para nós, a data oficial do namoro sempre será 23 de julho, o dia em que saímos juntos pela primeira vez. Porque foi ali que a nossa história realmente começou.",
     media: { kind: "image", slug: "pedido-namoro", alt: "Pedido de namoro" },
   },
   {
@@ -55,13 +55,13 @@ const chapters: Chapter[] = [
   {
     id: "estadio",
     title: "Viva paixões comigo",
-    text: "Ele, um torcedor de alma. Eu, sua companheira fiel em cada jogo no estádio, onde eu oficialmente virei o amuleto da sorte dele. As paixões que começaram a fazer sentido porque passaram a ser vividas juntos. Até as brincadeiras mais simples ficaram especiais, como quando ele perguntou se seria muito romântico comemorar 11 meses no jogo do Palmeiras.",
+    text: "Ele, um torcedor de alma. Eu, sua companheira fiel em cada jogo no estádio, onde eu oficialmente virei o amuleto da sorte dele. E os números pareciam concordar. Assistimos juntos a 33 partidas no estádio e vimos apenas duas derrotas. Foi assim que muitas das nossas paixões passaram a fazer ainda mais sentido: porque começaram a ser vividas juntos. Até as brincadeiras mais simples ficaram especiais, como quando ele me perguntou se seria muito romântico comemorar 11 meses no jogo do Palmeiras.",
     media: { kind: "image", slug: "viva-paixoes-comigo", alt: "Estádio" },
   },
   {
     id: "buque",
     title: "O buquê da noiva",
-    text: "E então vieram os sinais do universo. Em outubro, fomos ao casamento de Tami e Marquinhos. Em um determinado momento, chegou a tradicional hora do buquê. E, honestamente, eu nem ia participar. No meio da brincadeira, o buquê veio parar nas minhas mãos, dado pela própria noiva. Na hora, eu chorei, fiquei sem acreditar. Eu nunca tinha pegado um buquê antes! Pela reação de Max ele também não esperava por aquilo, ainda bem que temos esse registro também!",
+    text: "E então vieram os sinais do universo. Em outubro, fomos padrinhos do casamento de um dos nossos casais favoritos, Tami e Marquinhos. Estávamos cercados por pessoas queridas e celebrando uma história que admiramos muito. Durante o esperado momento do buquê, algo que nunca me aconteceu surpreendeu não só a mim, como Max também. E, honestamente, eu nem ia participar. Sorte que algo me fez levantar da cadeira. E foi aí que tudo mudou, o buquê veio parar nas minhas mãos, dado pela própria noiva. Na hora, eu chorei, sem acreditar. E apenas dois meses depois, viveríamos um dos capítulos mais importantes da nossa história.",
     media: { kind: "video", file: "o-buque-da-noiva.mp4", posterAlt: "Brida pegando o buquê" },
   },
   {

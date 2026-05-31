@@ -9,6 +9,11 @@ export function returnToPresentes(options: ReturnToPresentesOptions = {}) {
     return;
   }
 
+  const w = window as Window & { __brimaxInitialHash?: string };
+  if (w.__brimaxInitialHash) {
+    delete w.__brimaxInitialHash;
+  }
+
   const url = new URL(window.location.href);
 
   if (options.clearPaymentParams) {

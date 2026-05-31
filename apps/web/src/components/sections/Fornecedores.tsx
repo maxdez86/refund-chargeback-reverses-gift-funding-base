@@ -10,7 +10,7 @@ const fornecedores: Vendor[] = [
   { name: "Bruno Franco Fotografia", role: "Fotografia", url: "https://www.instagram.com/brunofrancofotografia/" },
   { name: "Cinthia Rosenberg Assessoria", role: "Assessoria", url: "https://www.instagram.com/cinthia.rosenberg/" },
   { name: "Fernando Ribeiro Celebrante", role: "Celebrante", url: "https://www.instagram.com/fernandoribeirocelebrante/" },
-  { name: "Izabela Spacca Makeup", role: "Makeup", url: "https://www.instagram.com/izaspaccamakeup/" },
+  { name: "Izabela Spacca Makeup", role: "Makeup", url: "https://www.instagram.com/izaspaccabeauty/" },
   { name: "STORYMAKER MAVI", role: "Storymaker", url: "https://www.instagram.com/storymakermavi/" },
   { name: "Tulipas Buffet", role: "Buffet", url: "https://www.instagram.com/tulipasbuffet/" },
 ];

@@ -11,7 +11,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { LAST_PAYMENT_ID_MAX_AGE_MS, LAST_PAYMENT_ID_STORAGE_KEY } from "@/lib/payment-flow";
+import {
+  PAYMENT_CONFIRMATION_OPEN_EVENT,
+  type PaymentConfirmationOpenDetail,
+  clearStoredPendingPayment,
+  readPaymentReturnFromHash,
+} from "@/lib/payment-flow";
 import { createPaymentMessage, getPayment, PaymentApiError } from "@/lib/payments-api";
 import { giftsQueryKey } from "@/lib/gifts-api";
 import { returnToPresentes } from "@/lib/presentes-return";
@@ -30,6 +35,8 @@ type DialogCopy = {
   body: string;
   icon: "check" | "x" | "spinner";
 };
+
+type ReadDialogStateSource = "initial" | "runtime";
 
 const COPY: Record<DialogVariant, DialogCopy> = {
   success: {
@@ -87,72 +94,39 @@ function resolveUrlVariant(status: string | null): UrlVariant | null {
   return "unknown";
 }
 
-function readStoredPaymentId() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const rawValue = window.localStorage.getItem(LAST_PAYMENT_ID_STORAGE_KEY);
-
-  if (!rawValue) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as { paymentId?: string; createdAt?: number };
-
-    if (
-      !parsed.paymentId ||
-      typeof parsed.createdAt !== "number" ||
-      Date.now() - parsed.createdAt > LAST_PAYMENT_ID_MAX_AGE_MS
-    ) {
-      window.localStorage.removeItem(LAST_PAYMENT_ID_STORAGE_KEY);
-      return null;
-    }
-
-    return parsed.paymentId;
-  } catch {
-    window.localStorage.removeItem(LAST_PAYMENT_ID_STORAGE_KEY);
-    return null;
+function clearCapturedInitialHash() {
+  const w = window as Window & { __brimaxInitialHash?: string };
+  if (w.__brimaxInitialHash) {
+    delete w.__brimaxInitialHash;
   }
 }
 
-function readInitialState(): DialogState {
+function readDialogState(source: ReadDialogStateSource): DialogState {
   if (typeof window === "undefined") {
     return { paymentId: null, urlVariant: null, open: false };
   }
 
-  // Payment params arrive in the URL fragment (so they don't leak via Referer).
-  // index.html captures the initial hash into window.__brimaxInitialHash before
-  // React boots, so prefer that and fall back to the live hash.
   const w = window as Window & { __brimaxInitialHash?: string };
-  const rawHash = w.__brimaxInitialHash ?? window.location.hash ?? "";
-  const hashContent = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
-  const hashParams = new URLSearchParams(hashContent);
-  const paymentIdFromUrl = hashParams.get("paymentId");
-  const urlVariant = resolveUrlVariant(hashParams.get("paymentStatus"));
+  const rawHash =
+    source === "initial"
+      ? (w.__brimaxInitialHash ?? window.location.hash ?? "")
+      : (window.location.hash ?? "");
+  const paymentReturn = readPaymentReturnFromHash(rawHash);
 
-  if (paymentIdFromUrl && urlVariant) {
-    // Consume the captured hash so App's anchor-scroll logic doesn't try to
-    // resolve "#paymentId=..." as a CSS selector.
-    if (w.__brimaxInitialHash) delete w.__brimaxInitialHash;
+  if (paymentReturn) {
+    clearCapturedInitialHash();
     return {
-      paymentId: paymentIdFromUrl,
-      urlVariant,
+      paymentId: paymentReturn.paymentId,
+      urlVariant: resolveUrlVariant(paymentReturn.paymentStatus),
       open: true,
     };
   }
 
-  const storedPaymentId = readStoredPaymentId();
-  if (!storedPaymentId) {
-    return { paymentId: null, urlVariant: null, open: false };
+  if (source === "runtime") {
+    clearCapturedInitialHash();
   }
 
-  return {
-    paymentId: storedPaymentId,
-    urlVariant: null,
-    open: true,
-  };
+  return { paymentId: null, urlVariant: null, open: false };
 }
 
 function getVariantFromBackendStatus(status: PaymentStatus | undefined): DialogVariant | null {
@@ -201,7 +175,7 @@ function shouldPoll(urlVariant: UrlVariant | null, open: boolean, payment?: Paym
 
 export function PaymentConfirmationDialog() {
   const queryClient = useQueryClient();
-  const [state, setState] = useState<DialogState>(() => readInitialState());
+  const [state, setState] = useState<DialogState>(() => readDialogState("initial"));
   const [payment, setPayment] = useState<PaymentSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -211,11 +185,44 @@ export function PaymentConfirmationDialog() {
 
   useEffect(() => {
     const refresh = () => {
-      setState(readInitialState());
+      const nextState = readDialogState("runtime");
+      setState(nextState);
+
+      if (!nextState.open) {
+        setPayment(null);
+        setLoading(false);
+        setFetchError(null);
+        setMessageBody("");
+        setMessageSubmitting(false);
+        setMessageSent(false);
+      }
     };
 
     window.addEventListener("popstate", refresh);
-    return () => window.removeEventListener("popstate", refresh);
+    window.addEventListener("pageshow", refresh);
+    return () => {
+      window.removeEventListener("popstate", refresh);
+      window.removeEventListener("pageshow", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    const openFromEvent = (event: Event) => {
+      const detail = (event as CustomEvent<PaymentConfirmationOpenDetail>).detail;
+
+      if (!detail?.paymentId) {
+        return;
+      }
+
+      setState({
+        paymentId: detail.paymentId,
+        urlVariant: resolveUrlVariant(detail.paymentStatus),
+        open: true,
+      });
+    };
+
+    window.addEventListener(PAYMENT_CONFIRMATION_OPEN_EVENT, openFromEvent);
+    return () => window.removeEventListener(PAYMENT_CONFIRMATION_OPEN_EVENT, openFromEvent);
   }, []);
 
   useEffect(() => {
@@ -312,7 +319,7 @@ export function PaymentConfirmationDialog() {
       }
 
       if (fetchError) {
-        return state.urlVariant === "success" ? "pending" : "unknown";
+        return state.urlVariant === "success" ? "unknown" : "unknown";
       }
     }
 
@@ -335,7 +342,7 @@ export function PaymentConfirmationDialog() {
     }
 
     if (visibleVariant !== "pending") {
-      window.localStorage.removeItem(LAST_PAYMENT_ID_STORAGE_KEY);
+      clearStoredPendingPayment();
     }
   }, [visibleVariant]);
 
