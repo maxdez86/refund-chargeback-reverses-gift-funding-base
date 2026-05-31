@@ -685,9 +685,6 @@ function SuccessState({
             <h4 className="font-serif text-2xl text-foreground">
               Qual música não pode faltar na festa para você?
             </h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Se quiser, conte pra gente uma música que vai fazer você lembrar desse dia na pista.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -739,9 +736,6 @@ function SuccessState({
             <h4 className="font-serif text-2xl text-foreground">
               Qual música não pode faltar na festa para você?
             </h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Se quiser, conte pra gente uma música que vai fazer você lembrar desse dia na pista.
-            </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button
