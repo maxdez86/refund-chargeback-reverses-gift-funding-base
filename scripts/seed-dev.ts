@@ -82,16 +82,16 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "Denise Andrade e família",
     guests: [
       { guestName: "Denise Andrade", slot: 1 },
-      { guestName: "Gustavo", slot: 2 },
+      { guestName: "Gusttavo Ferreira", slot: 2 },
       { guestName: "Maya Alice Andrade", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "QR2746",
-    householdName: "Sirlei e Airton",
+    householdName: "Sirlei Furtuoso e Ayrton Furtuoso",
     guests: [
-      { guestName: "Sirlei", slot: 1 },
-      { guestName: "Airton", slot: 2 }
+      { guestName: "Sirlei Furtuoso", slot: 1 },
+      { guestName: "Ayrton Furtuoso", slot: 2 }
     ]
   },
   {
@@ -265,10 +265,10 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "WY3792",
-    householdName: "Edilsa Guerra e Erick",
+    householdName: "Edilsa Guerra e Eric",
     guests: [
       { guestName: "Edilsa Guerra", slot: 1 },
-      { guestName: "Erick", slot: 2 }
+      { guestName: "Eric", slot: 2 }
     ]
   },
   {
@@ -331,7 +331,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Elís Guimarães", slot: 1 },
       { guestName: "Emerson Guimarães", slot: 2 },
-      { guestName: "Luiza", slot: 3, isChild: true },
+      { guestName: "Luiza Guimarães", slot: 3, isChild: true },
       { guestName: "Samuel Soares", slot: 4 }
     ]
   },
@@ -363,10 +363,10 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "MQ3486",
-    householdName: "Anderson e família",
+    householdName: "Anderson Ferreira e família",
     guests: [
-      { guestName: "Anderson", slot: 1 },
-      { guestName: "Rebeca", slot: 2 },
+      { guestName: "Anderson Ferreira", slot: 1 },
+      { guestName: "Rebeca Santos", slot: 2 },
       { guestName: "Michelly", slot: 3, isChild: true },
       { guestName: "Davi", slot: 4, isChild: true },
       { guestName: "Esther", slot: 5, isChild: true }
@@ -374,28 +374,28 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "NR5973",
-    householdName: "Jessica e família",
+    householdName: "Jessica Souza e família",
     guests: [
-      { guestName: "Jessica", slot: 1 },
-      { guestName: "Odair", slot: 2 },
+      { guestName: "Jessica Souza", slot: 1 },
+      { guestName: "Odair Fernandes", slot: 2 },
       { guestName: "Lívia", slot: 3, isChild: true },
       { guestName: "Heitor", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "PS8264",
-    householdName: "Vania e Conceição",
+    householdName: "Vania Ribeiro e Conceição",
     guests: [
-      { guestName: "Vania", slot: 1 },
+      { guestName: "Vania Ribeiro", slot: 1 },
       { guestName: "Conceição", slot: 2 }
     ]
   },
   {
     invitationCode: "QT4378",
-    householdName: "Fernanda Killys e Diego",
+    householdName: "Fernanda Killys e Diego Silva",
     guests: [
       { guestName: "Fernanda Killys", slot: 1 },
-      { guestName: "Diego", slot: 2 }
+      { guestName: "Diego Silva", slot: 2 }
     ]
   },
   {
@@ -440,20 +440,20 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "AE8546",
-    householdName: "Rafa e família",
+    householdName: "Rafael Morais e família",
     guests: [
-      { guestName: "Rafa", slot: 1 },
-      { guestName: "Thaís", slot: 2 },
-      { guestName: "Stella", slot: 3, isChild: true },
-      { guestName: "Selena", slot: 4, isChild: true }
+      { guestName: "Rafael Morais", slot: 1 },
+      { guestName: "Thaís Morais", slot: 2 },
+      { guestName: "Stella Morais", slot: 3, isChild: true },
+      { guestName: "Selena Morais", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "BF2937",
-    householdName: "Rafa e família",
+    householdName: "Rafael Douglas e família",
     guests: [
-      { guestName: "Rafa", slot: 1 },
-      { guestName: "Andreia", slot: 2 },
+      { guestName: "Rafael Douglas", slot: 1 },
+      { guestName: "Andreia Céu", slot: 2 },
       { guestName: "Ana Clara", slot: 3, isChild: true }
     ]
   },
@@ -464,229 +464,229 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "DH4729",
-    householdName: "Fernando e família",
+    householdName: "Fernando Itano e família",
     guests: [
-      { guestName: "Fernando", slot: 1 },
-      { guestName: "Anne", slot: 2 },
-      { guestName: "Rafa", slot: 3, isChild: true },
-      { guestName: "Fefa", slot: 4, isChild: true }
+      { guestName: "Fernando Itano", slot: 1 },
+      { guestName: "Anne Itano", slot: 2 },
+      { guestName: "Rafa Itano", slot: 3, isChild: true },
+      { guestName: "Fefa Itano", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "EJ7263",
-    householdName: "Tati e família",
+    householdName: "Tatiana Battistel e família",
     guests: [
-      { guestName: "Tati", slot: 1 },
-      { guestName: "Bruno", slot: 2 },
+      { guestName: "Tatiana Battistel", slot: 1 },
+      { guestName: "Bruno Mendes", slot: 2 },
       { guestName: "Julia", slot: 3, isChild: true },
       { guestName: "Mel", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "FK3958",
-    householdName: "Karen e família",
+    householdName: "Karen Leal e família",
     guests: [
-      { guestName: "Karen", slot: 1 },
-      { guestName: "Julio", slot: 2 },
+      { guestName: "Karen Leal", slot: 1 },
+      { guestName: "Julio Gorato", slot: 2 },
       { guestName: "Marina", slot: 3, isChild: true },
       { guestName: "Enteado", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "GL8427",
-    householdName: "Deborah e família",
+    householdName: "Deborah Gobbi e família",
     guests: [
-      { guestName: "Deborah", slot: 1 },
-      { guestName: "Fábio", slot: 2 },
+      { guestName: "Deborah Gobbi", slot: 1 },
+      { guestName: "Fábio Gobbi", slot: 2 },
       { guestName: "Matteo", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "HM5392",
-    householdName: "Mauro e família",
+    householdName: "Mauro Manzano e família",
     guests: [
-      { guestName: "Mauro", slot: 1 },
-      { guestName: "Karn", slot: 2 },
+      { guestName: "Mauro Manzano", slot: 1 },
+      { guestName: "Karn Chutikarn", slot: 2 },
       { guestName: "Mateo", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "KP2735",
-    householdName: "Lila e Welton",
+    householdName: "Lila Guimarães e Welton Rocha",
     guests: [
-      { guestName: "Lila", slot: 1 },
-      { guestName: "Welton", slot: 2 }
+      { guestName: "Lila Guimarães", slot: 1 },
+      { guestName: "Welton Rocha", slot: 2 }
     ]
   },
   {
     invitationCode: "LQ6483",
-    householdName: "Rodrigo e família",
+    householdName: "Rodrigo Silva e família",
     guests: [
-      { guestName: "Rodrigo", slot: 1 },
-      { guestName: "Lea", slot: 2 },
+      { guestName: "Rodrigo Silva", slot: 1 },
+      { guestName: "Lea Silva", slot: 2 },
       { guestName: "Kauê", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "MR4925",
-    householdName: "Emerson e família",
+    householdName: "Emerson Lima e família",
     guests: [
-      { guestName: "Emerson", slot: 1 },
-      { guestName: "Flávia", slot: 2 },
+      { guestName: "Emerson Lima", slot: 1 },
+      { guestName: "Flávia Lima", slot: 2 },
       { guestName: "André", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "NS7384",
-    householdName: "Matheus e Isabel",
+    householdName: "Matheus Roque e Isabel Roque",
     guests: [
-      { guestName: "Matheus", slot: 1 },
-      { guestName: "Isabel", slot: 2 }
+      { guestName: "Matheus Roque", slot: 1 },
+      { guestName: "Isabel Roque", slot: 2 }
     ]
   },
   {
     invitationCode: "PA3675",
-    householdName: "Eduardo e Day",
+    householdName: "Eduardo Marques e Day Moura",
     guests: [
-      { guestName: "Eduardo Lima", slot: 1 },
+      { guestName: "Eduardo Marques", slot: 1 },
       { guestName: "Day Moura", slot: 2 }
     ]
   },
   {
     invitationCode: "QU8492",
-    householdName: "Édipo e Stephany",
+    householdName: "Édipo Alves e Stephany Britani",
     guests: [
-      { guestName: "Édipo", slot: 1 },
-      { guestName: "Stephany", slot: 2 }
+      { guestName: "Édipo Alves", slot: 1 },
+      { guestName: "Stephany Britani", slot: 2 }
     ]
   },
   {
     invitationCode: "RV5826",
-    householdName: "Ana Paula e Ivan",
+    householdName: "Ana Paula dos Santos e Ivan Azevedo",
     guests: [
-      { guestName: "Ana Paula", slot: 1 },
-      { guestName: "Ivan", slot: 2 }
+      { guestName: "Ana Paula dos Santos", slot: 1 },
+      { guestName: "Ivan Azevedo", slot: 2 }
     ]
   },
   {
     invitationCode: "SW2748",
-    householdName: "Eugenia",
-    guests: [{ guestName: "Eugenia", slot: 1 }]
+    householdName: "Eugenia Ribeiro",
+    guests: [{ guestName: "Eugenia Ribeiro", slot: 1 }]
   },
   {
     invitationCode: "TX6935",
-    householdName: "Amanda e Chris",
+    householdName: "Amanda Moura e Chris Kaneda",
     guests: [
-      { guestName: "Amanda", slot: 1 },
-      { guestName: "Chris", slot: 2 }
+      { guestName: "Amanda Moura", slot: 1 },
+      { guestName: "Chris Kaneda", slot: 2 }
     ]
   },
   {
     invitationCode: "UY4583",
-    householdName: "Fernando e Diego",
+    householdName: "Fernando Oliveira e Diego Marquez",
     guests: [
-      { guestName: "Fernando", slot: 1 },
-      { guestName: "Diego", slot: 2 }
+      { guestName: "Fernando Oliveira", slot: 1 },
+      { guestName: "Diego Marquez", slot: 2 }
     ]
   },
   {
     invitationCode: "VZ9274",
-    householdName: "Luiza e Rodrigo",
+    householdName: "Luíza Baratojo e Rodrigo Cardinali",
     guests: [
-      { guestName: "Luiza", slot: 1 },
-      { guestName: "Rodrigo", slot: 2 }
+      { guestName: "Luíza Baratojo", slot: 1 },
+      { guestName: "Rodrigo Cardinali", slot: 2 }
     ]
   },
   {
     invitationCode: "AF5638",
-    householdName: "Gabriel e Maiara",
+    householdName: "Gabriel Fernando e Maiara Barrantes",
     guests: [
-      { guestName: "Gabriel", slot: 1 },
-      { guestName: "Maiara", slot: 2 }
+      { guestName: "Gabriel Fernando", slot: 1 },
+      { guestName: "Maiara Barrantes", slot: 2 }
     ]
   },
   {
     invitationCode: "BG7926",
-    householdName: "Marcos Paulo",
-    guests: [{ guestName: "Marcos Paulo", slot: 1 }]
+    householdName: "Marcos Paulo Albuquerque",
+    guests: [{ guestName: "Marcos Paulo Albuquerque", slot: 1 }]
   },
   {
     invitationCode: "CH3854",
-    householdName: "Sônia",
-    guests: [{ guestName: "Sônia", slot: 1 }]
+    householdName: "Sônia Carvalho",
+    guests: [{ guestName: "Sônia Carvalho", slot: 1 }]
   },
   {
     invitationCode: "DJ6472",
-    householdName: "Dani e Luiz",
+    householdName: "Daniela Benedicto e Luiz Fernando Benedicto",
     guests: [
-      { guestName: "Dani", slot: 1 },
-      { guestName: "Luiz", slot: 2 }
+      { guestName: "Daniela Benedicto", slot: 1 },
+      { guestName: "Luiz Fernando Benedicto", slot: 2 }
     ]
   },
   {
     invitationCode: "EK8395",
-    householdName: "Leticia e Namorado",
+    householdName: "Letícia Vilas Boas e Namorado",
     guests: [
-      { guestName: "Leticia", slot: 1 },
+      { guestName: "Letícia Vilas Boas", slot: 1 },
       { guestName: "Namorado", slot: 2 }
     ]
   },
   {
     invitationCode: "AG2827",
-    householdName: "Taisa e Tamires",
+    householdName: "Taísa Barbosa e Tamires Andressa",
     guests: [
-      { guestName: "Taisa", slot: 1 },
-      { guestName: "Tamires", slot: 2 }
+      { guestName: "Taísa Barbosa", slot: 1 },
+      { guestName: "Tamires Andressa", slot: 2 }
     ]
   },
   {
     invitationCode: "BH3954",
-    householdName: "Wilson e Patrícia",
+    householdName: "Wilson Freire e Patrícia Serikawa",
     guests: [
-      { guestName: "Wilson", slot: 1 },
-      { guestName: "Patrícia", slot: 2 }
+      { guestName: "Wilson Freire", slot: 1 },
+      { guestName: "Patrícia Serikawa", slot: 2 }
     ]
   },
   {
     invitationCode: "CK7283",
-    householdName: "Kezia",
-    guests: [{ guestName: "Kezia", slot: 1 }]
+    householdName: "Kezia Guimarães",
+    guests: [{ guestName: "Kezia Guimarães", slot: 1 }]
   },
   {
     invitationCode: "DL5926",
-    householdName: "Ulisses",
-    guests: [{ guestName: "Ulisses", slot: 1 }]
+    householdName: "Ulisses Guimarães",
+    guests: [{ guestName: "Ulisses Guimarães", slot: 1 }]
   },
   {
     invitationCode: "EM4738",
-    householdName: "Rafael e família",
+    householdName: "Rafael Guimarães e família",
     guests: [
-      { guestName: "Rafael", slot: 1 },
+      { guestName: "Rafael Guimarães", slot: 1 },
       { guestName: "Esposa", slot: 2 },
       { guestName: "Filho", slot: 3, isChild: true }
     ]
   },
   {
     invitationCode: "FN8265",
-    householdName: "Vanda e família",
+    householdName: "Vanda Guimarães e família",
     guests: [
-      { guestName: "Vanda", slot: 1 },
-      { guestName: "Denilson", slot: 2 },
-      { guestName: "Júlia", slot: 3, isChild: true },
-      { guestName: "Eduarda", slot: 4, isChild: true }
+      { guestName: "Vanda Guimarães", slot: 1 },
+      { guestName: "Denilson Lopes", slot: 2 },
+      { guestName: "Júlia Guimarães", slot: 3, isChild: true },
+      { guestName: "Eduarda Guimarães", slot: 4, isChild: true }
     ]
   },
   {
     invitationCode: "GP2649",
-    householdName: "Margarida",
-    guests: [{ guestName: "Margarida", slot: 1 }]
+    householdName: "Margarida De Jesus",
+    guests: [{ guestName: "Margarida De Jesus", slot: 1 }]
   },
   {
     invitationCode: "HR5837",
-    householdName: "Patrícia e Thiago",
+    householdName: "Patrícia Kanô e Thiago Yoshimura",
     guests: [
-      { guestName: "Patrícia", slot: 1 },
-      { guestName: "Thiago", slot: 2 }
+      { guestName: "Patrícia Kanô", slot: 1 },
+      { guestName: "Thiago Yoshimura", slot: 2 }
     ]
   }
 ] as const;
