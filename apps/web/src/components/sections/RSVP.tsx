@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, ArrowLeft, Check, AlertCircle, Mail, Loader2 } from "lucide-react";
+import { Search, ArrowLeft, AlertCircle, Mail, Loader2 } from "lucide-react";
 import type {
   HouseholdInvitation,
   RsvpSubmissionRequest,
@@ -610,10 +610,7 @@ function SuccessState({
   };
 
   return (
-    <div className="text-center py-6 space-y-6">
-      <div className="w-16 h-16 mx-auto rounded-full bg-secondary/60 flex items-center justify-center">
-        <Check className="h-7 w-7 text-foreground" aria-hidden="true" />
-      </div>
+    <div className="text-center pt-2 pb-6 space-y-6">
       <div>
         <h3 className="font-serif text-2xl md:text-3xl text-foreground">
           Recebemos sua confirmação com carinho!
