@@ -47,6 +47,7 @@ Rebuilds and deploys the landing page edge stack.
 - AWS credentials must already be configured locally.
 - `.env` must be present and contain the correct production values.
 - `.env` must include a previously bootstrapped `SENTRY_AUTH_TOKEN` if you need to rerun the Sentry OpenTofu module.
+- `.env` must include `OBSERVABILITY_ALERT_EMAIL` for production backend deploys.
 - Dependencies must already be installed locally.
 
 Notes:
@@ -132,8 +133,36 @@ The normal managed deploy keeps these production settings aligned:
 
 - `BrimaxAppStack` output `AsaasWebhookUrl` is the branded webhook URL.
 - `BrimaxAppStack` output `ApiCustomDomainUrl` is the branded public API base URL.
+- `BrimaxObservabilityStack` output `DashboardName` identifies the CloudWatch dashboard for backend health.
+- `BrimaxObservabilityStack` output `AlarmTopicArn` identifies the SNS topic used for alarm notifications.
 - The raw `execute-api` hostname remains available only for fallback or debugging and should not be used for normal production traffic.
 - After email deliverability changes, verify SES identity health with `aws sesv2 get-email-identity --region us-east-1 --email-identity brimax.life` and send a real inbox test to confirm placement and headers.
+
+## Observability Smoke Test
+
+Run this after a production backend deploy:
+
+1. Trigger a safe handled warning:
+
+   ```bash
+   curl -i https://api.brimax.life/payments/not-found
+   ```
+
+2. Confirm the request returns `404` and the warning appears in Sentry:
+   - project: `brimax-api-prod`
+   - environment: `prod`
+   - search for `PAYMENT_LOOKUP_FAILED`
+
+3. Confirm there is no unexpected new unresolved prod issue spike in Sentry:
+   - saved issue view: `environment:prod is:unresolved`
+
+4. Open the CloudWatch dashboard from `BrimaxObservabilityStack` and confirm the alarm state is OK.
+
+5. Confirm the SNS email subscription is still confirmed and able to receive alarm notifications.
+
+Operational defaults for Sentry:
+- saved issue view: unresolved prod issues (`environment:prod is:unresolved`)
+- saved log view: prod backend logs (`project:brimax-api-prod environment:prod`)
 
 ## First-Time Setup
 

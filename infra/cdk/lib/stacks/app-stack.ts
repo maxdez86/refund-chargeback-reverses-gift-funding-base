@@ -3,7 +3,6 @@ import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -29,7 +28,12 @@ export interface AppStackProps extends cdk.StackProps {
 }
 
 export class AppStack extends cdk.Stack {
+  readonly alarmedFunctions: lambda.IFunction[];
+  readonly createPaymentFunction: lambda.IFunction;
   readonly httpApi: apigwv2.HttpApi;
+  readonly webhookProcessorFunction: lambda.IFunction;
+  readonly webhookDlq: sqs.IQueue;
+  readonly webhookQueue: sqs.IQueue;
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
@@ -77,6 +81,8 @@ export class AppStack extends cdk.Stack {
       },
       visibilityTimeout: cdk.Duration.seconds(90)
     });
+    this.webhookDlq = webhookDlq;
+    this.webhookQueue = webhookQueue;
     const senderDomain = new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
       emailIdentity: senderDomainIdentity,
       dkimSigningAttributes: {
@@ -201,6 +207,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(15)
     });
+    this.createPaymentFunction = createPaymentFn;
     const getPaymentFn = new nodejs.NodejsFunction(this, "GetPaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-get/handler.ts"),
       environment: commonEnvironment,
@@ -266,6 +273,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30)
     });
+    this.webhookProcessorFunction = webhookProcessorFn;
     const invitationGetFn = new nodejs.NodejsFunction(this, "InvitationGetFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
@@ -283,6 +291,16 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
+    this.alarmedFunctions = [
+      createPaymentFn,
+      getPaymentFn,
+      createGuestMessagesFn,
+      paymentMessageFn,
+      invitationGetFn,
+      rsvpFn,
+      asaasWebhookFn,
+      webhookProcessorFn
+    ];
 
     webhookProcessorFn.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
@@ -402,23 +420,6 @@ export class AppStack extends cdk.Stack {
     this.addMetricFilters(createPaymentFn.logGroup, "create-payment");
     this.addMetricFilters(asaasWebhookFn.logGroup, "asaas-webhook");
     this.addMetricFilters(webhookProcessorFn.logGroup, "asaas-webhook-processor");
-
-    new cloudwatch.Alarm(this, "WebhookDlqAlarm", {
-      alarmDescription: "Alerts when the webhook dead-letter queue receives messages.",
-      metric: webhookDlq.metricApproximateNumberOfMessagesVisible(),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
-    new cloudwatch.Alarm(this, "CreatePaymentErrorsAlarm", {
-      metric: createPaymentFn.metricErrors(),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
-    new cloudwatch.Alarm(this, "WebhookProcessorErrorsAlarm", {
-      metric: webhookProcessorFn.metricErrors(),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
       description: "Raw API Gateway execute-api endpoint for fallback diagnostics only.",

@@ -24,7 +24,7 @@ This bootstrap also establishes the baseline edge hardening through IaC:
 3. Ensure the `personal-stg` AWS profile can deploy into account `183286346090`.
 4. Install the OpenTofu CLI locally.
 5. Create a local `.env` file from `.env.example`.
-6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `TURNSTILE_SECRET_KEY`, and `SENTRY_AUTH_TOKEN` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
+6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `TURNSTILE_SECRET_KEY`, `SENTRY_AUTH_TOKEN`, and `OBSERVABILITY_ALERT_EMAIL` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
 
 ## Sentry Bootstrap
 
@@ -71,6 +71,7 @@ TURNSTILE_SECRET_KEY="..."   # required when STAGE=prod; dev uses the always-pas
 SENTRY_AUTH_TOKEN="..."
 SENTRY_ORG="brimax"
 SENTRY_TEAM_SLUG="brimax-life"
+OBSERVABILITY_ALERT_EMAIL="alerts@example.com"
 # Optional override. `pnpm deploy:backend` resolves this from
 # `infra/opentofu/sentry` automatically after the module is applied.
 SENTRY_DSN=""
@@ -81,6 +82,7 @@ Important:
 - The scripts auto-discover the certificate ARN during bootstrap, so you do not need to edit `.env` mid-run.
 - The scripts now auto-load `.env`, so you do not need `set -a`.
 - `SENTRY_DSN` is sourced from the Sentry OpenTofu module outputs; `SENTRY_AUTH_TOKEN` is only used by OpenTofu.
+- `OBSERVABILITY_ALERT_EMAIL` drives the SNS email subscription for production CloudWatch alarms. Confirm the subscription email after the first observability deploy.
 
 ## Terminal 1: CDK Bootstrap, Platform Bootstrap, And Certificate Request
 

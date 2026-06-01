@@ -20,6 +20,7 @@ const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
 const rawSentryDsn = process.env.SENTRY_DSN?.trim();
+const rawObservabilityAlertEmail = process.env.OBSERVABILITY_ALERT_EMAIL?.trim();
 
 // Cloudflare's documented always-passes test key. Lets non-prod synth/deploys
 // succeed without provisioning a real Turnstile site; prod must override.
@@ -61,6 +62,10 @@ function requirePaymentDeploySecrets() {
 
   if (!rawSentryDsn) {
     missing.push("SENTRY_DSN");
+  }
+
+  if (stage === "prod" && !rawObservabilityAlertEmail) {
+    missing.push("OBSERVABILITY_ALERT_EMAIL");
   }
 
   if (missing.length > 0) {
@@ -116,9 +121,15 @@ const edgeStack = new EdgeStack(app, resourceName("BrimaxEdgeStack", stage), {
 });
 
 new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
+  alertEmail: rawObservabilityAlertEmail,
+  alarmedFunctions: appStack.alarmedFunctions,
+  createPaymentFunction: appStack.createPaymentFunction,
   stage,
   distribution: edgeStack.distribution,
   httpApi: appStack.httpApi,
+  webhookDlq: appStack.webhookDlq,
+  webhookProcessorFunction: appStack.webhookProcessorFunction,
+  webhookQueue: appStack.webhookQueue,
   table: dataStack.table
 });
 

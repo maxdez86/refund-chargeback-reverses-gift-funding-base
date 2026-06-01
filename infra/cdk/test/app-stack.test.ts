@@ -128,9 +128,6 @@ describe("AppStack", () => {
         })
       ])
     });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      Threshold: 1
-    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
