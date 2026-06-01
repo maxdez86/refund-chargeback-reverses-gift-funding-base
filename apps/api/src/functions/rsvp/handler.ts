@@ -5,10 +5,11 @@ import { RsvpService } from "../../domain/rsvp-service";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
 import { verifyLookupProof } from "../../lib/lookup-proof";
+import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 
 const service = new RsvpService();
 
-export async function handler(event: APIGatewayProxyEventV2) {
+async function onSubmitRsvp(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   try {
@@ -43,27 +44,30 @@ export async function handler(event: APIGatewayProxyEventV2) {
     return jsonResponse(200, response, cors);
   } catch (error) {
     if (error instanceof ZodError) {
+      reportHandledError(error, {
+        context: { requestId: event.requestContext.requestId },
+        message: "Invalid RSVP payload.",
+        metric: "RSVP_SUBMIT_FAILED",
+        statusCode: 400
+      });
       return jsonResponse(400, { message: "Invalid RSVP payload.", issues: error.issues }, cors);
     }
 
     if (error instanceof AppError) {
-      console.error(
-        JSON.stringify({
-          metric: "RSVP_SUBMIT_FAILED",
-          statusCode: error.statusCode,
-          message: error.message
-        })
-      );
+      reportHandledError(error, {
+        context: { requestId: event.requestContext.requestId },
+        metric: "RSVP_SUBMIT_FAILED"
+      });
       return jsonResponse(error.statusCode, { message: error.message }, cors);
     }
 
-    console.error(
-      JSON.stringify({
-        metric: "RSVP_SUBMIT_FAILED",
-        statusCode: 500,
-        message: error instanceof Error ? error.message : "Unexpected RSVP error."
-      })
-    );
+    reportHandledError(error, {
+      context: { requestId: event.requestContext.requestId },
+      metric: "RSVP_SUBMIT_FAILED",
+      statusCode: 500
+    });
     return jsonResponse(500, { message: "Unexpected RSVP error." }, cors);
   }
 }
+
+export const handler = wrapLambdaHandler(onSubmitRsvp);

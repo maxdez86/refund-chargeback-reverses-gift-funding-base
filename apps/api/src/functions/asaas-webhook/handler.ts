@@ -3,6 +3,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { getEnv } from "../../lib/env";
 import { jsonResponse, noContentResponse } from "../../lib/http";
 import { rawBodyHash, safeEqual } from "../../lib/security";
+import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 import { PaymentRepository } from "../../services/dynamodb/repositories/payment-repository";
 import { getSecretValue } from "../../services/secrets-manager/secret-cache";
 
@@ -29,7 +30,7 @@ function parseWebhookSecret(secretValue: string) {
   }
 }
 
-export async function handler(event: APIGatewayProxyEventV2) {
+async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
   if (event.requestContext.http.method === "OPTIONS") {
     return noContentResponse();
   }
@@ -48,6 +49,12 @@ export async function handler(event: APIGatewayProxyEventV2) {
   try {
     payload = JSON.parse(rawBody) as AsaasWebhookPayload;
   } catch {
+    reportHandledError(new Error("Invalid webhook JSON body."), {
+      context: { requestId: event.requestContext.requestId },
+      message: "Invalid webhook JSON body.",
+      metric: "WEBHOOK_PAYLOAD_INVALID",
+      statusCode: 400
+    });
     return jsonResponse(400, { message: "Invalid JSON body." });
   }
   const eventId = rawBodyHash(rawBody);
@@ -77,3 +84,5 @@ export async function handler(event: APIGatewayProxyEventV2) {
     eventId
   });
 }
+
+export const handler = wrapLambdaHandler(onAsaasWebhook);

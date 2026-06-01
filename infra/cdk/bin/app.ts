@@ -19,6 +19,7 @@ const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
+const rawSentryDsn = process.env.SENTRY_DSN?.trim();
 
 // Cloudflare's documented always-passes test key. Lets non-prod synth/deploys
 // succeed without provisioning a real Turnstile site; prod must override.
@@ -58,10 +59,14 @@ function requirePaymentDeploySecrets() {
     missing.push("TURNSTILE_SECRET_KEY");
   }
 
+  if (!rawSentryDsn) {
+    missing.push("SENTRY_DSN");
+  }
+
   if (missing.length > 0) {
     throw new Error(
       `Missing required deployment env vars for stage "${stage}": ${missing.join(", ")}. ` +
-        "CDK manages the Asaas + Turnstile Secrets Manager entries from these raw values."
+        "CDK manages the Asaas + Turnstile Secrets Manager entries from these raw values, and the backend Sentry DSN must come from the OpenTofu Sentry module."
     );
   }
 }
@@ -73,6 +78,7 @@ if (requiresPaymentSecretsForThisInvocation()) {
 const asaasApiKey = rawAsaasApiKey ?? "cdk-placeholder-asaas-api-key";
 const asaasWebhookToken = rawAsaasWebhookToken ?? "cdk-placeholder-asaas-webhook-token";
 const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
+const sentryDsn = rawSentryDsn ?? "";
 
 new PlatformStack(app, resourceName("BrimaxPlatformStack", stage), {
   stage
@@ -96,6 +102,7 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   asaasWebhookToken,
   contactEmail,
   stage,
+  sentryDsn,
   table: dataStack.table,
   turnstileSecretKey
 });

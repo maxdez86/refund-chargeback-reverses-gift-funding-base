@@ -4,6 +4,19 @@ Use this runbook for repeatable production deploys after the environment has alr
 
 ## Quick Commands
 
+### Refresh Sentry Infrastructure
+
+```bash
+pnpm opentofu:sentry:init
+pnpm opentofu:sentry:apply
+```
+
+Run this only when Sentry-managed resources change, for example:
+- adding a new Sentry project
+- onboarding a new stage like `dev`
+- rotating the backend runtime key / DSN
+- adding future Sentry alerting resources
+
 ### Deploy Backend
 
 ```bash
@@ -11,6 +24,8 @@ pnpm deploy:backend
 ```
 
 Updates the backend application stack and API.
+
+`pnpm deploy:backend` resolves the backend `SENTRY_DSN` from `infra/opentofu/sentry` automatically. Routine application deploys do not require rerunning the Sentry OpenTofu module unless the Sentry resources themselves changed.
 
 If the deploy changes SES sender outputs or email deliverability configuration, also run:
 
@@ -31,12 +46,14 @@ Rebuilds and deploys the landing page edge stack.
 
 - AWS credentials must already be configured locally.
 - `.env` must be present and contain the correct production values.
+- `.env` must include a previously bootstrapped `SENTRY_AUTH_TOKEN` if you need to rerun the Sentry OpenTofu module.
 - Dependencies must already be installed locally.
 
 Notes:
 - The deploy scripts auto-load `.env`, so manual `source .env` is optional.
 - `prod` is the default stage, so you do not need to pass `stage=prod`.
 - Use `STAGE=dev` or `--context stage=dev` only when you intentionally want prefixed development resources.
+- For future `dev` Sentry rollout, first apply `infra/opentofu/sentry` with `STAGE=dev`, then deploy the dev backend so it picks up the dev DSN.
 - Keep production resources on retain policies unless there is a deliberate teardown plan.
 
 ## Recommended Validation

@@ -13,12 +13,14 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 source "$(dirname "$0")/landing-env.sh"
+source <(bash "$(dirname "$0")/export-sentry-config.sh")
 
 export PAYMENTS_DATA_STACK_NAME="${PAYMENTS_DATA_STACK_NAME:-${STAGE_PREFIX}BrimaxDataStack}"
 export PAYMENTS_STACK_NAME="${PAYMENTS_STACK_NAME:-${STAGE_PREFIX}BrimaxAppStack}"
 export PAYMENTS_OBSERVABILITY_STACK_NAME="${PAYMENTS_OBSERVABILITY_STACK_NAME:-${STAGE_PREFIX}BrimaxObservabilityStack}"
 
 require_env ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN
+require_env SENTRY_DSN
 
 # Turnstile secret is only enforced for prod. Dev/test deploys fall back to
 # Cloudflare's always-passes test secret (handled in infra/cdk/bin/app.ts).
@@ -39,6 +41,7 @@ printf '  - %s\n' "${PAYMENTS_DATA_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_OBSERVABILITY_STACK_NAME}"
 printf '  - using CDK-managed Secrets Manager values from ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, TURNSTILE_SECRET_KEY\n'
+printf '  - using Sentry project %s from infra/opentofu/sentry\n' "${SENTRY_BACKEND_PROJECT_SLUG}"
 
 pnpm --filter @brimax/infra-cdk cdk deploy \
   "${PAYMENTS_DATA_STACK_NAME}" \

@@ -3,11 +3,12 @@ import { ZodError } from "zod";
 import { PaymentService } from "../../domain/payment-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
+import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 
 const service = new PaymentService();
 let isColdStart = true;
 
-export async function handler(event: APIGatewayProxyEventV2) {
+async function onCreatePayment(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   if (event.requestContext.http.method === "OPTIONS") {
@@ -73,20 +74,30 @@ export async function handler(event: APIGatewayProxyEventV2) {
     };
 
     if (error instanceof ZodError) {
-      console.error(JSON.stringify({ metric: "PAYMENT_CREATE_FAILED", reason: "validation" }));
+      reportHandledError(error, {
+        context: { giftId, paymentMethod, requestId },
+        message: "Invalid payment payload.",
+        metric: "PAYMENT_CREATE_FAILED",
+        statusCode: 400
+      });
       logTiming(400, "validation");
       return jsonResponse(400, { message: "Invalid payment payload.", issues: error.issues }, cors);
     }
 
     if (error instanceof AppError) {
-      console.error(
-        JSON.stringify({ metric: "PAYMENT_CREATE_FAILED", reason: error.message, statusCode: error.statusCode })
-      );
+      reportHandledError(error, {
+        context: { giftId, paymentMethod, requestId },
+        metric: "PAYMENT_CREATE_FAILED"
+      });
       logTiming(error.statusCode, error.message);
       return jsonResponse(error.statusCode, { message: error.message }, cors);
     }
 
-    console.error(JSON.stringify({ metric: "PAYMENT_CREATE_FAILED", reason: "unexpected" }));
+    reportHandledError(error, {
+      context: { giftId, paymentMethod, requestId },
+      metric: "PAYMENT_CREATE_FAILED",
+      statusCode: 500
+    });
     logTiming(500, "unexpected");
     return jsonResponse(500, { message: "Unexpected payment creation error." }, cors);
   }
@@ -104,3 +115,5 @@ function safeJsonParseObject(text: string): Record<string, unknown> | undefined 
 
   return undefined;
 }
+
+export const handler = wrapLambdaHandler(onCreatePayment);

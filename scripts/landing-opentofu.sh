@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODULE_NAME="${1:?Expected module name (certificate-validation, edge-dns, api-dns, or ses-dns)}"
+MODULE_NAME="${1:?Expected module name (certificate-validation, edge-dns, api-dns, ses-dns, or sentry)}"
 ACTION="${2:?Expected action (init, validate, plan, apply)}"
 shift 2
 
@@ -29,14 +29,26 @@ case "${ACTION}" in
     tofu -chdir="${MODULE_DIR}" validate "$@"
     ;;
   plan|apply)
-    require_env CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID ROOT_DOMAIN AWS_REGION
+    VAR_ARGS=()
 
-    VAR_ARGS=(
-      -var "aws_profile=${AWS_PROFILE:-}"
-      -var "aws_region=${AWS_REGION}"
-      -var "cloudflare_api_token=${CLOUDFLARE_API_TOKEN}"
-      -var "cloudflare_zone_id=${CLOUDFLARE_ZONE_ID}"
-    )
+    if [[ "${MODULE_NAME}" == "sentry" ]]; then
+      require_env SENTRY_AUTH_TOKEN
+
+      VAR_ARGS+=(
+        -var "stage=${STAGE}"
+        -var "sentry_organization_slug=${SENTRY_ORG}"
+        -var "sentry_team_slug=${SENTRY_TEAM_SLUG}"
+      )
+    else
+      require_env CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID ROOT_DOMAIN AWS_REGION
+
+      VAR_ARGS+=(
+        -var "aws_profile=${AWS_PROFILE:-}"
+        -var "aws_region=${AWS_REGION}"
+        -var "cloudflare_api_token=${CLOUDFLARE_API_TOKEN}"
+        -var "cloudflare_zone_id=${CLOUDFLARE_ZONE_ID}"
+      )
+    fi
 
     if [[ "${MODULE_NAME}" == "certificate-validation" ]]; then
       require_env LANDING_CERTIFICATE_ARN
@@ -76,6 +88,8 @@ case "${ACTION}" in
         -var "root_domain=${ROOT_DOMAIN}"
         -var "www_domain=${WWW_DOMAIN}"
       )
+    elif [[ "${MODULE_NAME}" == "sentry" ]]; then
+      :
     else
       VAR_ARGS+=(
         -var "app_stack_name=${PAYMENTS_STACK_NAME:-${STAGE_PREFIX}BrimaxAppStack}"

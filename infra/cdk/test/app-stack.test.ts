@@ -21,6 +21,7 @@ describe("AppStack", () => {
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento@brimax.life",
+      sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "1x0000000000000000000000000000000AA"
@@ -147,6 +148,7 @@ describe("AppStack", () => {
           EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
           EMAIL_CONFIGURATION_SET_NAME: Match.anyValue(),
           LOOKUP_PROOF_SECRET_ARN: Match.anyValue(),
+          SENTRY_DSN: "https://public@example.ingest.sentry.io/123456",
           RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }

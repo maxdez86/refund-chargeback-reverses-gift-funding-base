@@ -22,6 +22,7 @@ export interface AppStackProps extends cdk.StackProps {
   asaasApiKey: string;
   asaasWebhookToken: string;
   contactEmail: string;
+  sentryDsn: string;
   stage: AppStage;
   table: dynamodb.ITable;
   turnstileSecretKey: string;
@@ -180,6 +181,8 @@ export class AppStack extends cdk.Stack {
       ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
       ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
       LOOKUP_PROOF_SECRET_ARN: lookupProofSecret.secretArn,
+      SENTRY_DSN: props.sentryDsn,
+      STAGE: props.stage,
       TURNSTILE_SECRET_ARN: turnstileSecret.secretArn,
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,

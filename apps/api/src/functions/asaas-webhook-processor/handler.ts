@@ -1,9 +1,10 @@
 import type { SQSEvent } from "aws-lambda";
 import { WebhookProcessor } from "../../domain/webhook-processor";
+import { wrapLambdaHandler } from "../../lib/sentry";
 
 const processor = new WebhookProcessor();
 
-export async function handler(event: SQSEvent) {
+async function onProcessAsaasWebhook(event: SQSEvent) {
   for (const record of event.Records) {
     const message = JSON.parse(record.body) as { eventId: string };
     const result = await processor.processEvent(message.eventId);
@@ -17,3 +18,5 @@ export async function handler(event: SQSEvent) {
     );
   }
 }
+
+export const handler = wrapLambdaHandler(onProcessAsaasWebhook);

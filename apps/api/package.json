@@ -29,6 +29,7 @@
     "@aws-sdk/lib-dynamodb": "^3.790.0",
     "@brimax/config": "workspace:*",
     "@brimax/contracts": "workspace:*",
+    "@sentry/aws-serverless": "^10.22.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {

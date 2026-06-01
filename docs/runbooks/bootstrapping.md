@@ -24,7 +24,33 @@ This bootstrap also establishes the baseline edge hardening through IaC:
 3. Ensure the `personal-stg` AWS profile can deploy into account `183286346090`.
 4. Install the OpenTofu CLI locally.
 5. Create a local `.env` file from `.env.example`.
-6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, and `TURNSTILE_SECRET_KEY` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
+6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `TURNSTILE_SECRET_KEY`, and `SENTRY_AUTH_TOKEN` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
+
+## Sentry Bootstrap
+
+Sentry account and organization creation happen outside this repo. Once the `brimax` Sentry organization exists, the rest of the initial backend setup is IaC-managed from `infra/opentofu/sentry`.
+
+First-time Sentry setup:
+
+1. Add `SENTRY_AUTH_TOKEN` to local `.env`.
+2. Deploy the platform bootstrap first so the shared OpenTofu backend bucket/lock table exist.
+3. Initialize the Sentry OpenTofu module:
+
+   ```bash
+   pnpm opentofu:sentry:init
+   ```
+
+4. Apply the Sentry OpenTofu module:
+
+   ```bash
+   pnpm opentofu:sentry:apply
+   ```
+
+Expected behavior:
+- OpenTofu creates the shared `brimax-life` Sentry team on the first `prod` apply.
+- OpenTofu creates the `prod` backend Sentry project and runtime key.
+- The backend DSN becomes available through the module outputs and is consumed automatically by `pnpm deploy:backend`.
+- The Sentry auth token stays local and is never deployed into AWS or written into application runtime config.
 
 ## What Must Exist In `.env`
 
@@ -42,12 +68,19 @@ TOFU_STATE_KEY_PREFIX="brimax-life"
 ASAAS_API_KEY="..."
 ASAAS_WEBHOOK_TOKEN="..."
 TURNSTILE_SECRET_KEY="..."   # required when STAGE=prod; dev uses the always-passes test secret
+SENTRY_AUTH_TOKEN="..."
+SENTRY_ORG="brimax"
+SENTRY_TEAM_SLUG="brimax-life"
+# Optional override. `pnpm deploy:backend` resolves this from
+# `infra/opentofu/sentry` automatically after the module is applied.
+SENTRY_DSN=""
 ```
 
 Important:
 - Keep `LANDING_CERTIFICATE_ARN=""` in the file before the first certificate request.
 - The scripts auto-discover the certificate ARN during bootstrap, so you do not need to edit `.env` mid-run.
 - The scripts now auto-load `.env`, so you do not need `set -a`.
+- `SENTRY_DSN` is sourced from the Sentry OpenTofu module outputs; `SENTRY_AUTH_TOKEN` is only used by OpenTofu.
 
 ## Terminal 1: CDK Bootstrap, Platform Bootstrap, And Certificate Request
 
@@ -56,6 +89,8 @@ From the repo root:
 ```bash
 pnpm cdk:bootstrap
 pnpm deploy:platform
+pnpm opentofu:sentry:init
+pnpm opentofu:sentry:apply
 pnpm build:web
 pnpm deploy:landing:cert
 ```
@@ -169,6 +204,8 @@ Only request SES production access after domain verification is complete and the
 ```bash
 pnpm cdk:bootstrap
 pnpm deploy:platform
+pnpm opentofu:sentry:init
+pnpm opentofu:sentry:apply
 pnpm build:web
 pnpm deploy:landing:cert
 pnpm wait:landing:cert
@@ -196,6 +233,7 @@ pnpm opentofu:api-dns:apply
 - `pnpm wait:landing:cert` reports the ACM certificate as `ISSUED`
 - `BrimaxEdgeStack` reaches `CREATE_COMPLETE`
 - `BrimaxAppStack` reaches `CREATE_COMPLETE`
+- `infra/opentofu/sentry` outputs a backend DSN and project slug
 - Cloudflare minimum TLS version is `1.2`
 - `https://brimax.life` returns:
   - `strict-transport-security`
