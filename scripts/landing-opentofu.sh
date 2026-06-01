@@ -45,6 +45,7 @@ case "${ACTION}" in
       VAR_ARGS+=(
         -var "aws_profile=${AWS_PROFILE:-}"
         -var "aws_region=${AWS_REGION}"
+        -var "stage=${STAGE}"
         -var "cloudflare_api_token=${CLOUDFLARE_API_TOKEN}"
         -var "cloudflare_zone_id=${CLOUDFLARE_ZONE_ID}"
       )

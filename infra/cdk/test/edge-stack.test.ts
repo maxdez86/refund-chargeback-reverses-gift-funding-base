@@ -3,14 +3,16 @@ import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
-import { EdgeStack } from "../lib/stacks/edge-stack";
 import { DEFAULT_STAGE, resourceName, resolveStage } from "@brimax/config";
+import { EdgeStack } from "../lib/stacks/edge-stack";
+import { applyCostAllocationTags } from "./support/tags";
 
 const fixtureSiteAssetPath = path.resolve(__dirname, "./fixtures/site");
 
 describe("EdgeStack", () => {
   it("creates a private website bucket and CloudFront distribution", { timeout: 10000 }, () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
     const stack = new EdgeStack(app, "TestEdgeStack", {
       siteAssetPath: fixtureSiteAssetPath,
       stage: "dev"
@@ -19,6 +21,18 @@ describe("EdgeStack", () => {
 
     template.resourceCountIs("AWS::S3::Bucket", 2);
     template.resourceCountIs("AWS::CloudFront::Distribution", 1);
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
 
     expect(template.toJSON()).toBeDefined();
   });
@@ -27,6 +41,7 @@ describe("EdgeStack", () => {
     expect(resolveStage(undefined)).toBe(DEFAULT_STAGE);
 
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new EdgeStack(app, resourceName("BrimaxEdgeStack", resolveStage(undefined)), {
       siteAssetPath: fixtureSiteAssetPath,
       stage: resolveStage(undefined)
@@ -37,6 +52,7 @@ describe("EdgeStack", () => {
 
   it("attaches apex and www aliases when a certificate is provided", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new EdgeStack(app, "TestEdgeCustomDomainStack", {
       certificate: acm.Certificate.fromCertificateArn(
         app,
@@ -75,6 +91,7 @@ describe("EdgeStack", () => {
 
   it("configures the bucket deployment custom resource with higher Lambda resources", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new EdgeStack(app, "TestEdgeBucketDeploymentStack", {
       siteAssetPath: fixtureSiteAssetPath,
       stage: "prod"
@@ -89,12 +106,17 @@ describe("EdgeStack", () => {
       EphemeralStorage: {
         Size: 1024
       },
-      MemorySize: 1024
+      MemorySize: 1024,
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "prod" }
+      ])
     });
   });
 
   it("attaches a response headers policy with the baseline security headers", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new EdgeStack(app, "TestEdgeSecurityHeadersStack", {
       siteAssetPath: fixtureSiteAssetPath,
       stage: "prod"

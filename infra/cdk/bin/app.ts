@@ -11,6 +11,8 @@ import { PlatformStack } from "../lib/stacks/platform-stack";
 
 const app = new cdk.App();
 const stage = resolveStage(app.node.tryGetContext("stage") ?? process.env.STAGE);
+cdk.Tags.of(app).add("project", "brimax-life");
+cdk.Tags.of(app).add("stage", stage);
 const rootDomain = process.env.ROOT_DOMAIN ?? "brimax.life";
 const apiDomain = process.env.API_DOMAIN ?? `api.${rootDomain}`;
 const wwwDomain = `www.${rootDomain}`;

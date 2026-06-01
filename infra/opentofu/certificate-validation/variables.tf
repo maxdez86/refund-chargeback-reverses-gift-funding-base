@@ -9,6 +9,11 @@ variable "aws_region" {
   type        = string
 }
 
+variable "stage" {
+  description = "Deployment stage this module is associated with."
+  type        = string
+}
+
 variable "root_validation_record_name" {
   description = "DNS validation record name for the root domain certificate."
   type        = string

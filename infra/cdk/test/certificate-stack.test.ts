@@ -1,11 +1,13 @@
 import * as cdk from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { CertificateStack } from "../lib/stacks/certificate-stack";
+import { applyCostAllocationTags } from "./support/tags";
 
 describe("CertificateStack", () => {
   it("requests an ACM certificate for the apex and www domains", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new CertificateStack(app, "TestCertificateStack", {
       apiDomain: "api.brimax.life",
       rootDomain: "brimax.life",
@@ -22,7 +24,17 @@ describe("CertificateStack", () => {
     });
     template.hasResourceProperties("AWS::CertificateManager::Certificate", {
       DomainName: "api.brimax.life",
-      ValidationMethod: "DNS"
+      ValidationMethod: "DNS",
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "prod" }
+      ])
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "prod" }
+      ])
     });
 
     expect(template.toJSON()).toBeDefined();
@@ -30,6 +42,7 @@ describe("CertificateStack", () => {
 
   it("exposes certificate and validation outputs for OpenTofu", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new CertificateStack(app, "TestCertificateOutputs", {
       apiDomain: "api.brimax.life",
       rootDomain: "brimax.life",

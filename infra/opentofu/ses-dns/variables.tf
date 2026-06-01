@@ -9,6 +9,11 @@ variable "aws_region" {
   type        = string
 }
 
+variable "stage" {
+  description = "Deployment stage this module is associated with."
+  type        = string
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API token with DNS permissions."
   sensitive   = true

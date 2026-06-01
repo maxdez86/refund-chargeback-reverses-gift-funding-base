@@ -12,7 +12,7 @@ import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as ses from "aws-cdk-lib/aws-ses";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sqs from "aws-cdk-lib/aws-sqs";
-import { type AppStage } from "@brimax/config";
+import { resourceName, type AppStage } from "@brimax/config";
 import { Construct } from "constructs";
 
 export interface AppStackProps extends cdk.StackProps {
@@ -34,6 +34,7 @@ export class AppStack extends cdk.Stack {
   readonly webhookProcessorFunction: lambda.IFunction;
   readonly webhookDlq: sqs.IQueue;
   readonly webhookQueue: sqs.IQueue;
+  private readonly functionLogGroups = new Map<string, logs.LogGroup>();
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
@@ -198,7 +199,7 @@ export class AppStack extends cdk.Stack {
       WEDDING_TABLE_NAME: props.table.tableName
     };
 
-    const createPaymentFn = new nodejs.NodejsFunction(this, "CreatePaymentFunction", {
+    const createPaymentFn = this.createTaggedNodejsFunction("CreatePaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-create/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -208,7 +209,7 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(15)
     });
     this.createPaymentFunction = createPaymentFn;
-    const getPaymentFn = new nodejs.NodejsFunction(this, "GetPaymentFunction", {
+    const getPaymentFn = this.createTaggedNodejsFunction("GetPaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -216,7 +217,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const getGiftsFn = new nodejs.NodejsFunction(this, "GetGiftsFunction", {
+    const getGiftsFn = this.createTaggedNodejsFunction("GetGiftsFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/gifts-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -224,7 +225,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const getGuestMessagesFn = new nodejs.NodejsFunction(this, "GetGuestMessagesFunction", {
+    const getGuestMessagesFn = this.createTaggedNodejsFunction("GetGuestMessagesFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/guest-messages-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -232,7 +233,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const createGuestMessagesFn = new nodejs.NodejsFunction(this, "CreateGuestMessagesFunction", {
+    const createGuestMessagesFn = this.createTaggedNodejsFunction("CreateGuestMessagesFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/guest-messages-create/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -241,7 +242,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const deleteGuestMessageFn = new nodejs.NodejsFunction(this, "DeleteGuestMessageFunction", {
+    const deleteGuestMessageFn = this.createTaggedNodejsFunction("DeleteGuestMessageFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/admin-guest-message-delete/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -249,7 +250,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const paymentMessageFn = new nodejs.NodejsFunction(this, "PaymentMessageFunction", {
+    const paymentMessageFn = this.createTaggedNodejsFunction("PaymentMessageFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-message/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -257,7 +258,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const asaasWebhookFn = new nodejs.NodejsFunction(this, "AsaasWebhookFunction", {
+    const asaasWebhookFn = this.createTaggedNodejsFunction("AsaasWebhookFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/asaas-webhook/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -265,7 +266,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const webhookProcessorFn = new nodejs.NodejsFunction(this, "AsaasWebhookProcessorFunction", {
+    const webhookProcessorFn = this.createTaggedNodejsFunction("AsaasWebhookProcessorFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/asaas-webhook-processor/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -274,7 +275,7 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30)
     });
     this.webhookProcessorFunction = webhookProcessorFn;
-    const invitationGetFn = new nodejs.NodejsFunction(this, "InvitationGetFunction", {
+    const invitationGetFn = this.createTaggedNodejsFunction("InvitationGetFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -283,7 +284,7 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
     });
-    const rsvpFn = new nodejs.NodejsFunction(this, "RsvpFunction", {
+    const rsvpFn = this.createTaggedNodejsFunction("RsvpFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/rsvp/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
@@ -417,9 +418,12 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, createPaymentRoutes);
     }
 
-    this.addMetricFilters(createPaymentFn.logGroup, "create-payment");
-    this.addMetricFilters(asaasWebhookFn.logGroup, "asaas-webhook");
-    this.addMetricFilters(webhookProcessorFn.logGroup, "asaas-webhook-processor");
+    this.addMetricFilters(this.getFunctionLogGroup("CreatePaymentFunction"), "create-payment");
+    this.addMetricFilters(this.getFunctionLogGroup("AsaasWebhookFunction"), "asaas-webhook");
+    this.addMetricFilters(
+      this.getFunctionLogGroup("AsaasWebhookProcessorFunction"),
+      "asaas-webhook-processor"
+    );
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
       description: "Raw API Gateway execute-api endpoint for fallback diagnostics only.",
@@ -507,6 +511,41 @@ export class AppStack extends cdk.Stack {
     new cdk.CfnOutput(this, "SesDkimDnsTokenValue3", {
       value: senderDomain.attrDkimDnsTokenValue3
     });
+  }
+
+  private createTaggedNodejsFunction(
+    id: string,
+    props: nodejs.NodejsFunctionProps
+  ): nodejs.NodejsFunction {
+    const functionName = resourceName(`brimax-${id}`, props.environment?.STAGE as AppStage);
+    const logGroup = this.createFunctionLogGroup(`${id}LogGroup`, functionName);
+    const fn = new nodejs.NodejsFunction(this, id, {
+      ...props,
+      functionName,
+      logGroup
+    });
+
+    this.functionLogGroups.set(id, logGroup);
+
+    return fn;
+  }
+
+  private createFunctionLogGroup(id: string, functionName: string): logs.LogGroup {
+    return new logs.LogGroup(this, id, {
+      logGroupName: `/aws/lambda/${functionName}`,
+      retention: logs.RetentionDays.INFINITE,
+      removalPolicy: cdk.RemovalPolicy.RETAIN
+    });
+  }
+
+  private getFunctionLogGroup(functionId: string): logs.LogGroup {
+    const logGroup = this.functionLogGroups.get(functionId);
+
+    if (!logGroup) {
+      throw new Error(`Missing log group registration for Lambda construct "${functionId}".`);
+    }
+
+    return logGroup;
   }
 
   private addMetricFilters(logGroup: logs.ILogGroup, metricNamespaceSuffix: string) {

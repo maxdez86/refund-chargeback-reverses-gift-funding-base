@@ -1,16 +1,17 @@
 import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
-import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { AppStack } from "../lib/stacks/app-stack";
 import { DataStack } from "../lib/stacks/data-stack";
 import { EdgeStack } from "../lib/stacks/edge-stack";
 import { ObservabilityStack } from "../lib/stacks/observability-stack";
+import { applyCostAllocationTags } from "./support/tags";
 
 describe("ObservabilityStack", () => {
   it("creates an alert topic, dashboard, and core operational alarms", { timeout: 30000 }, () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const dataStack = new DataStack(app, "ObservabilityDataStack", { stage: "prod" });
     const appStack = new AppStack(app, "ObservabilityAppStack", {
       apiCertificate: acm.Certificate.fromCertificateArn(
@@ -70,6 +71,18 @@ describe("ObservabilityStack", () => {
 
     template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
       DashboardName: "brimax-observability"
+    });
+    template.hasResourceProperties("AWS::SNS::Topic", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "prod" }
+      ])
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "prod" }
+      ])
     });
 
     template.hasOutput("AlarmTopicArn", {});

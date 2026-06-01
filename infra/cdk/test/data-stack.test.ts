@@ -2,10 +2,12 @@ import * as cdk from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { DataStack } from "../lib/stacks/data-stack";
+import { applyCostAllocationTags } from "./support/tags";
 
 describe("DataStack", () => {
   it("creates a DynamoDB table with TTL and the Asaas payment lookup index", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
     const stack = new DataStack(app, "TestDataStack", {
       stage: "dev"
     });
@@ -21,6 +23,10 @@ describe("DataStack", () => {
         Match.objectLike({
           IndexName: "gsi1"
         })
+      ]),
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
       ])
     });
 
@@ -29,6 +35,7 @@ describe("DataStack", () => {
 
   it("keeps production table names bare", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
     const stack = new DataStack(app, "ProdDataStack", {
       stage: "prod"
     });
@@ -41,6 +48,7 @@ describe("DataStack", () => {
 
   it("adds a dev prefix to development table names", () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
     const stack = new DataStack(app, "DevDataStack", {
       stage: "dev"
     });

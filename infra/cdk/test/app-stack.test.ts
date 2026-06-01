@@ -4,10 +4,12 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { AppStack } from "../lib/stacks/app-stack";
 import { DataStack } from "../lib/stacks/data-stack";
+import { applyCostAllocationTags } from "./support/tags";
 
 describe("AppStack", () => {
   it("creates the payment API, webhook queue, secrets, and Lambda handlers", { timeout: 30000 }, () => {
     const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
     const dataStack = new DataStack(app, "AppDataStack", {
       stage: "dev"
     });
@@ -35,7 +37,7 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
-    template.resourceCountIs("AWS::Lambda::Function", 12);
+    template.resourceCountIs("Custom::LogRetention", 0);
 
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments"
@@ -62,7 +64,17 @@ describe("AppStack", () => {
       RouteKey: "POST /webhooks/asaas"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::DomainName", {
-      DomainName: "api.brimax.life"
+      DomainName: "api.brimax.life",
+      Tags: {
+        project: "brimax-life",
+        stage: "dev"
+      }
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+      Tags: {
+        project: "brimax-life",
+        stage: "dev"
+      }
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::ApiMapping", {
       Stage: "$default"
@@ -93,7 +105,11 @@ describe("AppStack", () => {
       MailFromAttributes: {
         BehaviorOnMxFailure: "REJECT_MESSAGE",
         MailFromDomain: "mail.brimax.life"
-      }
+      },
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
     });
     template.hasResourceProperties("AWS::SES::ConfigurationSet", {
       Name: "brimax-dev-transactional",
@@ -102,7 +118,11 @@ describe("AppStack", () => {
       },
       DeliveryOptions: {
         TlsPolicy: "REQUIRE"
-      }
+      },
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
     });
     template.hasResourceProperties("AWS::SES::ConfigurationSetEventDestination", {
       EventDestination: {
@@ -131,12 +151,45 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
-      Runtime: "nodejs20.x"
+      Runtime: "nodejs20.x",
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 512,
-      Runtime: "nodejs20.x"
+      Runtime: "nodejs20.x",
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::Logs::LogGroup", {
+      LogGroupName: Match.stringLikeRegexp("^/aws/lambda/"),
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::SQS::Queue", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::SecretsManager::Secret", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
