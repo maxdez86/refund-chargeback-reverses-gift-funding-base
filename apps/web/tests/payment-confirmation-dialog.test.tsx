@@ -59,6 +59,7 @@ describe("PaymentConfirmationDialog", () => {
       return 1;
     });
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.scrollTo = vi.fn();
   });
 
   it("shows pending first for success redirects and flips to success after confirmation", async () => {
@@ -365,7 +366,7 @@ describe("PaymentConfirmationDialog", () => {
       expect(window.location.search).toBe("");
       expect(window.location.hash).toBe("#presentes");
     });
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: giftsQueryKey });
   });
 });

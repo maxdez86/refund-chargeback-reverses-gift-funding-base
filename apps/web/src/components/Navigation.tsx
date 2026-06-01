@@ -1,6 +1,7 @@
 import React from "react";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 const navLinks = [
   { href: "#historia", label: "Nossa História" },
@@ -26,16 +27,7 @@ export function Navigation() {
 
   const scrollToHref = (href: string) => {
     setMobileMenuOpen(false);
-    const element = document.querySelector(href);
-    if (!element) return;
-    const offset = 80;
-    const elementPosition = element.getBoundingClientRect().top;
-    const offsetPosition = elementPosition + window.pageYOffset - offset;
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: "smooth"
-    });
-    window.history.replaceState(null, "", href);
+    scrollToAnchor(href, { updateHash: href });
   };
 
   const scrollTo = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {

@@ -20,14 +20,15 @@ import { RSVP } from "@/components/sections/RSVP";
 import { GuestMessages } from "@/components/sections/GuestMessages";
 import { FAQ } from "@/components/sections/FAQ";
 import { Footer } from "@/components/sections/Footer";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 const queryClient = new QueryClient();
 
-// Mirrors the in-app "Confirmar Presença" button: calls scrollIntoView with the
-// same options after the page has settled, so direct visits to /#confirmar-presenca
-// land identically to a button click on mobile. The captured hash comes from the
-// head-script in index.html, which strips it pre-load to suppress the browser's
-// premature native anchor jump.
+// Mirrors the in-app "Confirmar Presença" button: scrolls to the captured hash
+// (via scrollToAnchor) once the page has settled, so direct visits to
+// /#confirmar-presenca land identically to a button click. The captured hash
+// comes from the head-script in index.html, which strips it pre-load to suppress
+// the browser's premature native anchor jump.
 function useInitialHashScroll() {
   useEffect(() => {
     const w = window as Window & { __brimaxInitialHash?: string };
@@ -35,6 +36,7 @@ function useInitialHashScroll() {
     if (!hash || hash === "#") return;
 
     let cancelled = false;
+    let cancelScroll: (() => void) | null = null;
     delete w.__brimaxInitialHash;
 
     window.history.replaceState(
@@ -63,39 +65,18 @@ function useInitialHashScroll() {
       await new Promise(requestAnimationFrame);
       if (cancelled) return;
 
-      // Non-anchor hashes (e.g. "#paymentId=...&paymentStatus=success") aren't
-      // valid CSS selectors; skip silently rather than crashing.
-      let el: Element | null = null;
-      try {
-        el = document.querySelector(hash);
-      } catch {
-        return;
-      }
-      if (!el) return;
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      const initialTop = el.getBoundingClientRect().top;
-
-      // 800ms safety retry catches late layout shifts (e.g. lazy-loaded images
-      // above the fold) that move the target after we scrolled.
-      window.setTimeout(() => {
-        if (cancelled) return;
-        let target: Element | null = null;
-        try {
-          target = document.querySelector(hash);
-        } catch {
-          return;
-        }
-        if (!target) return;
-        const nowTop = target.getBoundingClientRect().top;
-        if (Math.abs(nowTop - initialTop) > 4) {
-          target.scrollIntoView({ behavior: "auto", block: "start" });
-        }
-      }, 800);
+      // scrollToAnchor settles the landing position over ~3s, re-correcting for
+      // any layout shift above the target (e.g. lazy-loaded images) that would
+      // otherwise leave a cold/incognito first visit parked short. Non-anchor
+      // hashes (e.g. "#paymentId=...&paymentStatus=success") resolve to a no-op
+      // inside the helper rather than crashing.
+      cancelScroll = scrollToAnchor(hash, { settleMs: 3000 });
     };
 
     void run();
     return () => {
       cancelled = true;
+      cancelScroll?.();
     };
   }, []);
 }

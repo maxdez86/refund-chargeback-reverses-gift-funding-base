@@ -1,3 +1,5 @@
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
+
 type ReturnToPresentesOptions = {
   clearPaymentParams?: boolean;
 };
@@ -24,17 +26,8 @@ export function returnToPresentes(options: ReturnToPresentesOptions = {}) {
   url.hash = "presentes";
   window.history.replaceState({}, "", `${url.pathname}${url.search}${PRESENTES_HASH}`);
 
-  const scroll = () => {
-    const section = document.getElementById("presentes");
-    if (section) {
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  };
-
-  if (typeof window.requestAnimationFrame === "function") {
-    window.requestAnimationFrame(scroll);
-    return;
-  }
-
-  window.setTimeout(scroll, 0);
+  // scrollToAnchor issues an immediate scroll and then re-corrects over its
+  // settle window, subsuming the single requestAnimationFrame defer this used
+  // to need to wait for layout.
+  scrollToAnchor(PRESENTES_HASH);
 }

@@ -18,6 +18,7 @@ import {
   type GuestMessagesPage,
   listGuestMessages,
 } from "@/lib/guest-messages-api";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +32,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
-const NAVIGATION_OFFSET = 80;
 const MESSAGE_MAX_LENGTH = 320;
 const MESSAGE_PREVIEW_MAX_HEIGHT_PX = 344;
 const CARD_HEIGHT_CLASS = "h-[28rem] md:h-[29rem]";
@@ -296,10 +296,7 @@ export function GuestMessages() {
   const messages = messagesQuery.data?.pages.flatMap((page) => page.messages) ?? [];
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#faq");
-    if (!el) return;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - NAVIGATION_OFFSET;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#faq");
   }, []);
 
   const onSelect = useCallback(() => {

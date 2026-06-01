@@ -9,16 +9,25 @@ const faqs = [
     question: "Qual o dress code?",
     answer: (
       <>
-        Esporte fino / Passeio completo. Queremos que você se sinta elegante e confortável para aproveitar a festa. Evite as cores branco, off-white e tons de vermelho (reservados para as madrinhas).{" "}
+        O traje é{" "}
+        <a
+          href="https://photos.app.goo.gl/TrnHRfRkxJk1DmJm9"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
+        >
+          Esporte fino / Passeio completo
+        </a>
+        . Queremos que você se sinta elegante e confortável para aproveitar a festa. Evite as cores branco, off-white e tons de vermelho. {" "}
         <a
           href="https://photos.app.goo.gl/GwwmS9diZCcBzQ1u8"
           target="_blank"
           rel="noopener noreferrer"
           className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
         >
-          Veja aqui
+          Veja a paleta reservada para as madrinhas
         </a>
-        {" "}a paleta que escolhemos para os padrinhos para ter uma ideia das cores que combinam com a celebração.
+        .
       </>
     )
   },

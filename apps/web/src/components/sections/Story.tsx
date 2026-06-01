@@ -9,6 +9,7 @@ import {
   buildSharedWidthImageSources,
   mediaFileUrl,
 } from "@/lib/media";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 type Media =
   | { kind: "image"; slug: string; alt: string }
@@ -185,11 +186,7 @@ export function Story() {
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#review");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#review");
   }, []);
 
   const onSelect = useCallback(() => {

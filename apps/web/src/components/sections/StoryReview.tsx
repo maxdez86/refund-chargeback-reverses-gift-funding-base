@@ -7,16 +7,13 @@ import {
   buildSharedWidthImageFallbackSrc,
   buildSharedWidthImageSources,
 } from "@/lib/media";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 const REVIEW_IMAGE_SIZES = "(max-width: 767px) 90vw, (max-width: 1279px) 70vw, 720px";
 
 export function StoryReview() {
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#pre-wedding");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#pre-wedding");
   }, []);
 
   return (
@@ -34,6 +31,8 @@ export function StoryReview() {
             sources={buildSharedWidthImageSources("story", "book-review", REVIEW_IMAGE_SIZES)}
             fallbackSrc={buildSharedWidthImageFallbackSrc("story", "book-review")}
             alt="Review da nossa história — 5 estrelas: slow burn, age gap, proximidade forçada e um amor proibido por diferença de idade."
+            width={1080}
+            height={1267}
             className="w-full h-auto object-contain"
             loading="lazy"
           />

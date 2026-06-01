@@ -48,6 +48,7 @@ import {
   writeStoredPendingPayment,
 } from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 type Gift = {
   id: string;
@@ -659,19 +660,11 @@ export function Presentes() {
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
   const scrollToPrev = useCallback(() => {
-    const el = document.querySelector("#fornecedores");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#fornecedores");
   }, []);
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#confirmar-presenca");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#confirmar-presenca");
   }, []);
 
   const onSelect = useCallback(() => {

@@ -5,6 +5,7 @@ import {
   buildDeviceImageFallbackSrc,
   buildDeviceImageSources,
 } from "@/lib/media";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 const heroCopy = {
   weekday: "Domingo",
@@ -17,11 +18,7 @@ const heroCopy = {
 
 function scrollToId(event: MouseEvent<HTMLAnchorElement>, id: string) {
   event.preventDefault();
-  const element = document.querySelector(id);
-  if (!element) return;
-
-  const top = element.getBoundingClientRect().top + window.pageYOffset - 80;
-  window.scrollTo({ top, behavior: "smooth" });
+  scrollToAnchor(id);
 }
 
 export function Hero() {

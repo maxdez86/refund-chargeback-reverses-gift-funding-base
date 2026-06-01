@@ -83,6 +83,7 @@ describe("official web app", () => {
       return 1;
     });
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.scrollTo = vi.fn();
   });
 
   it("renders the migrated brimax landing page sections", async () => {
@@ -169,7 +170,7 @@ describe("official web app", () => {
       expect(window.location.search).toBe("");
       expect(window.location.hash).toBe("#presentes");
     });
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenCalled();
   });
 
   it("renders funded gift state from the backend response", async () => {

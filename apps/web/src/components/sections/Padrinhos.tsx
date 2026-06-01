@@ -8,6 +8,7 @@ import {
   buildSharedWidthImageFallbackSrc,
   buildSharedWidthImageSources,
 } from "@/lib/media";
+import { scrollToAnchor } from "@/lib/scroll-to-anchor";
 
 type Person = {
   id: string;
@@ -53,19 +54,11 @@ export function Padrinhos() {
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
   const scrollToNext = useCallback(() => {
-    const el = document.querySelector("#fornecedores");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#fornecedores");
   }, []);
 
   const scrollToPrev = useCallback(() => {
-    const el = document.querySelector("#local");
-    if (!el) return;
-    const offset = 80;
-    const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    scrollToAnchor("#local");
   }, []);
 
   const onSelect = useCallback(() => {
