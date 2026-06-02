@@ -32,8 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
-const MESSAGE_MAX_LENGTH = 320;
-const MESSAGE_PREVIEW_MAX_HEIGHT_PX = 344;
+const MESSAGE_MAX_LENGTH = 1000;
 const CARD_HEIGHT_CLASS = "h-[28rem] md:h-[29rem]";
 
 type FormState = {
@@ -84,8 +83,6 @@ function ComposeCard({
   onSubmit: (e: React.FormEvent) => void;
   turnstileRef: RefObject<TurnstileHandle | null>;
 }) {
-  const remainingCharacters = MESSAGE_MAX_LENGTH - form.message.length;
-
   return (
     <motion.article
       className={cardWidthClassName()}
@@ -123,7 +120,7 @@ function ComposeCard({
                 Sua mensagem
               </label>
               <span className="text-xs text-muted-foreground">
-                {remainingCharacters}
+                {form.message.length}/{MESSAGE_MAX_LENGTH}
               </span>
             </div>
             <Textarea
@@ -180,10 +177,11 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
   useEffect(() => {
     const element = contentRef.current;
     if (!element) return;
-
-    const nextHasOverflow =
-      element.scrollHeight > element.clientHeight || message.message.length > 200;
-    setHasOverflow(nextHasOverflow);
+    const check = () => setHasOverflow(element.scrollHeight > element.clientHeight + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [message.message]);
 
   return (
@@ -205,11 +203,10 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
             <p className="font-serif text-[1.45rem] text-foreground">{message.authorName}</p>
           </div>
 
-          <div className="relative flex-1">
+          <div className="relative flex-1 overflow-hidden">
             <p
               ref={contentRef}
-              className="whitespace-pre-line text-sm leading-6 text-muted-foreground"
-              style={{ maxHeight: `${MESSAGE_PREVIEW_MAX_HEIGHT_PX}px`, overflow: "hidden" }}
+              className="h-full overflow-hidden whitespace-pre-line text-sm leading-6 text-muted-foreground"
             >
               {message.message}
             </p>

@@ -3,13 +3,13 @@ import { z } from "zod";
 export const GuestMessageSchema = z.object({
   messageId: z.string().min(1),
   authorName: z.string().min(2).max(60),
-  message: z.string().min(1).max(320),
+  message: z.string().min(1).max(1000),
   createdAt: z.string().datetime()
 });
 
 export const CreateGuestMessageRequestSchema = z.object({
   authorName: z.string().trim().min(2).max(60),
-  message: z.string().trim().min(1).max(320)
+  message: z.string().trim().min(1).max(1000)
 });
 
 export const CreateGuestMessageResponseSchema = z.object({
