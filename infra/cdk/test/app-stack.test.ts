@@ -233,6 +233,11 @@ describe("AppStack", () => {
         ])
       }
     });
+
+    for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
+      expect(resource.Properties).not.toHaveProperty("FunctionName");
+    }
+
     template.hasOutput("AsaasWebhookUrl", {});
     template.hasOutput("ApiCustomDomainName", {});
     template.hasOutput("ApiCustomDomainUrl", {});

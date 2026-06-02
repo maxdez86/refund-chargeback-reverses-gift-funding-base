@@ -512,7 +512,6 @@ export class AppStack extends cdk.Stack {
     const logGroup = this.createFunctionLogGroup(`${id}LogGroup`, functionName);
     const fn = new nodejs.NodejsFunction(this, id, {
       ...props,
-      functionName,
       logGroup,
       tracing: props.environment?.XRAY_ENABLED === "true" ? lambda.Tracing.ACTIVE : lambda.Tracing.DISABLED
     });
