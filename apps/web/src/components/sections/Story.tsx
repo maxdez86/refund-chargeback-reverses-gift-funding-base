@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
@@ -105,6 +105,34 @@ function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
   );
 }
 
+function StoryVideo({ src, title }: { src: string; title: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    // Start muted; the guest can unmute via the native control bar. React's
+    // declarative `muted` is unreliable on WebKit (see Local.tsx), so enforce
+    // it imperatively before play to avoid an unmuted blip after the click.
+    video.muted = true;
+    video.defaultMuted = true;
+    Promise.resolve(video.play()).catch(() => {});
+  }, []);
+
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      title={title}
+      className="absolute inset-0 h-full w-full object-cover bg-black"
+      controls
+      muted
+      playsInline
+      preload="metadata"
+    />
+  );
+}
+
 function MediaCard({
   chapter,
   index,
@@ -137,15 +165,7 @@ function MediaCard({
             loading="lazy"
           />
         ) : playing ? (
-          <video
-            src={mediaFileUrl("story", media.file)}
-            title={chapter.title}
-            className="absolute inset-0 h-full w-full object-cover bg-black"
-            controls
-            autoPlay
-            playsInline
-            preload="metadata"
-          />
+          <StoryVideo src={mediaFileUrl("story", media.file)} title={chapter.title} />
         ) : (
           <button
             type="button"
