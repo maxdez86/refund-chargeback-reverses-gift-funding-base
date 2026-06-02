@@ -19,7 +19,7 @@ describe("EdgeStack", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs("AWS::S3::Bucket", 2);
+    template.resourceCountIs("AWS::S3::Bucket", 3);
     template.resourceCountIs("AWS::CloudFront::Distribution", 1);
     template.hasResourceProperties("AWS::S3::Bucket", {
       Tags: Match.arrayWith([
@@ -28,6 +28,12 @@ describe("EdgeStack", () => {
       ])
     });
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        Logging: Match.objectLike({
+          Bucket: Match.anyValue()
+        }),
+        PriceClass: "PriceClass_All"
+      }),
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },
         { Key: "stage", Value: "dev" }

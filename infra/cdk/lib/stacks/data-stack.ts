@@ -24,7 +24,14 @@ export class DataStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING
       },
       tableName: resourceName("brimax-wedding", props.stage),
-      timeToLiveAttribute: "ttl"
+      timeToLiveAttribute: "ttl",
+      // Always-on PITR (cheap, never blocks a delete) protects the system of
+      // record — payments, RSVPs, gifts, guest messages. Deletion protection
+      // and RETAIN are prod-only so non-prod stays freely tearable pre-launch.
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      deletionProtection: props.stage === "prod",
+      removalPolicy:
+        props.stage === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY
     });
 
     this.table.addGlobalSecondaryIndex({

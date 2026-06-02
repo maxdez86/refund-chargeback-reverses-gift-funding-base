@@ -73,6 +73,13 @@ describe("ObservabilityStack", () => {
     template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
       DashboardName: "brimax-observability"
     });
+    const dashboards = template.findResources("AWS::CloudWatch::Dashboard");
+    const dashboardBody = JSON.stringify(Object.values(dashboards)[0]?.Properties?.DashboardBody);
+
+    expect(dashboardBody).toContain("https://console.aws.amazon.com/xray/home?region=");
+    expect(dashboardBody).toContain("#/service-map");
+    expect(dashboardBody).not.toContain("cloudwatch/home");
+    expect(dashboardBody).not.toContain("#xray:traces/service-map");
     template.hasResourceProperties("AWS::SNS::Topic", {
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },

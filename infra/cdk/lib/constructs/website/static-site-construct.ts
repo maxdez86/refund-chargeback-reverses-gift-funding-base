@@ -1,4 +1,4 @@
-import { Duration, Size } from "aws-cdk-lib";
+import { Duration, RemovalPolicy, Size } from "aws-cdk-lib";
 import path from "node:path";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
@@ -27,6 +27,19 @@ export class StaticSiteConstruct extends Construct {
     this.bucket = new s3.Bucket(this, "SiteBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true
+    });
+
+    // CloudFront standard (legacy) access logs. Legacy log delivery writes via
+    // ACL, so the bucket must keep ACLs enabled (BUCKET_OWNER_PREFERRED, not the
+    // default BUCKET_OWNER_ENFORCED). Logs expire after 90 days; prod retains the
+    // bucket on teardown, non-prod is disposable.
+    const logBucket = new s3.Bucket(this, "SiteLogBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+      lifecycleRules: [{ expiration: Duration.days(90) }],
+      removalPolicy: props.stage === "prod" ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      autoDeleteObjects: props.stage !== "prod"
     });
 
     const mediaPrefixStripFunction = props.mediaBucket
@@ -164,7 +177,14 @@ function handler(event) {
       domainNames:
         props.certificate && props.rootDomain && props.wwwDomain
           ? [props.rootDomain, props.wwwDomain]
-          : undefined
+          : undefined,
+      enableLogging: true,
+      logBucket,
+      logFilePrefix: "cloudfront/",
+      // Explicit: South America (São Paulo) edges exist only in PriceClass_All.
+      // The audience is in Brazil, so anything lower would add latency; at
+      // wedding-scale traffic the cost difference is negligible.
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL
     });
 
     new s3deploy.BucketDeployment(this, "DeployLandingPageAssets", {

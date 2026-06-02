@@ -57,6 +57,10 @@ export class AppStack extends cdk.Stack {
     // in-flight (≤30 min) RSVP proofs. Plain redeploys do NOT regenerate.
     const appSecret = new secretsmanager.Secret(this, "AppSecret", {
       secretName: `/${props.stage}/brimax/app-secrets`,
+      // Prod retains the secret (and any in-flight RSVP proofs) on stack teardown;
+      // non-prod is disposable. Symmetric with the WeddingTable.
+      removalPolicy:
+        props.stage === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       generateSecretString: {
         excludePunctuation: true,
         generateStringKey: "lookupProofSecret",
@@ -141,8 +145,46 @@ export class AppStack extends cdk.Stack {
       stage: this.httpApi.defaultStage
     });
 
+    const apiAccessLogGroup = new logs.LogGroup(this, "ApiAccessLogs", {
+      retention: logs.RetentionDays.ONE_YEAR,
+      removalPolicy:
+        props.stage === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY
+    });
+    // HTTP API (v2) access logging to CloudWatch is NOT auto-permissioned by CDK
+    // (unlike REST APIs, which use the account-level CloudWatch role). Grant the
+    // API Gateway service principal write access via a log-group resource policy.
+    // Verify on first deploy that events actually land; if not, swap the
+    // principal to delivery.logs.amazonaws.com.
+    new logs.CfnResourcePolicy(this, "ApiAccessLogsResourcePolicy", {
+      policyName: resourceName("brimax-api-access-logs", props.stage),
+      policyDocument: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: { Service: "apigateway.amazonaws.com" },
+            Action: ["logs:CreateLogStream", "logs:PutLogEvents"],
+            Resource: `${apiAccessLogGroup.logGroupArn}:*`
+          }
+        ]
+      })
+    });
+
     const defaultStage = this.httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
     if (defaultStage) {
+      defaultStage.accessLogSettings = {
+        destinationArn: apiAccessLogGroup.logGroupArn,
+        format: JSON.stringify({
+          requestId: "$context.requestId",
+          ip: "$context.identity.sourceIp",
+          method: "$context.httpMethod",
+          route: "$context.routeKey",
+          status: "$context.status",
+          protocol: "$context.protocol",
+          responseLength: "$context.responseLength",
+          integrationError: "$context.integrationErrorMessage"
+        })
+      };
       defaultStage.defaultRouteSettings = {
         throttlingBurstLimit: 20,
         throttlingRateLimit: 10
@@ -530,7 +572,7 @@ export class AppStack extends cdk.Stack {
   private createFunctionLogGroup(id: string, functionName: string): logs.LogGroup {
     return new logs.LogGroup(this, id, {
       logGroupName: `/aws/lambda/${functionName}`,
-      retention: logs.RetentionDays.INFINITE,
+      retention: logs.RetentionDays.ONE_YEAR,
       removalPolicy: cdk.RemovalPolicy.RETAIN
     });
   }

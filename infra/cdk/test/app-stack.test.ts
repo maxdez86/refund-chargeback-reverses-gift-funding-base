@@ -92,6 +92,10 @@ describe("AppStack", () => {
         })
       })
     });
+    // Non-prod secret is disposable for clean pre-launch teardown.
+    template.hasResource("AWS::SecretsManager::Secret", {
+      DeletionPolicy: "Delete"
+    });
     template.hasResourceProperties("AWS::SES::EmailIdentity", {
       EmailIdentity: "casamento@brimax.life"
     });
@@ -172,6 +176,7 @@ describe("AppStack", () => {
     });
     template.hasResourceProperties("AWS::Logs::LogGroup", {
       LogGroupName: Match.stringLikeRegexp("^/aws/lambda/"),
+      RetentionInDays: 365,
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },
         { Key: "stage", Value: "dev" }
@@ -190,6 +195,10 @@ describe("AppStack", () => {
       ])
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      AccessLogSettings: Match.objectLike({
+        DestinationArn: Match.anyValue(),
+        Format: Match.anyValue()
+      }),
       Tags: {
         project: "brimax-life",
         stage: "dev"

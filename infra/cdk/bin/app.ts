@@ -13,6 +13,11 @@ const app = new cdk.App();
 const stage = resolveStage(app.node.tryGetContext("stage") ?? process.env.STAGE);
 cdk.Tags.of(app).add("project", "brimax-life");
 cdk.Tags.of(app).add("stage", stage);
+// Region is hard-pinned: the CloudFront viewer cert (CertificateStack) MUST live
+// in us-east-1, and the regional API Gateway cert must match the API region.
+// Account stays portable via CDK_DEFAULT_ACCOUNT (set by the CDK CLI from the
+// active profile). Bootstrap must exist in us-east-1 for the target account.
+const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: "us-east-1" };
 const rootDomain = process.env.ROOT_DOMAIN ?? "brimax.life";
 const apiDomain = process.env.API_DOMAIN ?? `api.${rootDomain}`;
 const wwwDomain = `www.${rootDomain}`;
@@ -90,17 +95,20 @@ const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 const sentryDsn = rawSentryDsn ?? "";
 
 new PlatformStack(app, resourceName("BrimaxPlatformStack", stage), {
+  env,
   stage
 });
 
 const certificateStack = new CertificateStack(app, resourceName("BrimaxCertificateStack", stage), {
   apiDomain,
+  env,
   rootDomain,
   stage,
   wwwDomain
 });
 
 const dataStack = new DataStack(app, resourceName("BrimaxDataStack", stage), {
+  env,
   stage
 });
 
@@ -110,6 +118,7 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   asaasApiKey,
   asaasWebhookToken,
   contactEmail,
+  env,
   stage,
   sentryDsn,
   table: dataStack.table,
@@ -119,6 +128,7 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
 
 const edgeStack = new EdgeStack(app, resourceName("BrimaxEdgeStack", stage), {
   certificate: certificateStack.certificate,
+  env,
   rootDomain,
   siteAssetPath,
   stage,
@@ -129,6 +139,7 @@ new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
   alertEmail: rawObservabilityAlertEmail,
   alarmedFunctions: appStack.alarmedFunctions,
   createPaymentFunction: appStack.createPaymentFunction,
+  env,
   stage,
   distribution: edgeStack.distribution,
   httpApi: appStack.httpApi,

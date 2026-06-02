@@ -19,6 +19,9 @@ describe("DataStack", () => {
         AttributeName: "ttl",
         Enabled: true
       },
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true
+      },
       GlobalSecondaryIndexes: Match.arrayWith([
         Match.objectLike({
           IndexName: "gsi1"
@@ -30,10 +33,15 @@ describe("DataStack", () => {
       ])
     });
 
+    // Non-prod is disposable for clean pre-launch teardown.
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Delete"
+    });
+
     expect(template.toJSON()).toBeDefined();
   });
 
-  it("keeps production table names bare", () => {
+  it("keeps production table names bare and protects the table", () => {
     const app = new cdk.App();
     applyCostAllocationTags(app, "prod");
     const stack = new DataStack(app, "ProdDataStack", {
@@ -42,7 +50,15 @@ describe("DataStack", () => {
     const template = Template.fromStack(stack);
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
-      TableName: "brimax-wedding"
+      TableName: "brimax-wedding",
+      DeletionProtectionEnabled: true,
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true
+      }
+    });
+
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Retain"
     });
   });
 

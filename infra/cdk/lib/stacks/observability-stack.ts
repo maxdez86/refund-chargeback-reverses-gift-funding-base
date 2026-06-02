@@ -128,9 +128,7 @@ export class ObservabilityStack extends cdk.Stack {
       dashboardName: resourceName("brimax-observability", props.stage)
     });
 
-    const xrayTraceMapUrl =
-      `https://${this.region}.console.aws.amazon.com/cloudwatch/home` +
-      `?region=${this.region}#xray:traces/service-map`;
+    const xrayTraceMapUrl = `https://console.aws.amazon.com/xray/home?region=${this.region}#/service-map`;
 
     dashboard.addWidgets(
       new cloudwatch.TextWidget({

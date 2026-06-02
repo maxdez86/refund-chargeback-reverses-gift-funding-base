@@ -19,6 +19,7 @@ case "${ACTION}" in
     load_platform_backend_config
 
     tofu -chdir="${MODULE_DIR}" init \
+      -reconfigure \
       -backend-config="bucket=${TOFU_STATE_BUCKET}" \
       -backend-config="key=${TOFU_STATE_KEY_PREFIX}/${STAGE}/${MODULE_NAME}.tfstate" \
       -backend-config="region=${TOFU_STATE_REGION}" \
