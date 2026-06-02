@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import { getSecretValue } from "../services/secrets-manager/secret-cache";
+import { getAppSecret } from "../services/secrets-manager/app-secrets";
 import { getEnv } from "./env";
 import { AppError } from "./errors";
 
@@ -14,30 +14,17 @@ type SiteverifyResponse = {
   action?: string;
 };
 
-function parseSecretString(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(value) as { secretKey?: string; value?: string };
-    return parsed.secretKey ?? parsed.value ?? value;
-  } catch {
-    return value;
-  }
-}
-
 /**
  * Verifies a Cloudflare Turnstile token attached to the incoming request.
  *
- * - In environments where TURNSTILE_SECRET_ARN is unset (local dev, unit
- *   tests), this is a no-op so callers don't need to mock Cloudflare.
+ * - In environments where APP_SECRET_ARN is unset (local dev, unit tests),
+ *   this is a no-op so callers don't need to mock Cloudflare.
  * - When configured, the token MUST be present and validate, or the call
  *   throws AppError(403). Tokens are single-use; callers are expected to
  *   request a fresh one for each protected action.
  */
 export async function verifyTurnstile(event: APIGatewayProxyEventV2) {
-  const secretArn = getEnv().turnstileSecretArn;
+  const secretArn = getEnv().appSecretArn;
 
   if (!secretArn) {
     return;
@@ -49,7 +36,7 @@ export async function verifyTurnstile(event: APIGatewayProxyEventV2) {
     throw new AppError("Verificação anti-bot ausente.", 403);
   }
 
-  const secret = parseSecretString(await getSecretValue(secretArn));
+  const secret = await getAppSecret("turnstileSecretKey");
 
   if (!secret) {
     throw new AppError("Verificação anti-bot indisponível.", 500);

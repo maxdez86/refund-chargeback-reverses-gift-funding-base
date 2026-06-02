@@ -12,7 +12,10 @@ describe("AsaasClient checkout timing", () => {
   it("logs checkout timing with a cache miss when the secret comes from Secrets Manager", async () => {
     const secretSpy = vi
       .spyOn(secretCache, "getSecretValueWithMetadata")
-      .mockResolvedValue({ cacheHit: false, value: "secret-token" });
+      .mockResolvedValue({
+        cacheHit: false,
+        value: JSON.stringify({ asaasApiKey: "secret-token" })
+      });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ id: "checkout-123" }), {
         status: 200,
@@ -48,7 +51,7 @@ describe("AsaasClient checkout timing", () => {
   it("logs checkout timing with a cache hit when the secret is already cached", async () => {
     vi.spyOn(secretCache, "getSecretValueWithMetadata").mockResolvedValue({
       cacheHit: true,
-      value: "secret-token"
+      value: JSON.stringify({ asaasApiKey: "secret-token" })
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ id: "checkout-456" }), {

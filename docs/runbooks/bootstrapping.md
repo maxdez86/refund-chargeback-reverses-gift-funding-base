@@ -26,6 +26,27 @@ This bootstrap also establishes the baseline edge hardening through IaC:
 5. Create a local `.env` file from `.env.example`.
 6. Ensure `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `TURNSTILE_SECRET_KEY`, `SENTRY_AUTH_TOKEN`, and `OBSERVABILITY_ALERT_EMAIL` are already set in `.env` before the backend deploy step. (`TURNSTILE_SECRET_KEY` is only required when `STAGE=prod`; dev falls back to Cloudflare's always-passes test secret.)
 
+## CDK Bootstrap Upgrade / Remediation
+
+`pnpm cdk:bootstrap` is not only for first-time setup. It is also the required remediation when the AWS account bootstrap stack is older than the CDK version this repo now needs.
+
+Known current environment context:
+- account: `183286346090`
+- region: `us-east-1`
+- last observed bootstrap version before remediation: `25`
+
+If you see either of these failure signatures during deploy:
+- `Bootstrap toolkit stack version 30 or later is needed; current version: 25`
+- missing `cloudformation:DescribeEvents` on the CDK deploy role
+
+rerun:
+
+```bash
+pnpm cdk:bootstrap
+```
+
+This updates the existing `CDKToolkit` stack in `us-east-1`. It is safer and more correct than trying to patch the bootstrap IAM roles manually.
+
 ## Sentry Bootstrap
 
 Sentry account and organization creation happen outside this repo. Once the `brimax` Sentry organization exists, the rest of the initial backend setup is IaC-managed from `infra/opentofu/sentry`.

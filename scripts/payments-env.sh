@@ -75,22 +75,11 @@ secret_string() {
     --output text
 }
 
-parse_secret_value() {
-  local raw_value="$1"
+app_secret_key() {
+  local bucket_json="$1"
+  local key="$2"
 
-  if [[ "${raw_value}" =~ ^\{ ]]; then
-    local parsed
-    parsed="$(
-      printf '%s' "${raw_value}" | jq -r '.value // .token // .apiKey // empty'
-    )"
-
-    if [[ -n "${parsed}" && "${parsed}" != "null" ]]; then
-      printf '%s\n' "${parsed}"
-      return 0
-    fi
-  fi
-
-  printf '%s\n' "${raw_value}"
+  printf '%s' "${bucket_json}" | jq -r --arg k "${key}" '.[$k] // empty'
 }
 
 load_payments_stack_outputs() {
@@ -103,8 +92,7 @@ load_payments_stack_outputs() {
   export PAYMENTS_WEBHOOK_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasWebhookUrl")"
   export PAYMENTS_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
   export PAYMENTS_WEBHOOK_QUEUE_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WebhookQueueUrl")"
-  export PAYMENTS_ASAAS_API_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasApiSecretArn")"
-  export PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasWebhookSecretArn")"
+  export PAYMENTS_APP_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AppSecretArn")"
 }
 
 load_payments_webhook_token() {
@@ -115,26 +103,25 @@ load_payments_webhook_token() {
     return 0
   fi
 
-  if [[ -z "${PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN:-}" ]]; then
+  if [[ -z "${PAYMENTS_APP_SECRET_ARN:-}" ]]; then
     load_payments_stack_outputs
   fi
 
   export ASAAS_WEBHOOK_TOKEN="$(
-    parse_secret_value "$(secret_string "${PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN}")"
+    app_secret_key "$(secret_string "${PAYMENTS_APP_SECRET_ARN}")" "asaasWebhookToken"
   )"
 
   require_env ASAAS_WEBHOOK_TOKEN
 }
 
 verify_payments_secret_contract() {
-  require_env PAYMENTS_ASAAS_API_SECRET_ARN PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN
+  require_env PAYMENTS_APP_SECRET_ARN
   require_command jq >/dev/null
 
-  local api_secret_raw webhook_secret_raw api_secret_value webhook_secret_value
-  api_secret_raw="$(secret_string "${PAYMENTS_ASAAS_API_SECRET_ARN}")"
-  webhook_secret_raw="$(secret_string "${PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN}")"
-  api_secret_value="$(parse_secret_value "${api_secret_raw}")"
-  webhook_secret_value="$(parse_secret_value "${webhook_secret_raw}")"
+  local bucket_raw api_secret_value webhook_secret_value
+  bucket_raw="$(secret_string "${PAYMENTS_APP_SECRET_ARN}")"
+  api_secret_value="$(app_secret_key "${bucket_raw}" "asaasApiKey")"
+  webhook_secret_value="$(app_secret_key "${bucket_raw}" "asaasWebhookToken")"
 
   if [[ -z "${api_secret_value}" || -z "${webhook_secret_value}" ]]; then
     printf 'Resolved payment secrets are empty.\n' >&2
@@ -178,6 +165,5 @@ require_payments_test_env() {
     PAYMENTS_WEBHOOK_URL \
     PAYMENTS_TABLE_NAME \
     PAYMENTS_WEBHOOK_QUEUE_URL \
-    PAYMENTS_ASAAS_API_SECRET_ARN \
-    PAYMENTS_ASAAS_WEBHOOK_SECRET_ARN
+    PAYMENTS_APP_SECRET_ARN
 }

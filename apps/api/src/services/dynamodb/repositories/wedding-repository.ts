@@ -28,6 +28,7 @@ import { GSI1_NAME, TABLE_PRIMARY_KEY, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import { deriveRsvpCounts, toAdminExportRows, toGuestProfile, toHouseholdInvitation } from "../mappers";
+import { createTracedAwsClient } from "../../../lib/xray";
 
 type ItemRecord = Record<string, unknown>;
 type GuestMessageFeedItem = ItemRecord & {
@@ -46,10 +47,22 @@ type GuestMessageLookupItem = ItemRecord & {
 };
 
 export class WeddingRepository {
+  private readonly documentClient: DynamoDBDocumentClient;
+  private readonly tableName: string;
+
   constructor(
-    private readonly documentClient: DynamoDBDocumentClient = dynamoDbDocumentClient,
-    private readonly tableName = getEnv().weddingTableName
-  ) {}
+    documentClient: DynamoDBDocumentClient = dynamoDbDocumentClient,
+    tableName = getEnv().weddingTableName
+  ) {
+    this.documentClient = createTracedAwsClient(documentClient, {
+      annotations: {
+        repository: "wedding_repository",
+        table_role: "wedding"
+      },
+      subsegmentPrefix: "wedding_repository"
+    });
+    this.tableName = tableName;
+  }
 
   async getInvitationByCode(invitationCode: string): Promise<HouseholdInvitation | null> {
     const result = await this.documentClient.send(

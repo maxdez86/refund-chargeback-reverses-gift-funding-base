@@ -1,15 +1,12 @@
 type Env = {
   asaasApiBaseUrl: string;
   asaasCheckoutBaseUrl: string;
-  asaasApiSecretArn: string;
-  asaasWebhookSecretArn: string;
+  appSecretArn: string;
   contactEmail: string;
   emailFrom: string;
   emailConfigurationSetName?: string;
   hostedCheckoutSuccessUrl: string;
-  lookupProofSecretArn: string;
   rsvpNotificationTo: string;
-  turnstileSecretArn: string;
   webhookQueueUrl: string;
   weddingTableName: string;
 };
@@ -37,15 +34,12 @@ export function getEnv(): Env {
     asaasApiBaseUrl: process.env.ASAAS_API_BASE_URL ?? "https://api-sandbox.asaas.com/v3",
     asaasCheckoutBaseUrl:
       process.env.ASAAS_CHECKOUT_BASE_URL ?? "https://www.asaas.com/checkoutSession/show",
-    asaasApiSecretArn: process.env.ASAAS_API_SECRET_ARN ?? "",
-    asaasWebhookSecretArn: process.env.ASAAS_WEBHOOK_SECRET_ARN ?? "",
+    appSecretArn: process.env.APP_SECRET_ARN ?? "",
     contactEmail,
     emailFrom: process.env.EMAIL_FROM ?? contactEmail,
     emailConfigurationSetName: process.env.EMAIL_CONFIGURATION_SET_NAME?.trim() || undefined,
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL ?? "https://brimax.life",
-    lookupProofSecretArn: process.env.LOOKUP_PROOF_SECRET_ARN ?? "",
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
-    turnstileSecretArn: process.env.TURNSTILE_SECRET_ARN ?? "",
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",
     weddingTableName: required("WEDDING_TABLE_NAME")
   };

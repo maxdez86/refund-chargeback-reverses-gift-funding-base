@@ -48,6 +48,7 @@ Rebuilds and deploys the landing page edge stack.
 - `.env` must be present and contain the correct production values.
 - `.env` must include a previously bootstrapped `SENTRY_AUTH_TOKEN` if you need to rerun the Sentry OpenTofu module.
 - `.env` must include `OBSERVABILITY_ALERT_EMAIL` for production backend deploys.
+- `.env` may include `XRAY_ENABLED=true` to keep backend X-Ray tracing on. Production defaults to enabled if omitted.
 - Dependencies must already be installed locally.
 
 Notes:
@@ -56,6 +57,7 @@ Notes:
 - Use `STAGE=dev` or `--context stage=dev` only when you intentionally want prefixed development resources.
 - For future `dev` Sentry rollout, first apply `infra/opentofu/sentry` with `STAGE=dev`, then deploy the dev backend so it picks up the dev DSN.
 - Keep production resources on retain policies unless there is a deliberate teardown plan.
+- CDK deploy scripts now use dedicated output directories under `infra/cdk` instead of the shared default `cdk.out` to reduce cross-command collisions.
 
 ## Recommended Validation
 
@@ -163,6 +165,68 @@ Run this after a production backend deploy:
 Operational defaults for Sentry:
 - saved issue view: unresolved prod issues (`environment:prod is:unresolved`)
 - saved log view: prod backend logs (`project:brimax-api-prod environment:prod`)
+
+## CDK Deploy Failures
+
+If backend deploy fails before or during CloudFormation, check these two cases first:
+
+1. **CDK bootstrap too old**
+   - Failure signature:
+     - `Bootstrap toolkit stack version 30 or later is needed; current version: 25`
+     - missing `cloudformation:DescribeEvents` on the CDK deploy role
+   - Fix:
+
+     ```bash
+     pnpm cdk:bootstrap
+     ```
+
+   - This upgrades the existing `CDKToolkit` stack in account `183286346090`, region `us-east-1`. It is a normal remediation step when CDK version requirements rise.
+   - After bootstrap finishes, rerun:
+
+     ```bash
+     pnpm deploy:backend
+     ```
+
+2. **Another CDK CLI is already using an output directory**
+   - Failure signature:
+     - `Another CLI ... is currently synthing to cdk.out`
+   - Fix:
+     - wait for the other CDK command to finish
+     - avoid running multiple deploy/synth commands for the same workflow at the same time
+     - if a previous process crashed, confirm there is no active CDK process before reusing or removing the output directory
+   - Current script output directories:
+     - backend: `infra/cdk/cdk.out.backend`
+     - platform: `infra/cdk/cdk.out.platform`
+     - certificate: `infra/cdk/cdk.out.certificate`
+     - edge: `infra/cdk/cdk.out.edge`
+
+## X-Ray Smoke Test
+
+Run this after a production backend deploy when you want to validate event-chain tracing:
+
+1. Trigger a payment read flow:
+
+   ```bash
+   curl -i https://api.brimax.life/payments/not-found
+   ```
+
+2. Trigger an email flow:
+
+   ```bash
+   curl -i -X POST https://api.brimax.life/guest-messages \
+     -H 'content-type: application/json' \
+     -d '{"authorName":"Observability Check","message":"Smoke test message"}'
+   ```
+
+3. Trigger or replay a webhook flow through the normal Asaas webhook path.
+
+4. In the AWS console, open `CloudWatch -> X-Ray traces` for `us-east-1` and confirm sampled traces show:
+   - Lambda segments for the invoked backend handlers
+   - DynamoDB repository subsegments on payment and wedding table flows
+   - SES send subsegments on email flows
+   - SQS handoff plus linked consumer Lambda on the webhook async flow
+
+5. Expect one limitation: the public API uses API Gateway HTTP API, so X-Ray starts at Lambda. The API Gateway edge itself does not appear as a REST-style X-Ray node.
 
 ## First-Time Setup
 

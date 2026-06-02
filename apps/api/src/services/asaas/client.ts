@@ -1,6 +1,6 @@
 import { getEnv } from "../../lib/env";
 import { AppError } from "../../lib/errors";
-import { getSecretValueWithMetadata } from "../secrets-manager/secret-cache";
+import { getAppSecretWithMetadata } from "../secrets-manager/app-secrets";
 
 type AsaasCustomer = {
   id: string;
@@ -71,19 +71,6 @@ type CreateCheckoutInput = {
   minutesToExpire: number;
 };
 
-function parseSecretString(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(value) as { value?: string; token?: string; apiKey?: string };
-    return parsed.value ?? parsed.token ?? parsed.apiKey ?? value;
-  } catch {
-    return value;
-  }
-}
-
 function extractAsaasErrorMessage(parsed: Record<string, unknown>, responseStatus: number) {
   const errors = Array.isArray(parsed.errors) ? (parsed.errors as AsaasErrorItem[]) : [];
   const descriptions = errors
@@ -104,7 +91,6 @@ function extractAsaasErrorMessage(parsed: Record<string, unknown>, responseStatu
 export class AsaasClient {
   private readonly apiBaseUrl = getEnv().asaasApiBaseUrl;
   private readonly checkoutBaseUrl = getEnv().asaasCheckoutBaseUrl;
-  private readonly apiSecretArn = getEnv().asaasApiSecretArn;
 
   async findCustomerByCpf(cpfCnpj: string) {
     const response = await this.request<AsaasListResponse<AsaasCustomer>>({
@@ -180,8 +166,7 @@ export class AsaasClient {
 
   private async request<T>({ method = "GET", path, body, query }: RequestOptions): Promise<T> {
     const startedAt = Date.now();
-    const { cacheHit, value: secretValue } = await getSecretValueWithMetadata(this.apiSecretArn);
-    const apiKey = parseSecretString(secretValue);
+    const { cacheHit, value: apiKey } = await getAppSecretWithMetadata("asaasApiKey");
 
     if (!apiKey) {
       throw new AppError("Asaas API secret is empty.", 500);

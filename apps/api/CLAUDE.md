@@ -35,7 +35,7 @@ The Lambda handlers (each `src/functions/<name>/handler.ts`):
 
 - **HTTP responses always go through [src/lib/http.ts](src/lib/http.ts).** `jsonResponse(statusCode, body)` and `noContentResponse()` bake in CORS headers — never hand-roll an `APIGatewayProxyStructuredResultV2`.
 - **Errors.** Throw [`AppError`](src/lib/errors.ts) with a `statusCode`; the handler wrapper translates it to a response. Don't `try/catch` purely to log-and-return — let the wrapper handle it.
-- **Env vars.** Read via `getEnv()` in [src/lib/env.ts](src/lib/env.ts) (cached per cold start). Common keys: `WEDDING_TABLE_NAME`, `ASAAS_API_SECRET_ARN`, `ASAAS_WEBHOOK_TOKEN_ARN`.
+- **Env vars.** Read via `getEnv()` in [src/lib/env.ts](src/lib/env.ts) (cached per cold start). Common keys: `WEDDING_TABLE_NAME`, `APP_SECRET_ARN` (the one JSON bucket holding every credential — read individual keys via `getAppSecret(key)` in [src/services/secrets-manager/app-secrets.ts](src/services/secrets-manager/app-secrets.ts)).
 - **Domain vs services.** `domain/` is pure business logic — no `aws-sdk` imports. AWS calls live in `services/`. Handlers wire them together.
 - **DynamoDB.** Single-table design; key construction goes through [src/services/dynamodb/key-builder.ts](src/services/dynamodb/key-builder.ts), not ad-hoc string templates.
 - **Validation.** Parse incoming bodies/queries with the Zod schemas from `@brimax/contracts`.

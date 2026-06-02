@@ -1,4 +1,5 @@
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { captureAwsClient, withTracedSubsegment } from "../../lib/xray";
 
 type CachedSecret = {
   expiresAt: number;
@@ -10,7 +11,7 @@ type SecretValueResult = {
   value: string;
 };
 
-const client = new SecretsManagerClient({});
+const client = captureAwsClient(new SecretsManagerClient({}));
 const cache = new Map<string, CachedSecret>();
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
@@ -33,10 +34,17 @@ export async function getSecretValueWithMetadata(
     };
   }
 
-  const response = await client.send(
-    new GetSecretValueCommand({
-      SecretId: secretId
-    })
+  const response = await withTracedSubsegment(
+    "secrets.get_secret_value",
+    {
+      cache_hit: false
+    },
+    async () =>
+      client.send(
+        new GetSecretValueCommand({
+          SecretId: secretId
+        })
+      )
   );
 
   const value = response.SecretString ?? "";

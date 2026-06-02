@@ -26,7 +26,8 @@ describe("ObservabilityStack", () => {
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "prod",
       table: dataStack.table,
-      turnstileSecretKey: "0x4AAAA-test-secret"
+      turnstileSecretKey: "0x4AAAA-test-secret",
+      xrayEnabled: true
     });
     const edgeStack = new EdgeStack(app, "ObservabilityEdgeStack", {
       rootDomain: "brimax.life",

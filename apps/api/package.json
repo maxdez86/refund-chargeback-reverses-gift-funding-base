@@ -22,6 +22,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-lambda-powertools/tracer": "^2.26.1",
     "@aws-sdk/client-dynamodb": "^3.790.0",
     "@aws-sdk/client-secrets-manager": "^3.924.0",
     "@aws-sdk/client-sesv2": "^3.924.0",

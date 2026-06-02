@@ -4,11 +4,12 @@ import { getEnv } from "../../lib/env";
 import { jsonResponse, noContentResponse } from "../../lib/http";
 import { rawBodyHash, safeEqual } from "../../lib/security";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { annotateTrace, captureAwsClient, withTracedSubsegment } from "../../lib/xray";
 import { PaymentRepository } from "../../services/dynamodb/repositories/payment-repository";
-import { getSecretValue } from "../../services/secrets-manager/secret-cache";
+import { getAppSecret } from "../../services/secrets-manager/app-secrets";
 
 const repository = new PaymentRepository();
-const sqsClient = new SQSClient({});
+const sqsClient = captureAwsClient(new SQSClient({}));
 
 type AsaasWebhookPayload = {
   event?: string;
@@ -21,23 +22,13 @@ type AsaasWebhookPayload = {
   externalReference?: string;
 };
 
-function parseWebhookSecret(secretValue: string) {
-  try {
-    const parsed = JSON.parse(secretValue) as { value?: string; token?: string };
-    return parsed.value ?? parsed.token ?? secretValue;
-  } catch {
-    return secretValue;
-  }
-}
-
 async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
   if (event.requestContext.http.method === "OPTIONS") {
     return noContentResponse();
   }
 
   const tokenHeader = event.headers["asaas-access-token"] ?? event.headers["Asaas-Access-Token"];
-  const webhookSecretArn = getEnv().asaasWebhookSecretArn;
-  const webhookSecret = parseWebhookSecret(await getSecretValue(webhookSecretArn));
+  const webhookSecret = await getAppSecret("asaasWebhookToken");
 
   if (!tokenHeader || !safeEqual(tokenHeader, webhookSecret)) {
     console.error(JSON.stringify({ metric: "WEBHOOK_AUTH_FAILED" }));
@@ -67,12 +58,28 @@ async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
     externalReference: payload.payment?.externalReference ?? payload.externalReference
   });
 
+  annotateTrace({
+    asaas_payment_id: payload.payment?.id,
+    duplicate: !accepted,
+    entity_id: eventId,
+    flow: "webhook"
+  });
+
   if (accepted) {
-    await sqsClient.send(
-      new SendMessageCommand({
-        QueueUrl: getEnv().webhookQueueUrl,
-        MessageBody: JSON.stringify({ eventId })
-      })
+    await withTracedSubsegment(
+      "webhook.enqueue_event",
+      {
+        duplicate: false,
+        entity_id: eventId,
+        flow: "webhook"
+      },
+      async () =>
+        sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: getEnv().webhookQueueUrl,
+            MessageBody: JSON.stringify({ eventId })
+          })
+        )
     );
   } else {
     console.info(JSON.stringify({ metric: "WEBHOOK_DUPLICATE", eventId }));

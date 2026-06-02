@@ -128,7 +128,19 @@ export class ObservabilityStack extends cdk.Stack {
       dashboardName: resourceName("brimax-observability", props.stage)
     });
 
+    const xrayTraceMapUrl =
+      `https://${this.region}.console.aws.amazon.com/cloudwatch/home` +
+      `?region=${this.region}#xray:traces/service-map`;
+
     dashboard.addWidgets(
+      new cloudwatch.TextWidget({
+        markdown:
+          "## X-Ray Trace Map\n" +
+          "Open the interactive X-Ray trace map in the CloudWatch console for event-chain analysis.\n\n" +
+          `[Open X-Ray Trace Map](${xrayTraceMapUrl})`,
+        width: 24,
+        height: 4
+      }),
       new cloudwatch.GraphWidget({
         title: "Lambda Errors",
         left: props.alarmedFunctions.map((fn) =>

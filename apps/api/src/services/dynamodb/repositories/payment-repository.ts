@@ -13,6 +13,7 @@ import type { PaymentStatus, PaymentSummary } from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
+import { createTracedAwsClient } from "../../../lib/xray";
 import {
   giftStateKeys,
   giftMetadataKeys,
@@ -78,10 +79,22 @@ type IdempotencyReservation = {
 };
 
 export class PaymentRepository {
+  private readonly documentClient: DynamoDBDocumentClient;
+  private readonly tableName: string;
+
   constructor(
-    private readonly documentClient: DynamoDBDocumentClient = dynamoDbDocumentClient,
-    private readonly tableName = getEnv().weddingTableName
-  ) {}
+    documentClient: DynamoDBDocumentClient = dynamoDbDocumentClient,
+    tableName = getEnv().weddingTableName
+  ) {
+    this.documentClient = createTracedAwsClient(documentClient, {
+      annotations: {
+        repository: "payment_repository",
+        table_role: "payments"
+      },
+      subsegmentPrefix: "payment_repository"
+    });
+    this.tableName = tableName;
+  }
 
   async reserveCreatePayment(idempotencyKey: string, fingerprint: string, paymentId: string) {
     try {

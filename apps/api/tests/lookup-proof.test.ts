@@ -1,10 +1,10 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getSecretValueMock = vi.fn();
+const getSecretValueWithMetadataMock = vi.fn();
 
 vi.mock("../src/services/secrets-manager/secret-cache", () => ({
-  getSecretValue: (...args: unknown[]) => getSecretValueMock(...args)
+  getSecretValueWithMetadata: (...args: unknown[]) => getSecretValueWithMetadataMock(...args)
 }));
 
 function buildEvent(proof: string): APIGatewayProxyEventV2 {
@@ -17,11 +17,12 @@ describe("lookup proof", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useRealTimers();
-    process.env.LOOKUP_PROOF_SECRET_ARN = "arn:lookup-proof-test";
+    process.env.APP_SECRET_ARN = "arn:app-secret-test";
     process.env.WEDDING_TABLE_NAME = "test-wedding-table";
-    getSecretValueMock.mockReset().mockResolvedValue(
-      JSON.stringify({ secretKey: "lookup-secret-for-tests" })
-    );
+    getSecretValueWithMetadataMock.mockReset().mockResolvedValue({
+      cacheHit: false,
+      value: JSON.stringify({ lookupProofSecret: "lookup-secret-for-tests" })
+    });
   });
 
   it("issues a proof and verifies it for the same invitation code", async () => {

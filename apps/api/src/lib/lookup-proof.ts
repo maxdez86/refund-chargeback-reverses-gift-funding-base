@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { getEnv } from "./env";
 import { AppError } from "./errors";
-import { getSecretValue } from "../services/secrets-manager/secret-cache";
+import { getAppSecret } from "../services/secrets-manager/app-secrets";
 
 const LOOKUP_PROOF_TTL_MS = 30 * 60 * 1000;
 
@@ -19,26 +19,13 @@ function base64UrlDecode(value: string) {
   return Buffer.from(value, "base64url").toString("utf8");
 }
 
-function parseSecretString(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(value) as { secretKey?: string; value?: string };
-    return parsed.secretKey ?? parsed.value ?? value;
-  } catch {
-    return value;
-  }
-}
-
 async function getLookupProofSecret() {
-  const secretArn = getEnv().lookupProofSecretArn;
+  const secretArn = getEnv().appSecretArn;
   if (!secretArn) {
     throw new AppError("Verificação do convite indisponível.", 500);
   }
 
-  const secret = parseSecretString(await getSecretValue(secretArn));
+  const secret = await getAppSecret("lookupProofSecret");
   if (!secret) {
     throw new AppError("Verificação do convite indisponível.", 500);
   }

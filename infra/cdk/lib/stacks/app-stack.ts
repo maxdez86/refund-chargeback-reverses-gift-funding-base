@@ -25,6 +25,7 @@ export interface AppStackProps extends cdk.StackProps {
   stage: AppStage;
   table: dynamodb.ITable;
   turnstileSecretKey: string;
+  xrayEnabled: boolean;
 }
 
 export class AppStack extends cdk.Stack {
@@ -45,32 +46,27 @@ export class AppStack extends cdk.Stack {
     const senderMailFromDomain = `mail.${senderDomainIdentity}`;
     const senderMailFromMxValue = `10 feedback-smtp.${this.region}.amazonses.com`;
     const senderMailFromTxtValue = "v=spf1 include:amazonses.com ~all";
-    const asaasApiSecret = new secretsmanager.Secret(this, "AsaasApiSecret", {
-      secretName: `/${props.stage}/brimax/asaas/api-key`,
-      secretStringValue: cdk.SecretValue.unsafePlainText(
-        JSON.stringify({ apiKey: props.asaasApiKey })
-      )
-    });
-    const turnstileSecret = new secretsmanager.Secret(this, "TurnstileSecret", {
-      secretName: `/${props.stage}/brimax/turnstile/secret-key`,
-      secretStringValue: cdk.SecretValue.unsafePlainText(
-        JSON.stringify({ secretKey: props.turnstileSecretKey })
-      )
-    });
-    const lookupProofSecret = new secretsmanager.Secret(this, "LookupProofSecret", {
-      secretName: `/${props.stage}/brimax/rsvp/lookup-proof-secret`,
+    // One JSON "bucket" secret per stage holds every credential the API needs.
+    // The 3 vendor values are injected via secretStringTemplate; lookupProofSecret
+    // is auto-generated so it is never present in `.env`. Secrets Manager has no
+    // per-JSON-key IAM, so every reader granted below can read ALL four values
+    // (e.g. the internet-facing AsaasWebhook Lambda also holds the Asaas API key).
+    // This is a deliberate least-privilege reduction in exchange for one secret.
+    // Footgun: changing a vendor credential changes the template, which regenerates
+    // the whole value — including a fresh lookupProofSecret — invalidating any
+    // in-flight (≤30 min) RSVP proofs. Plain redeploys do NOT regenerate.
+    const appSecret = new secretsmanager.Secret(this, "AppSecret", {
+      secretName: `/${props.stage}/brimax/app-secrets`,
       generateSecretString: {
         excludePunctuation: true,
-        generateStringKey: "secretKey",
+        generateStringKey: "lookupProofSecret",
         passwordLength: 64,
-        secretStringTemplate: JSON.stringify({})
+        secretStringTemplate: JSON.stringify({
+          asaasApiKey: props.asaasApiKey,
+          asaasWebhookToken: props.asaasWebhookToken,
+          turnstileSecretKey: props.turnstileSecretKey
+        })
       }
-    });
-    const asaasWebhookSecret = new secretsmanager.Secret(this, "AsaasWebhookSecret", {
-      secretName: `/${props.stage}/brimax/asaas/webhook-token`,
-      secretStringValue: cdk.SecretValue.unsafePlainText(
-        JSON.stringify({ token: props.asaasWebhookToken })
-      )
     });
     const webhookDlq = new sqs.Queue(this, "WebhookDlq", {
       retentionPeriod: cdk.Duration.days(14)
@@ -185,12 +181,10 @@ export class AppStack extends cdk.Stack {
         props.stage === "prod"
           ? "https://www.asaas.com/checkoutSession/show"
           : "https://sandbox.asaas.com/checkoutSession/show",
-      ASAAS_API_SECRET_ARN: asaasApiSecret.secretArn,
-      ASAAS_WEBHOOK_SECRET_ARN: asaasWebhookSecret.secretArn,
-      LOOKUP_PROOF_SECRET_ARN: lookupProofSecret.secretArn,
+      APP_SECRET_ARN: appSecret.secretArn,
       SENTRY_DSN: props.sentryDsn,
       STAGE: props.stage,
-      TURNSTILE_SECRET_ARN: turnstileSecret.secretArn,
+      XRAY_ENABLED: String(props.xrayEnabled),
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
       EMAIL_CONFIGURATION_SET_NAME: emailConfigurationSet.configurationSetName,
@@ -322,13 +316,14 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(rsvpFn);
     webhookQueue.grantSendMessages(asaasWebhookFn);
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
-    asaasApiSecret.grantRead(createPaymentFn);
-    asaasApiSecret.grantRead(webhookProcessorFn);
-    asaasWebhookSecret.grantRead(asaasWebhookFn);
-    lookupProofSecret.grantRead(invitationGetFn);
-    lookupProofSecret.grantRead(rsvpFn);
-    turnstileSecret.grantRead(invitationGetFn);
-    turnstileSecret.grantRead(createGuestMessagesFn);
+    // grantRead is whole-secret only — each reader below can read every key in
+    // the bucket. Union of the former per-secret readers (6 functions).
+    appSecret.grantRead(createPaymentFn);
+    appSecret.grantRead(webhookProcessorFn);
+    appSecret.grantRead(asaasWebhookFn);
+    appSecret.grantRead(invitationGetFn);
+    appSecret.grantRead(rsvpFn);
+    appSecret.grantRead(createGuestMessagesFn);
     const sesSendPolicy = new iam.PolicyStatement({
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: ["*"]
@@ -463,12 +458,8 @@ export class AppStack extends cdk.Stack {
       value: webhookQueue.queueUrl
     });
 
-    new cdk.CfnOutput(this, "AsaasApiSecretArn", {
-      value: asaasApiSecret.secretArn
-    });
-
-    new cdk.CfnOutput(this, "AsaasWebhookSecretArn", {
-      value: asaasWebhookSecret.secretArn
+    new cdk.CfnOutput(this, "AppSecretArn", {
+      value: appSecret.secretArn
     });
 
     new cdk.CfnOutput(this, "SesSenderEmailIdentity", {
@@ -522,8 +513,15 @@ export class AppStack extends cdk.Stack {
     const fn = new nodejs.NodejsFunction(this, id, {
       ...props,
       functionName,
-      logGroup
+      logGroup,
+      tracing: props.environment?.XRAY_ENABLED === "true" ? lambda.Tracing.ACTIVE : lambda.Tracing.DISABLED
     });
+
+    if (props.environment?.XRAY_ENABLED === "true" && fn.role) {
+      fn.role.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName("AWSXRayDaemonWriteAccess")
+      );
+    }
 
     this.functionLogGroups.set(id, logGroup);
 

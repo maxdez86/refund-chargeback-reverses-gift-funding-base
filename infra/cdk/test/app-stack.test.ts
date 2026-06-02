@@ -26,14 +26,15 @@ describe("AppStack", () => {
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "dev",
       table: dataStack.table,
-      turnstileSecretKey: "1x0000000000000000000000000000000AA"
+      turnstileSecretKey: "1x0000000000000000000000000000000AA",
+      xrayEnabled: true
     });
     const template = Template.fromStack(stack);
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
     template.resourceCountIs("AWS::SQS::Queue", 2);
-    template.resourceCountIs("AWS::SecretsManager::Secret", 4);
+    template.resourceCountIs("AWS::SecretsManager::Secret", 1);
     template.resourceCountIs("AWS::SES::EmailIdentity", 2);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
@@ -80,18 +81,15 @@ describe("AppStack", () => {
       Stage: "$default"
     });
     template.hasResourceProperties("AWS::SecretsManager::Secret", {
-      Name: "/dev/brimax/asaas/api-key",
-      SecretString: "{\"apiKey\":\"asaas-api-key-test\"}"
-    });
-    template.hasResourceProperties("AWS::SecretsManager::Secret", {
-      Name: "/dev/brimax/asaas/webhook-token",
-      SecretString: "{\"token\":\"asaas-webhook-token-test\"}"
-    });
-    template.hasResourceProperties("AWS::SecretsManager::Secret", {
-      Name: "/dev/brimax/rsvp/lookup-proof-secret",
+      Name: "/dev/brimax/app-secrets",
       GenerateSecretString: Match.objectLike({
         ExcludePunctuation: true,
-        GenerateStringKey: "secretKey"
+        GenerateStringKey: "lookupProofSecret",
+        SecretStringTemplate: Match.serializedJson({
+          asaasApiKey: "asaas-api-key-test",
+          asaasWebhookToken: "asaas-webhook-token-test",
+          turnstileSecretKey: "1x0000000000000000000000000000000AA"
+        })
       })
     });
     template.hasResourceProperties("AWS::SES::EmailIdentity", {
@@ -152,6 +150,9 @@ describe("AppStack", () => {
       Handler: "index.handler",
       MemorySize: 1024,
       Runtime: "nodejs20.x",
+      TracingConfig: {
+        Mode: "Active"
+      },
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },
         { Key: "stage", Value: "dev" }
@@ -161,6 +162,9 @@ describe("AppStack", () => {
       Handler: "index.handler",
       MemorySize: 512,
       Runtime: "nodejs20.x",
+      TracingConfig: {
+        Mode: "Active"
+      },
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },
         { Key: "stage", Value: "dev" }
@@ -186,10 +190,10 @@ describe("AppStack", () => {
       ])
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
-      Tags: Match.arrayWith([
-        { Key: "project", Value: "brimax-life" },
-        { Key: "stage", Value: "dev" }
-      ])
+      Tags: {
+        project: "brimax-life",
+        stage: "dev"
+      }
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
@@ -197,11 +201,26 @@ describe("AppStack", () => {
           CONTACT_EMAIL: "casamento@brimax.life",
           EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
           EMAIL_CONFIGURATION_SET_NAME: Match.anyValue(),
-          LOOKUP_PROOF_SECRET_ARN: Match.anyValue(),
+          APP_SECRET_ARN: Match.anyValue(),
           SENTRY_DSN: "https://public@example.ingest.sentry.io/123456",
+          XRAY_ENABLED: "true",
           RSVP_NOTIFICATION_TO: "casamento@brimax.life"
         })
       }
+    });
+    template.hasResourceProperties("AWS::IAM::Role", {
+      ManagedPolicyArns: Match.arrayWith([
+        {
+          "Fn::Join": Match.arrayWith([
+            "",
+            Match.arrayWith([
+              "arn:",
+              { Ref: "AWS::Partition" },
+              ":iam::aws:policy/AWSXRayDaemonWriteAccess"
+            ])
+          ])
+        }
+      ])
     });
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {

@@ -23,6 +23,8 @@ const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
 const rawSentryDsn = process.env.SENTRY_DSN?.trim();
 const rawObservabilityAlertEmail = process.env.OBSERVABILITY_ALERT_EMAIL?.trim();
+const rawXrayEnabled = process.env.XRAY_ENABLED?.trim().toLowerCase();
+const xrayEnabled = rawXrayEnabled ? rawXrayEnabled === "true" : stage === "prod";
 
 // Cloudflare's documented always-passes test key. Lets non-prod synth/deploys
 // succeed without provisioning a real Turnstile site; prod must override.
@@ -111,7 +113,8 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   stage,
   sentryDsn,
   table: dataStack.table,
-  turnstileSecretKey
+  turnstileSecretKey,
+  xrayEnabled
 });
 
 const edgeStack = new EdgeStack(app, resourceName("BrimaxEdgeStack", stage), {
