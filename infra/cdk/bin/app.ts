@@ -138,6 +138,7 @@ const edgeStack = new EdgeStack(app, resourceName("BrimaxEdgeStack", stage), {
 new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
   alertEmail: rawObservabilityAlertEmail,
   alarmedFunctions: appStack.alarmedFunctions,
+  applicationLogGroups: appStack.applicationLogGroups,
   createPaymentFunction: appStack.createPaymentFunction,
   env,
   stage,

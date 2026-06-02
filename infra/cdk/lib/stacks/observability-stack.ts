@@ -5,6 +5,7 @@ import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
@@ -14,6 +15,7 @@ import { Construct } from "constructs";
 export interface ObservabilityStackProps extends cdk.StackProps {
   alarmedFunctions: lambda.IFunction[];
   alertEmail?: string;
+  applicationLogGroups: logs.ILogGroup[];
   createPaymentFunction: lambda.IFunction;
   distribution: cloudfront.IDistribution;
   httpApi: apigwv2.IHttpApi;
@@ -138,6 +140,20 @@ export class ObservabilityStack extends cdk.Stack {
           `[Open X-Ray Trace Map](${xrayTraceMapUrl})`,
         width: 24,
         height: 4
+      }),
+      new cloudwatch.LogQueryWidget({
+        title: "Application WARN / ERROR Logs",
+        logGroupNames: props.applicationLogGroups.map((logGroup) => logGroup.logGroupName),
+        queryLines: [
+          "fields @timestamp, @log, @message",
+          "filter @message like /\\t(WARN|ERROR)\\t/",
+          "sort @timestamp desc",
+          "limit 50"
+        ],
+        region: this.region,
+        view: cloudwatch.LogQueryVisualizationType.TABLE,
+        width: 24,
+        height: 8
       }),
       new cloudwatch.GraphWidget({
         title: "Lambda Errors",

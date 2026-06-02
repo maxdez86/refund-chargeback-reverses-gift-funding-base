@@ -39,6 +39,7 @@ describe("ObservabilityStack", () => {
     const stack = new ObservabilityStack(app, "ObservabilityStackUnderTest", {
       alertEmail: "alerts@example.com",
       alarmedFunctions: appStack.alarmedFunctions,
+      applicationLogGroups: appStack.applicationLogGroups,
       createPaymentFunction: appStack.createPaymentFunction,
       distribution: edgeStack.distribution,
       httpApi: appStack.httpApi,
@@ -78,8 +79,14 @@ describe("ObservabilityStack", () => {
 
     expect(dashboardBody).toContain("https://console.aws.amazon.com/xray/home?region=");
     expect(dashboardBody).toContain("#/service-map");
+    expect(dashboardBody).toContain("Application WARN / ERROR Logs");
+    expect(dashboardBody).toContain('\\"type\\":\\"log\\"');
+    expect(dashboardBody).toContain('\\"query\\":\\"SOURCE \'');
+    expect(dashboardBody).toContain("filter @message like /\\\\\\\\t(WARN|ERROR)\\\\\\\\t/");
+    expect(dashboardBody).toContain("limit 50");
     expect(dashboardBody).not.toContain("cloudwatch/home");
     expect(dashboardBody).not.toContain("#xray:traces/service-map");
+    expect(dashboardBody).not.toContain("ApiAccessLogs");
     template.hasResourceProperties("AWS::SNS::Topic", {
       Tags: Match.arrayWith([
         { Key: "project", Value: "brimax-life" },

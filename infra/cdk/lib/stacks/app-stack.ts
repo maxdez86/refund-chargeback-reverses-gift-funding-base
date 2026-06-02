@@ -30,6 +30,7 @@ export interface AppStackProps extends cdk.StackProps {
 
 export class AppStack extends cdk.Stack {
   readonly alarmedFunctions: lambda.IFunction[];
+  readonly applicationLogGroups: logs.ILogGroup[] = [];
   readonly createPaymentFunction: lambda.IFunction;
   readonly httpApi: apigwv2.HttpApi;
   readonly webhookProcessorFunction: lambda.IFunction;
@@ -565,6 +566,7 @@ export class AppStack extends cdk.Stack {
     }
 
     this.functionLogGroups.set(id, logGroup);
+    this.applicationLogGroups.push(logGroup);
 
     return fn;
   }
