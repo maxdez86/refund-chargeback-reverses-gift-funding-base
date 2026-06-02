@@ -74,7 +74,22 @@ export async function withTracedSubsegment<T>(
 }
 
 export function wrapLambdaTracing<TEvent, TResult>(handler: Handler<TEvent, TResult>): Handler<TEvent, TResult> {
-  return (event, context, callback) => {
+  return async (event, context, callback) => {
+    const segment = xrayEnabled ? tracer.getSegment() : undefined;
+
+    // X-Ray forbids annotating the Lambda facade/main segment, so without a
+    // segment to open a subsegment on we run untraced (annotations would be
+    // dropped with a warning otherwise).
+    if (!segment) {
+      return (await handler(event, context, callback)) as TResult;
+    }
+
+    // Open a handler subsegment and make it active for the whole invocation:
+    // annotations now land on the subsegment, and any top-level annotateTrace
+    // calls inside the handler (e.g. the Asaas webhooks) land here too.
+    const subsegment = segment.addNewSubsegment(`## ${context?.functionName ?? "handler"}`);
+    tracer.setSegment(subsegment);
+
     annotateTrace({
       event_type: detectEventType(event),
       flow: detectFlow(context?.functionName ?? process.env.AWS_LAMBDA_FUNCTION_NAME),
@@ -82,7 +97,12 @@ export function wrapLambdaTracing<TEvent, TResult>(handler: Handler<TEvent, TRes
       stage: stage
     });
 
-    return handler(event, context, callback);
+    try {
+      return (await handler(event, context, callback)) as TResult;
+    } finally {
+      subsegment.close();
+      tracer.setSegment(segment);
+    }
   };
 }
 
