@@ -228,6 +228,15 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  scripts:
+    dependencies:
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.790.0
+        version: 3.1030.0
+      '@aws-sdk/lib-dynamodb':
+        specifier: ^3.790.0
+        version: 3.1030.0(@aws-sdk/client-dynamodb@3.1030.0)
+
 packages:
 
   '@adobe/css-tools@4.4.4':
