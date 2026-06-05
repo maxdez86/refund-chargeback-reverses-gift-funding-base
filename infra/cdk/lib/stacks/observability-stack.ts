@@ -30,6 +30,37 @@ export class ObservabilityStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ObservabilityStackProps) {
     super(scope, id, props);
 
+    const sparseAlarmPeriod = cdk.Duration.minutes(15);
+    const sparseAlarmMinimumVolume = 5;
+    const sparseAlarmThreshold = 20;
+    const eventDrivenAlarmDefaults = {
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING
+    } satisfies Pick<cloudwatch.AlarmProps, "evaluationPeriods" | "treatMissingData">;
+
+    const createSparseTrafficRateAlarm = (
+      alarmId: string,
+      alarmDescription: string,
+      errorsMetric: cloudwatch.IMetric,
+      volumeMetric: cloudwatch.IMetric
+    ) =>
+      new cloudwatch.Alarm(this, alarmId, {
+        alarmDescription,
+        metric: new cloudwatch.MathExpression({
+          expression: `IF(volume >= ${sparseAlarmMinimumVolume}, 100 * errors / volume, 0)`,
+          usingMetrics: {
+            errors: errorsMetric,
+            volume: volumeMetric
+          },
+          period: sparseAlarmPeriod,
+          label: `${alarmId}ErrorRate`
+        }),
+        threshold: sparseAlarmThreshold,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING
+      });
+
     const alarmTopic = new sns.Topic(this, "ObservabilityAlarmTopic", {
       displayName: `Brimax ${props.stage.toUpperCase()} Observability Alerts`,
       topicName: resourceName("brimax-observability-alerts", props.stage)
@@ -47,39 +78,48 @@ export class ObservabilityStack extends cdk.Stack {
         period: cdk.Duration.minutes(5),
         statistic: "Maximum"
       }),
-      evaluationPeriods: 1,
-      threshold: 1
+      threshold: 1,
+      ...eventDrivenAlarmDefaults
     });
 
-    const createPaymentErrorsAlarm = new cloudwatch.Alarm(this, "CreatePaymentErrorsAlarm", {
-      alarmDescription: "Alerts when payment creation errors occur.",
-      metric: props.createPaymentFunction.metricErrors({
-        period: cdk.Duration.minutes(5),
+    const createPaymentErrorsAlarm = createSparseTrafficRateAlarm(
+      "CreatePaymentErrorsAlarm",
+      "Alerts when payment creation errors occur under meaningful traffic.",
+      props.createPaymentFunction.metricErrors({
+        period: sparseAlarmPeriod,
         statistic: "Sum"
       }),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
+      props.createPaymentFunction.metricInvocations({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
 
-    const webhookProcessorErrorsAlarm = new cloudwatch.Alarm(this, "WebhookProcessorErrorsAlarm", {
-      alarmDescription: "Alerts when the webhook processor throws errors.",
-      metric: props.webhookProcessorFunction.metricErrors({
-        period: cdk.Duration.minutes(5),
+    const webhookProcessorErrorsAlarm = createSparseTrafficRateAlarm(
+      "WebhookProcessorErrorsAlarm",
+      "Alerts when the webhook processor throws errors under meaningful traffic.",
+      props.webhookProcessorFunction.metricErrors({
+        period: sparseAlarmPeriod,
         statistic: "Sum"
       }),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
+      props.webhookProcessorFunction.metricInvocations({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
 
-    const api5xxAlarm = new cloudwatch.Alarm(this, "HttpApi5xxAlarm", {
-      alarmDescription: "Alerts when the public HTTP API emits 5XX responses.",
-      metric: props.httpApi.metricServerError({
-        period: cdk.Duration.minutes(5),
+    const api5xxAlarm = createSparseTrafficRateAlarm(
+      "HttpApi5xxAlarm",
+      "Alerts when the public HTTP API emits a high 5XX rate under meaningful traffic.",
+      props.httpApi.metricServerError({
+        period: sparseAlarmPeriod,
         statistic: "Sum"
       }),
-      evaluationPeriods: 1,
-      threshold: 1
-    });
+      props.httpApi.metricCount({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
 
     const webhookQueueBacklogAlarm = new cloudwatch.Alarm(this, "WebhookQueueBacklogAlarm", {
       alarmDescription: "Alerts when the webhook queue begins backing up.",
@@ -87,8 +127,8 @@ export class ObservabilityStack extends cdk.Stack {
         period: cdk.Duration.minutes(5),
         statistic: "Maximum"
       }),
-      evaluationPeriods: 1,
-      threshold: 5
+      threshold: 5,
+      ...eventDrivenAlarmDefaults
     });
 
     const webhookQueueAgeAlarm = new cloudwatch.Alarm(this, "WebhookQueueAgeAlarm", {
@@ -97,8 +137,8 @@ export class ObservabilityStack extends cdk.Stack {
         period: cdk.Duration.minutes(5),
         statistic: "Maximum"
       }),
-      evaluationPeriods: 1,
-      threshold: 300
+      threshold: 300,
+      ...eventDrivenAlarmDefaults
     });
 
     const lambdaThrottleAlarms = props.alarmedFunctions.map((fn, index) =>
@@ -108,8 +148,8 @@ export class ObservabilityStack extends cdk.Stack {
           period: cdk.Duration.minutes(5),
           statistic: "Sum"
         }),
-        evaluationPeriods: 1,
-        threshold: 1
+        threshold: 1,
+        ...eventDrivenAlarmDefaults
       })
     );
 
