@@ -33,8 +33,26 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "prod"
+            printf 'AWS_REGION=%q\n' "us-east-1"
+            printf 'ROOT_DOMAIN=%q\n' "brimax.life"
+            printf 'CONTACT_EMAIL=%q\n' "casamento@brimax.life"
+            printf 'API_DOMAIN=%q\n' "api.brimax.life"
+            printf 'WWW_DOMAIN=%q\n' "www.brimax.life"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "0x4AAAAAADWSl1ce7VLNgFRo"
+          } > .env
+          test -f .env
+
       - name: Build landing page
         run: pnpm build:web
 
       - name: CDK Synth
         run: pnpm synth
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
