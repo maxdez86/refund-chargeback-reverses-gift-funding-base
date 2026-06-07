@@ -1,0 +1,683 @@
+{
+  "version": 2,
+  "canonicalPhotographicFormats": [
+    "avif",
+    "webp",
+    "jpeg"
+  ],
+  "canonicalTransparentFallback": "png",
+  "variantStrategies": {
+    "deviceSpecific": {
+      "sections": [
+        "hero",
+        "footer"
+      ],
+      "devices": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ],
+      "formats": [
+        "avif",
+        "webp",
+        "jpeg"
+      ]
+    },
+    "sharedCropWidths": {
+      "sections": [
+        "story",
+        "padrinhos",
+        "presentes"
+      ],
+      "widths": [
+        "480",
+        "960",
+        "1440"
+      ],
+      "formats": [
+        "avif",
+        "webp",
+        "jpeg"
+      ]
+    }
+  },
+  "sections": {
+    "hero": [
+      "hero/mobile.avif",
+      "hero/mobile.webp",
+      "hero/mobile.jpeg",
+      "hero/tablet.avif",
+      "hero/tablet.webp",
+      "hero/tablet.jpeg",
+      "hero/desktop.avif",
+      "hero/desktop.webp",
+      "hero/desktop.jpeg"
+    ],
+    "footer": [
+      "footer/mobile.avif",
+      "footer/mobile.webp",
+      "footer/mobile.jpeg",
+      "footer/tablet.avif",
+      "footer/tablet.webp",
+      "footer/tablet.jpeg",
+      "footer/desktop.avif",
+      "footer/desktop.webp",
+      "footer/desktop.jpeg"
+    ],
+    "story": {
+      "amor-na-pratica": [
+        "story/amor-na-pratica/480.avif",
+        "story/amor-na-pratica/480.webp",
+        "story/amor-na-pratica/480.jpeg",
+        "story/amor-na-pratica/960.avif",
+        "story/amor-na-pratica/960.webp",
+        "story/amor-na-pratica/960.jpeg",
+        "story/amor-na-pratica/1440.avif",
+        "story/amor-na-pratica/1440.webp",
+        "story/amor-na-pratica/1440.jpeg"
+      ],
+      "book-review": [
+        "story/book-review/480.avif",
+        "story/book-review/480.webp",
+        "story/book-review/480.jpeg",
+        "story/book-review/960.avif",
+        "story/book-review/960.webp",
+        "story/book-review/960.jpeg",
+        "story/book-review/1440.avif",
+        "story/book-review/1440.webp",
+        "story/book-review/1440.jpeg"
+      ],
+      "memorias-de-um-inverno": [
+        "story/memorias-de-um-inverno/480.avif",
+        "story/memorias-de-um-inverno/480.webp",
+        "story/memorias-de-um-inverno/480.jpeg",
+        "story/memorias-de-um-inverno/960.avif",
+        "story/memorias-de-um-inverno/960.webp",
+        "story/memorias-de-um-inverno/960.jpeg",
+        "story/memorias-de-um-inverno/1440.avif",
+        "story/memorias-de-um-inverno/1440.webp",
+        "story/memorias-de-um-inverno/1440.jpeg"
+      ],
+      "o-ultimo-primeiro-beijo": [
+        "story/o-ultimo-primeiro-beijo/480.avif",
+        "story/o-ultimo-primeiro-beijo/480.webp",
+        "story/o-ultimo-primeiro-beijo/480.jpeg",
+        "story/o-ultimo-primeiro-beijo/960.avif",
+        "story/o-ultimo-primeiro-beijo/960.webp",
+        "story/o-ultimo-primeiro-beijo/960.jpeg",
+        "story/o-ultimo-primeiro-beijo/1440.avif",
+        "story/o-ultimo-primeiro-beijo/1440.webp",
+        "story/o-ultimo-primeiro-beijo/1440.jpeg"
+      ],
+      "ps-eu-te-amo": [
+        "story/ps-eu-te-amo/480.avif",
+        "story/ps-eu-te-amo/480.webp",
+        "story/ps-eu-te-amo/480.jpeg",
+        "story/ps-eu-te-amo/960.avif",
+        "story/ps-eu-te-amo/960.webp",
+        "story/ps-eu-te-amo/960.jpeg",
+        "story/ps-eu-te-amo/1440.avif",
+        "story/ps-eu-te-amo/1440.webp",
+        "story/ps-eu-te-amo/1440.jpeg"
+      ],
+      "viva-paixoes-comigo": [
+        "story/viva-paixoes-comigo/480.avif",
+        "story/viva-paixoes-comigo/480.webp",
+        "story/viva-paixoes-comigo/480.jpeg",
+        "story/viva-paixoes-comigo/960.avif",
+        "story/viva-paixoes-comigo/960.webp",
+        "story/viva-paixoes-comigo/960.jpeg",
+        "story/viva-paixoes-comigo/1440.avif",
+        "story/viva-paixoes-comigo/1440.webp",
+        "story/viva-paixoes-comigo/1440.jpeg"
+      ]
+    },
+    "padrinhos": {
+      "alice": [
+        "padrinhos/alice/480.avif",
+        "padrinhos/alice/480.webp",
+        "padrinhos/alice/480.jpeg",
+        "padrinhos/alice/960.avif",
+        "padrinhos/alice/960.webp",
+        "padrinhos/alice/960.jpeg",
+        "padrinhos/alice/1440.avif",
+        "padrinhos/alice/1440.webp",
+        "padrinhos/alice/1440.jpeg"
+      ],
+      "amanda-chris": [
+        "padrinhos/amanda-chris/480.avif",
+        "padrinhos/amanda-chris/480.webp",
+        "padrinhos/amanda-chris/480.jpeg",
+        "padrinhos/amanda-chris/960.avif",
+        "padrinhos/amanda-chris/960.webp",
+        "padrinhos/amanda-chris/960.jpeg",
+        "padrinhos/amanda-chris/1440.avif",
+        "padrinhos/amanda-chris/1440.webp",
+        "padrinhos/amanda-chris/1440.jpeg"
+      ],
+      "ana-clara": [
+        "padrinhos/ana-clara/480.avif",
+        "padrinhos/ana-clara/480.webp",
+        "padrinhos/ana-clara/480.jpeg",
+        "padrinhos/ana-clara/960.avif",
+        "padrinhos/ana-clara/960.webp",
+        "padrinhos/ana-clara/960.jpeg",
+        "padrinhos/ana-clara/1440.avif",
+        "padrinhos/ana-clara/1440.webp",
+        "padrinhos/ana-clara/1440.jpeg"
+      ],
+      "carlinhos": [
+        "padrinhos/carlinhos/480.avif",
+        "padrinhos/carlinhos/480.webp",
+        "padrinhos/carlinhos/480.jpeg",
+        "padrinhos/carlinhos/960.avif",
+        "padrinhos/carlinhos/960.webp",
+        "padrinhos/carlinhos/960.jpeg",
+        "padrinhos/carlinhos/1440.avif",
+        "padrinhos/carlinhos/1440.webp",
+        "padrinhos/carlinhos/1440.jpeg"
+      ],
+      "carol-higor": [
+        "padrinhos/carol-higor/480.avif",
+        "padrinhos/carol-higor/480.webp",
+        "padrinhos/carol-higor/480.jpeg",
+        "padrinhos/carol-higor/960.avif",
+        "padrinhos/carol-higor/960.webp",
+        "padrinhos/carol-higor/960.jpeg",
+        "padrinhos/carol-higor/1440.avif",
+        "padrinhos/carol-higor/1440.webp",
+        "padrinhos/carol-higor/1440.jpeg"
+      ],
+      "cristiane-e-juliano": [
+        "padrinhos/cristiane-e-juliano/480.avif",
+        "padrinhos/cristiane-e-juliano/480.webp",
+        "padrinhos/cristiane-e-juliano/480.jpeg",
+        "padrinhos/cristiane-e-juliano/960.avif",
+        "padrinhos/cristiane-e-juliano/960.webp",
+        "padrinhos/cristiane-e-juliano/960.jpeg",
+        "padrinhos/cristiane-e-juliano/1440.avif",
+        "padrinhos/cristiane-e-juliano/1440.webp",
+        "padrinhos/cristiane-e-juliano/1440.jpeg"
+      ],
+      "debora-nael": [
+        "padrinhos/debora-nael/480.avif",
+        "padrinhos/debora-nael/480.webp",
+        "padrinhos/debora-nael/480.jpeg",
+        "padrinhos/debora-nael/960.avif",
+        "padrinhos/debora-nael/960.webp",
+        "padrinhos/debora-nael/960.jpeg",
+        "padrinhos/debora-nael/1440.avif",
+        "padrinhos/debora-nael/1440.webp",
+        "padrinhos/debora-nael/1440.jpeg"
+      ],
+      "drielly": [
+        "padrinhos/drielly/480.avif",
+        "padrinhos/drielly/480.webp",
+        "padrinhos/drielly/480.jpeg",
+        "padrinhos/drielly/960.avif",
+        "padrinhos/drielly/960.webp",
+        "padrinhos/drielly/960.jpeg",
+        "padrinhos/drielly/1440.avif",
+        "padrinhos/drielly/1440.webp",
+        "padrinhos/drielly/1440.jpeg"
+      ],
+      "elis-son": [
+        "padrinhos/elis-son/480.avif",
+        "padrinhos/elis-son/480.webp",
+        "padrinhos/elis-son/480.jpeg",
+        "padrinhos/elis-son/960.avif",
+        "padrinhos/elis-son/960.webp",
+        "padrinhos/elis-son/960.jpeg",
+        "padrinhos/elis-son/1440.avif",
+        "padrinhos/elis-son/1440.webp",
+        "padrinhos/elis-son/1440.jpeg"
+      ],
+      "fabi-fernando": [
+        "padrinhos/fabi-fernando/480.avif",
+        "padrinhos/fabi-fernando/480.webp",
+        "padrinhos/fabi-fernando/480.jpeg",
+        "padrinhos/fabi-fernando/960.avif",
+        "padrinhos/fabi-fernando/960.webp",
+        "padrinhos/fabi-fernando/960.jpeg",
+        "padrinhos/fabi-fernando/1440.avif",
+        "padrinhos/fabi-fernando/1440.webp",
+        "padrinhos/fabi-fernando/1440.jpeg"
+      ],
+      "heitor": [
+        "padrinhos/heitor/480.avif",
+        "padrinhos/heitor/480.webp",
+        "padrinhos/heitor/480.jpeg",
+        "padrinhos/heitor/960.avif",
+        "padrinhos/heitor/960.webp",
+        "padrinhos/heitor/960.jpeg",
+        "padrinhos/heitor/1440.avif",
+        "padrinhos/heitor/1440.webp",
+        "padrinhos/heitor/1440.jpeg"
+      ],
+      "julia": [
+        "padrinhos/julia/480.avif",
+        "padrinhos/julia/480.webp",
+        "padrinhos/julia/480.jpeg",
+        "padrinhos/julia/960.avif",
+        "padrinhos/julia/960.webp",
+        "padrinhos/julia/960.jpeg",
+        "padrinhos/julia/1440.avif",
+        "padrinhos/julia/1440.webp",
+        "padrinhos/julia/1440.jpeg"
+      ],
+      "kelly-e-sa": [
+        "padrinhos/kelly-e-sa/480.avif",
+        "padrinhos/kelly-e-sa/480.webp",
+        "padrinhos/kelly-e-sa/480.jpeg",
+        "padrinhos/kelly-e-sa/960.avif",
+        "padrinhos/kelly-e-sa/960.webp",
+        "padrinhos/kelly-e-sa/960.jpeg",
+        "padrinhos/kelly-e-sa/1440.avif",
+        "padrinhos/kelly-e-sa/1440.webp",
+        "padrinhos/kelly-e-sa/1440.jpeg"
+      ],
+      "lila-e-welton": [
+        "padrinhos/lila-e-welton/480.avif",
+        "padrinhos/lila-e-welton/480.webp",
+        "padrinhos/lila-e-welton/480.jpeg",
+        "padrinhos/lila-e-welton/960.avif",
+        "padrinhos/lila-e-welton/960.webp",
+        "padrinhos/lila-e-welton/960.jpeg",
+        "padrinhos/lila-e-welton/1440.avif",
+        "padrinhos/lila-e-welton/1440.webp",
+        "padrinhos/lila-e-welton/1440.jpeg"
+      ],
+      "luiza": [
+        "padrinhos/luiza/480.avif",
+        "padrinhos/luiza/480.webp",
+        "padrinhos/luiza/480.jpeg",
+        "padrinhos/luiza/960.avif",
+        "padrinhos/luiza/960.webp",
+        "padrinhos/luiza/960.jpeg",
+        "padrinhos/luiza/1440.avif",
+        "padrinhos/luiza/1440.webp",
+        "padrinhos/luiza/1440.jpeg"
+      ],
+      "nessa-carlos": [
+        "padrinhos/nessa-carlos/480.avif",
+        "padrinhos/nessa-carlos/480.webp",
+        "padrinhos/nessa-carlos/480.jpeg",
+        "padrinhos/nessa-carlos/960.avif",
+        "padrinhos/nessa-carlos/960.webp",
+        "padrinhos/nessa-carlos/960.jpeg",
+        "padrinhos/nessa-carlos/1440.avif",
+        "padrinhos/nessa-carlos/1440.webp",
+        "padrinhos/nessa-carlos/1440.jpeg"
+      ],
+      "nicolas": [
+        "padrinhos/nicolas/480.avif",
+        "padrinhos/nicolas/480.webp",
+        "padrinhos/nicolas/480.jpeg",
+        "padrinhos/nicolas/960.avif",
+        "padrinhos/nicolas/960.webp",
+        "padrinhos/nicolas/960.jpeg",
+        "padrinhos/nicolas/1440.avif",
+        "padrinhos/nicolas/1440.webp",
+        "padrinhos/nicolas/1440.jpeg"
+      ],
+      "nilza-e-cerqueira": [
+        "padrinhos/nilza-e-cerqueira/480.avif",
+        "padrinhos/nilza-e-cerqueira/480.webp",
+        "padrinhos/nilza-e-cerqueira/480.jpeg",
+        "padrinhos/nilza-e-cerqueira/960.avif",
+        "padrinhos/nilza-e-cerqueira/960.webp",
+        "padrinhos/nilza-e-cerqueira/960.jpeg",
+        "padrinhos/nilza-e-cerqueira/1440.avif",
+        "padrinhos/nilza-e-cerqueira/1440.webp",
+        "padrinhos/nilza-e-cerqueira/1440.jpeg"
+      ],
+      "nuza-sid": [
+        "padrinhos/nuza-sid/480.avif",
+        "padrinhos/nuza-sid/480.webp",
+        "padrinhos/nuza-sid/480.jpeg",
+        "padrinhos/nuza-sid/960.avif",
+        "padrinhos/nuza-sid/960.webp",
+        "padrinhos/nuza-sid/960.jpeg",
+        "padrinhos/nuza-sid/1440.avif",
+        "padrinhos/nuza-sid/1440.webp",
+        "padrinhos/nuza-sid/1440.jpeg"
+      ],
+      "raquel": [
+        "padrinhos/raquel/480.avif",
+        "padrinhos/raquel/480.webp",
+        "padrinhos/raquel/480.jpeg",
+        "padrinhos/raquel/960.avif",
+        "padrinhos/raquel/960.webp",
+        "padrinhos/raquel/960.jpeg",
+        "padrinhos/raquel/1440.avif",
+        "padrinhos/raquel/1440.webp",
+        "padrinhos/raquel/1440.jpeg"
+      ],
+      "ronaldo": [
+        "padrinhos/ronaldo/480.avif",
+        "padrinhos/ronaldo/480.webp",
+        "padrinhos/ronaldo/480.jpeg",
+        "padrinhos/ronaldo/960.avif",
+        "padrinhos/ronaldo/960.webp",
+        "padrinhos/ronaldo/960.jpeg",
+        "padrinhos/ronaldo/1440.avif",
+        "padrinhos/ronaldo/1440.webp",
+        "padrinhos/ronaldo/1440.jpeg"
+      ],
+      "tami-e-marcos": [
+        "padrinhos/tami-e-marcos/480.avif",
+        "padrinhos/tami-e-marcos/480.webp",
+        "padrinhos/tami-e-marcos/480.jpeg",
+        "padrinhos/tami-e-marcos/960.avif",
+        "padrinhos/tami-e-marcos/960.webp",
+        "padrinhos/tami-e-marcos/960.jpeg",
+        "padrinhos/tami-e-marcos/1440.avif",
+        "padrinhos/tami-e-marcos/1440.webp",
+        "padrinhos/tami-e-marcos/1440.jpeg"
+      ]
+    },
+    "presentes": {
+      "4-toalhas-banho": [
+        "presentes/4-toalhas-banho/480.avif",
+        "presentes/4-toalhas-banho/480.webp",
+        "presentes/4-toalhas-banho/480.jpeg",
+        "presentes/4-toalhas-banho/960.avif",
+        "presentes/4-toalhas-banho/960.webp",
+        "presentes/4-toalhas-banho/960.jpeg",
+        "presentes/4-toalhas-banho/1440.avif",
+        "presentes/4-toalhas-banho/1440.webp",
+        "presentes/4-toalhas-banho/1440.jpeg"
+      ],
+      "armario-cozinha": [
+        "presentes/armario-cozinha/480.avif",
+        "presentes/armario-cozinha/480.webp",
+        "presentes/armario-cozinha/480.jpeg",
+        "presentes/armario-cozinha/960.avif",
+        "presentes/armario-cozinha/960.webp",
+        "presentes/armario-cozinha/960.jpeg",
+        "presentes/armario-cozinha/1440.avif",
+        "presentes/armario-cozinha/1440.webp",
+        "presentes/armario-cozinha/1440.jpeg"
+      ],
+      "aspirador": [
+        "presentes/aspirador/480.avif",
+        "presentes/aspirador/480.webp",
+        "presentes/aspirador/480.jpeg",
+        "presentes/aspirador/960.avif",
+        "presentes/aspirador/960.webp",
+        "presentes/aspirador/960.jpeg",
+        "presentes/aspirador/1440.avif",
+        "presentes/aspirador/1440.webp",
+        "presentes/aspirador/1440.jpeg"
+      ],
+      "balde-retratil": [
+        "presentes/balde-retratil/480.avif",
+        "presentes/balde-retratil/480.webp",
+        "presentes/balde-retratil/480.jpeg",
+        "presentes/balde-retratil/960.avif",
+        "presentes/balde-retratil/960.webp",
+        "presentes/balde-retratil/960.jpeg",
+        "presentes/balde-retratil/1440.avif",
+        "presentes/balde-retratil/1440.webp",
+        "presentes/balde-retratil/1440.jpeg"
+      ],
+      "batedeira": [
+        "presentes/batedeira/480.avif",
+        "presentes/batedeira/480.webp",
+        "presentes/batedeira/480.jpeg",
+        "presentes/batedeira/960.avif",
+        "presentes/batedeira/960.webp",
+        "presentes/batedeira/960.jpeg",
+        "presentes/batedeira/1440.avif",
+        "presentes/batedeira/1440.webp",
+        "presentes/batedeira/1440.jpeg"
+      ],
+      "cama": [
+        "presentes/cama/480.avif",
+        "presentes/cama/480.webp",
+        "presentes/cama/480.jpeg",
+        "presentes/cama/960.avif",
+        "presentes/cama/960.webp",
+        "presentes/cama/960.jpeg",
+        "presentes/cama/1440.avif",
+        "presentes/cama/1440.webp",
+        "presentes/cama/1440.jpeg"
+      ],
+      "edredom-king": [
+        "presentes/edredom-king/480.avif",
+        "presentes/edredom-king/480.webp",
+        "presentes/edredom-king/480.jpeg",
+        "presentes/edredom-king/960.avif",
+        "presentes/edredom-king/960.webp",
+        "presentes/edredom-king/960.jpeg",
+        "presentes/edredom-king/1440.avif",
+        "presentes/edredom-king/1440.webp",
+        "presentes/edredom-king/1440.jpeg"
+      ],
+      "escorredor-louca": [
+        "presentes/escorredor-louca/480.avif",
+        "presentes/escorredor-louca/480.webp",
+        "presentes/escorredor-louca/480.jpeg",
+        "presentes/escorredor-louca/960.avif",
+        "presentes/escorredor-louca/960.webp",
+        "presentes/escorredor-louca/960.jpeg",
+        "presentes/escorredor-louca/1440.avif",
+        "presentes/escorredor-louca/1440.webp",
+        "presentes/escorredor-louca/1440.jpeg"
+      ],
+      "fogao": [
+        "presentes/fogao/480.avif",
+        "presentes/fogao/480.webp",
+        "presentes/fogao/480.jpeg",
+        "presentes/fogao/960.avif",
+        "presentes/fogao/960.webp",
+        "presentes/fogao/960.jpeg",
+        "presentes/fogao/1440.avif",
+        "presentes/fogao/1440.webp",
+        "presentes/fogao/1440.jpeg"
+      ],
+      "geladeira-brastemp": [
+        "presentes/geladeira-brastemp/480.avif",
+        "presentes/geladeira-brastemp/480.webp",
+        "presentes/geladeira-brastemp/480.jpeg",
+        "presentes/geladeira-brastemp/960.avif",
+        "presentes/geladeira-brastemp/960.webp",
+        "presentes/geladeira-brastemp/960.jpeg",
+        "presentes/geladeira-brastemp/1440.avif",
+        "presentes/geladeira-brastemp/1440.webp",
+        "presentes/geladeira-brastemp/1440.jpeg"
+      ],
+      "guarda-roupa": [
+        "presentes/guarda-roupa/480.avif",
+        "presentes/guarda-roupa/480.webp",
+        "presentes/guarda-roupa/480.jpeg",
+        "presentes/guarda-roupa/960.avif",
+        "presentes/guarda-roupa/960.webp",
+        "presentes/guarda-roupa/960.jpeg",
+        "presentes/guarda-roupa/1440.avif",
+        "presentes/guarda-roupa/1440.webp",
+        "presentes/guarda-roupa/1440.jpeg"
+      ],
+      "jogo-ferramentas": [
+        "presentes/jogo-ferramentas/480.avif",
+        "presentes/jogo-ferramentas/480.webp",
+        "presentes/jogo-ferramentas/480.jpeg",
+        "presentes/jogo-ferramentas/960.avif",
+        "presentes/jogo-ferramentas/960.webp",
+        "presentes/jogo-ferramentas/960.jpeg",
+        "presentes/jogo-ferramentas/1440.avif",
+        "presentes/jogo-ferramentas/1440.webp",
+        "presentes/jogo-ferramentas/1440.jpeg"
+      ],
+      "jogo-pratos": [
+        "presentes/jogo-pratos/480.avif",
+        "presentes/jogo-pratos/480.webp",
+        "presentes/jogo-pratos/480.jpeg",
+        "presentes/jogo-pratos/960.avif",
+        "presentes/jogo-pratos/960.webp",
+        "presentes/jogo-pratos/960.jpeg",
+        "presentes/jogo-pratos/1440.avif",
+        "presentes/jogo-pratos/1440.webp",
+        "presentes/jogo-pratos/1440.jpeg"
+      ],
+      "jogo-talheres": [
+        "presentes/jogo-talheres/480.avif",
+        "presentes/jogo-talheres/480.webp",
+        "presentes/jogo-talheres/480.jpeg",
+        "presentes/jogo-talheres/960.avif",
+        "presentes/jogo-talheres/960.webp",
+        "presentes/jogo-talheres/960.jpeg",
+        "presentes/jogo-talheres/1440.avif",
+        "presentes/jogo-talheres/1440.webp",
+        "presentes/jogo-talheres/1440.jpeg"
+      ],
+      "jogo-xicaras": [
+        "presentes/jogo-xicaras/480.avif",
+        "presentes/jogo-xicaras/480.webp",
+        "presentes/jogo-xicaras/480.jpeg",
+        "presentes/jogo-xicaras/960.avif",
+        "presentes/jogo-xicaras/960.webp",
+        "presentes/jogo-xicaras/960.jpeg",
+        "presentes/jogo-xicaras/1440.avif",
+        "presentes/jogo-xicaras/1440.webp",
+        "presentes/jogo-xicaras/1440.jpeg"
+      ],
+      "kit-toalhas-rosto": [
+        "presentes/kit-toalhas-rosto/480.avif",
+        "presentes/kit-toalhas-rosto/480.webp",
+        "presentes/kit-toalhas-rosto/480.jpeg",
+        "presentes/kit-toalhas-rosto/960.avif",
+        "presentes/kit-toalhas-rosto/960.webp",
+        "presentes/kit-toalhas-rosto/960.jpeg",
+        "presentes/kit-toalhas-rosto/1440.avif",
+        "presentes/kit-toalhas-rosto/1440.webp",
+        "presentes/kit-toalhas-rosto/1440.jpeg"
+      ],
+      "lava-loucas": [
+        "presentes/lava-loucas/480.avif",
+        "presentes/lava-loucas/480.webp",
+        "presentes/lava-loucas/480.jpeg",
+        "presentes/lava-loucas/960.avif",
+        "presentes/lava-loucas/960.webp",
+        "presentes/lava-loucas/960.jpeg",
+        "presentes/lava-loucas/1440.avif",
+        "presentes/lava-loucas/1440.webp",
+        "presentes/lava-loucas/1440.jpeg"
+      ],
+      "lava-seca": [
+        "presentes/lava-seca/480.avif",
+        "presentes/lava-seca/480.webp",
+        "presentes/lava-seca/480.jpeg",
+        "presentes/lava-seca/960.avif",
+        "presentes/lava-seca/960.webp",
+        "presentes/lava-seca/960.jpeg",
+        "presentes/lava-seca/1440.avif",
+        "presentes/lava-seca/1440.webp",
+        "presentes/lava-seca/1440.jpeg"
+      ],
+      "liquidificador": [
+        "presentes/liquidificador/480.avif",
+        "presentes/liquidificador/480.webp",
+        "presentes/liquidificador/480.jpeg",
+        "presentes/liquidificador/960.avif",
+        "presentes/liquidificador/960.webp",
+        "presentes/liquidificador/960.jpeg",
+        "presentes/liquidificador/1440.avif",
+        "presentes/liquidificador/1440.webp",
+        "presentes/liquidificador/1440.jpeg"
+      ],
+      "mesa-jantar": [
+        "presentes/mesa-jantar/480.avif",
+        "presentes/mesa-jantar/480.webp",
+        "presentes/mesa-jantar/480.jpeg",
+        "presentes/mesa-jantar/960.avif",
+        "presentes/mesa-jantar/960.webp",
+        "presentes/mesa-jantar/960.jpeg",
+        "presentes/mesa-jantar/1440.avif",
+        "presentes/mesa-jantar/1440.webp",
+        "presentes/mesa-jantar/1440.jpeg"
+      ],
+      "microondas": [
+        "presentes/microondas/480.avif",
+        "presentes/microondas/480.webp",
+        "presentes/microondas/480.jpeg",
+        "presentes/microondas/960.avif",
+        "presentes/microondas/960.webp",
+        "presentes/microondas/960.jpeg",
+        "presentes/microondas/1440.avif",
+        "presentes/microondas/1440.webp",
+        "presentes/microondas/1440.jpeg"
+      ],
+      "processador": [
+        "presentes/processador/480.avif",
+        "presentes/processador/480.webp",
+        "presentes/processador/480.jpeg",
+        "presentes/processador/960.avif",
+        "presentes/processador/960.webp",
+        "presentes/processador/960.jpeg",
+        "presentes/processador/1440.avif",
+        "presentes/processador/1440.webp",
+        "presentes/processador/1440.jpeg"
+      ],
+      "purificador-agua": [
+        "presentes/purificador-agua/480.avif",
+        "presentes/purificador-agua/480.webp",
+        "presentes/purificador-agua/480.png",
+        "presentes/purificador-agua/960.avif",
+        "presentes/purificador-agua/960.webp",
+        "presentes/purificador-agua/960.png",
+        "presentes/purificador-agua/1440.avif",
+        "presentes/purificador-agua/1440.webp",
+        "presentes/purificador-agua/1440.png"
+      ],
+      "sofa": [
+        "presentes/sofa/480.avif",
+        "presentes/sofa/480.webp",
+        "presentes/sofa/480.jpeg",
+        "presentes/sofa/960.avif",
+        "presentes/sofa/960.webp",
+        "presentes/sofa/960.jpeg",
+        "presentes/sofa/1440.avif",
+        "presentes/sofa/1440.webp",
+        "presentes/sofa/1440.jpeg"
+      ],
+      "steamer": [
+        "presentes/steamer/480.avif",
+        "presentes/steamer/480.webp",
+        "presentes/steamer/480.jpeg",
+        "presentes/steamer/960.avif",
+        "presentes/steamer/960.webp",
+        "presentes/steamer/960.jpeg",
+        "presentes/steamer/1440.avif",
+        "presentes/steamer/1440.webp",
+        "presentes/steamer/1440.jpeg"
+      ],
+      "travesseiros": [
+        "presentes/travesseiros/480.avif",
+        "presentes/travesseiros/480.webp",
+        "presentes/travesseiros/480.jpeg",
+        "presentes/travesseiros/960.avif",
+        "presentes/travesseiros/960.webp",
+        "presentes/travesseiros/960.jpeg",
+        "presentes/travesseiros/1440.avif",
+        "presentes/travesseiros/1440.webp",
+        "presentes/travesseiros/1440.jpeg"
+      ]
+    },
+    "social": [
+      "social/opengraph.jpeg"
+    ]
+  },
+  "slugRules": {
+    "case": "lowercase",
+    "words": "kebab-case",
+    "accents": "ascii-folded",
+    "peopleJoiner": "-e-",
+    "forbid": [
+      "spaces",
+      "underscores",
+      "uppercase-letters",
+      "camera-filenames"
+    ]
+  }
+}

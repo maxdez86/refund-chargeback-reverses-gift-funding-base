@@ -1,0 +1,108 @@
+import {
+  InvitationLookupResponseSchema,
+  type InvitationLookupResponse,
+  RsvpSubmissionResponseSchema,
+  type RsvpSubmissionRequest,
+  type RsvpSubmissionResponse,
+} from "@brimax/contracts";
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+export class RsvpApiError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = "RsvpApiError";
+  }
+}
+
+export function normalizeInvitationCode(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export async function fetchInvitation(
+  code: string,
+  turnstileToken?: string | null
+): Promise<InvitationLookupResponse> {
+  if (!API_URL) {
+    throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
+  }
+
+  const normalized = normalizeInvitationCode(code);
+  const url = `${API_URL}/invitation/${encodeURIComponent(normalized)}`;
+  const response = turnstileToken
+    ? await fetch(url, { headers: { "x-turnstile-token": turnstileToken } })
+    : await fetch(url);
+  const text = await response.text();
+  const body: unknown = text ? safeJsonParse(text) : null;
+
+  if (!response.ok) {
+    const message = extractErrorMessage(body) ?? `HTTP ${response.status}`;
+    throw new RsvpApiError(message, response.status);
+  }
+
+  const parsed = InvitationLookupResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new RsvpApiError("Resposta inválida do servidor de convites.");
+  }
+
+  return parsed.data;
+}
+
+export async function submitRsvp(
+  input: RsvpSubmissionRequest,
+  lookupProof?: string | null
+): Promise<RsvpSubmissionResponse> {
+  if (!API_URL) {
+    throw new RsvpApiError("API URL não configurada (VITE_API_URL).");
+  }
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "idempotency-key": crypto.randomUUID(),
+  };
+  if (lookupProof) {
+    headers["x-rsvp-lookup-proof"] = lookupProof;
+  }
+
+  const response = await fetch(`${API_URL}/rsvp`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  const text = await response.text();
+  const body: unknown = text ? safeJsonParse(text) : null;
+
+  if (!response.ok) {
+    const message = extractErrorMessage(body) ?? `HTTP ${response.status}`;
+    throw new RsvpApiError(message, response.status);
+  }
+
+  const parsed = RsvpSubmissionResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new RsvpApiError("Resposta inválida do servidor de RSVP.");
+  }
+
+  return parsed.data;
+}
+
+function safeJsonParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function extractErrorMessage(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const err = (body as { error?: unknown }).error;
+  if (typeof err === "string") return err;
+  if (typeof err === "object" && err !== null) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+  }
+  const topMsg = (body as { message?: unknown }).message;
+  if (typeof topMsg === "string") return topMsg;
+  return undefined;
+}

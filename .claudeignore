@@ -1,0 +1,44 @@
+# .claudeignore — files Claude Code should not read by default.
+# Gitignore-style syntax. Keeps Glob/Grep results lean and protects secrets.
+
+# === Dependencies / lockfiles (regenerated, very large) ===
+node_modules/
+pnpm-lock.yaml
+
+# === Build / compile output ===
+dist/
+build/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# === IaC generated state (sensitive + huge) ===
+cdk.out/
+cdk.out.cert-check/
+.terraform/
+.opentofu/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# === Vendor installers / large blobs ===
+install-opentofu.sh
+DNS_Configuration.csv
+
+# === Abandoned experiments (199 MB, includes nested node_modules) ===
+docs/experimentation/
+
+# === Secrets — defense-in-depth on top of .gitignore ===
+.env
+.env.*
+!.env.example
+
+# === Local dev artifacts / logs ===
+.tmp/
+*.log
+
+# === Editor / OS noise ===
+.DS_Store
+.idea/
+.vscode/
