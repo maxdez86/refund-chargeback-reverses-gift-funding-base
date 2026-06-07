@@ -45,8 +45,8 @@
     "test:payments:negative": "bash scripts/test-payments-negative.sh",
     "test:payments:pix": "bash scripts/test-payments-pix.sh",
     "test:payments:webhook": "bash scripts/test-payments-webhook.sh",
-    "test": "node --test scripts/convert-responsive-media.test.ts && pnpm -r test",
-    "test:media:convert": "node --test scripts/convert-responsive-media.test.ts",
+    "test": "node --experimental-strip-types --test scripts/convert-responsive-media.test.ts && pnpm -r test",
+    "test:media:convert": "node --experimental-strip-types --test scripts/convert-responsive-media.test.ts",
     "typecheck": "pnpm -r typecheck",
     "wait:landing:cert": "bash scripts/wait-for-landing-certificate.sh"
   },
