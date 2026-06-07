@@ -1,0 +1,112 @@
+import * as cdk from "aws-cdk-lib";
+import { Match, Template } from "aws-cdk-lib/assertions";
+import { describe, expect, it } from "vitest";
+import { GithubOidcStack } from "../lib/stacks/github-oidc-stack";
+import { applyCostAllocationTags } from "./support/tags";
+
+describe("GithubOidcStack", () => {
+  it("creates a GitHub provider and a single environment-scoped deploy role", () => {
+    const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
+    const stack = new GithubOidcStack(app, "BrimaxGithubOidcStack", {
+      env: { account: "183286346090", region: "us-east-1" },
+      githubRepository: "maxdez86/brimax-life",
+      lockTableName: "prod-lock-table",
+      stage: "prod",
+      stateBucketName: "prod-state-bucket"
+    });
+    const template = Template.fromStack(stack);
+
+    template.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 1);
+
+    template.hasResourceProperties("AWS::IAM::Role", {
+      RoleName: "brimax-github-actions-prod-deploy",
+      AssumeRolePolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: "sts:AssumeRoleWithWebIdentity",
+            Condition: {
+              StringEquals: Match.objectLike({
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:repository": "maxdez86/brimax-life",
+                "token.actions.githubusercontent.com:ref": "refs/heads/prod",
+                "token.actions.githubusercontent.com:sub":
+                  "repo:maxdez86/brimax-life:environment:prod"
+              })
+            }
+          })
+        ])
+      }
+    });
+
+    template.hasOutput("GithubOidcProviderArn", {});
+    template.hasOutput("GithubActionsDeployRoleArn", {});
+    template.hasOutput("GithubActionsDeployRoleSecretName", {
+      Value: "AWS_ROLE_TO_ASSUME_PROD"
+    });
+    template.hasOutput("GithubActionsEnvironmentName", {
+      Value: "prod"
+    });
+
+    expect(template.toJSON()).toBeDefined();
+  });
+
+  it("creates a dev prod-promotion validation role for pull requests targeting prod", () => {
+    const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
+    const stack = new GithubOidcStack(app, "DevGithubOidcStack", {
+      env: { account: "183286346090", region: "us-east-1" },
+      githubRepository: "maxdez86/brimax-life",
+      lockTableName: "dev-lock-table",
+      stage: "dev",
+      stateBucketName: "dev-state-bucket"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::IAM::Role", {
+      RoleName: "brimax-github-actions-dev-prod-promotion-validation",
+      AssumeRolePolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: "sts:AssumeRoleWithWebIdentity",
+            Condition: {
+              StringEquals: Match.objectLike({
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:repository": "maxdez86/brimax-life",
+                "token.actions.githubusercontent.com:sub":
+                  "repo:maxdez86/brimax-life:environment:dev",
+                "token.actions.githubusercontent.com:event_name": "pull_request",
+                "token.actions.githubusercontent.com:base_ref": "prod"
+              })
+            }
+          })
+        ])
+      }
+    });
+
+    template.hasOutput("ProdPromotionValidationRoleArn", {});
+    template.hasOutput("ProdPromotionValidationRoleSecretName", {
+      Value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
+    });
+  });
+
+  it("reuses an existing provider ARN when supplied", () => {
+    const app = new cdk.App();
+    applyCostAllocationTags(app, "prod");
+    const stack = new GithubOidcStack(app, "ImportedProviderStack", {
+      env: { account: "183286346090", region: "us-east-1" },
+      existingProviderArn:
+        "arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com",
+      githubRepository: "maxdez86/brimax-life",
+      lockTableName: "prod-lock-table",
+      stage: "prod",
+      stateBucketName: "prod-state-bucket"
+    });
+    const template = Template.fromStack(stack);
+
+    template.resourceCountIs("AWS::IAM::OIDCProvider", 0);
+    template.hasOutput("GithubOidcProviderArn", {
+      Value: "arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com"
+    });
+  });
+});

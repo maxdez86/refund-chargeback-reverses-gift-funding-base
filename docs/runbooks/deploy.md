@@ -3,6 +3,7 @@
 Use this runbook for repeatable production deploys after the environment has already been bootstrapped.
 
 For the isolated public dev environment, use [deploy-dev.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/deploy-dev.md:1) for repeatable deploys, and [bootstrapping-dev.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping-dev.md:1) for the first dev bring-up.
+For GitHub Actions OIDC IAM role bootstrap, use [bootstrap-github-oidc.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrap-github-oidc.md:1).
 
 ## Quick Commands
 

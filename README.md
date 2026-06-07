@@ -60,6 +60,12 @@ pnpm test:payments:webhook
 pnpm test:payments:negative
 ```
 
+## Deployment Bootstrap
+
+- production bootstrap: [docs/runbooks/bootstrapping.md](docs/runbooks/bootstrapping.md)
+- dev bootstrap: [docs/runbooks/bootstrapping-dev.md](docs/runbooks/bootstrapping-dev.md)
+- GitHub Actions OIDC bootstrap: [docs/runbooks/bootstrap-github-oidc.md](docs/runbooks/bootstrap-github-oidc.md)
+
 ## Stages
 
 - Default stage: `prod`

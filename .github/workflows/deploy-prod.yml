@@ -1,6 +1,9 @@
-name: deploy-landing-page
+name: deploy-prod
 
 on:
+  push:
+    branches:
+      - prod
   workflow_dispatch:
 
 permissions:
@@ -9,11 +12,15 @@ permissions:
 
 jobs:
   deploy:
-    environment: production
+    if: github.ref == 'refs/heads/prod'
+    environment: ${{ github.ref_name }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-${{ github.ref_name }}
+      cancel-in-progress: false
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
-      AWS_ROLE_TO_ASSUME_PERSONAL_STG: ${{ secrets.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
       STAGE: ${{ vars.STAGE }}
       ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
       CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
@@ -95,7 +102,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -129,3 +136,43 @@ jobs:
       - name: Remove CI environment file
         if: always()
         run: rm -f .env
+
+  # Post-deploy, READ-ONLY smoke test of the public surface (CloudFront site +
+  # two anonymous API GETs). It runs after `deploy` succeeds and only ever issues
+  # GET requests.
+  #
+  # SAFETY INVARIANT — DO NOT add `id-token: write` here and DO NOT add a
+  # `configure-aws-credentials` step. The job intentionally has no AWS credentials
+  # (job-level `permissions: contents: read` overrides the workflow-level
+  # `id-token: write`), so it is structurally incapable of mutating prod. Adding
+  # either would reopen the write surface this guard exists to prevent.
+  smoke-prod-public:
+    needs: deploy
+    if: github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: prod
+    permissions:
+      contents: read
+    env:
+      ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+      WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+      API_DOMAIN: ${{ vars.API_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      # No build:web, no configure-aws-credentials, no OpenTofu — public HTTPS only.
+      - name: Run prod public smoke
+        run: pnpm smoke:prod
