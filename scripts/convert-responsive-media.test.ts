@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   buildConversionPlan,
   convertResponsiveMedia,
@@ -44,20 +43,54 @@ function withTempDir(fn: (tempDir: string) => void): Promise<void> {
     .finally(() => rmSync(tempDir, { recursive: true, force: true }));
 }
 
+function withMockConvert(tempDir: string, fn: () => void): void {
+  const binDir = path.join(tempDir, "bin");
+  const convertPath = path.join(binDir, "convert");
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(
+    convertPath,
+    `#!/usr/bin/env node
+const { existsSync, mkdirSync, writeFileSync } = require("node:fs");
+const path = require("node:path");
+
+const args = process.argv.slice(2);
+if (args.length === 1 && args[0] === "-version") {
+  process.stdout.write("mock-convert 1.0.0\\n");
+  process.exit(0);
+}
+
+const outputPath = args.at(-1);
+if (!outputPath || outputPath.startsWith("-")) {
+  process.stderr.write("missing output path\\n");
+  process.exit(1);
+}
+
+const sourcePath = args[0];
+if (sourcePath && !sourcePath.startsWith("-") && !existsSync(sourcePath)) {
+  process.stderr.write(\`source not found: \${sourcePath}\\n\`);
+  process.exit(1);
+}
+
+mkdirSync(path.dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, "mock-image");
+`,
+    "utf8",
+  );
+  chmodSync(convertPath, 0o755);
+
+  const originalPath = process.env.PATH ?? "";
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath}`;
+
+  try {
+    fn();
+  } finally {
+    process.env.PATH = originalPath;
+  }
+}
+
 function createFixtureImage(outputPath: string): void {
   mkdirSync(path.dirname(outputPath), { recursive: true });
-  const result = spawnSync(
-    "convert",
-    ["-size", "1600x900", "gradient:#f5efe3-#9f7a34", outputPath],
-    {
-      encoding: "utf8",
-      stdio: "pipe",
-    },
-  );
-
-  if (result.error || result.status !== 0) {
-    throw new Error(`Failed to create fixture image: ${result.stderr || result.error?.message || ""}`);
-  }
+  writeFileSync(outputPath, "fixture-image");
 }
 
 test("slugifyAssetName applies the architecture naming rules", () => {
@@ -122,7 +155,9 @@ test("convertResponsiveMedia writes the full output set for a shared-width secti
     });
 
     assert.equal(plan.slug, "o-ultimo-primeiro-beijo");
-    convertResponsiveMedia(plan);
+    withMockConvert(tempDir, () => {
+      convertResponsiveMedia(plan);
+    });
 
     for (const variant of plan.variants) {
       assert.equal(existsSync(variant.outputPath), true, `missing ${variant.outputPath}`);
