@@ -4,6 +4,8 @@ Use this only for first-time environment setup and initial production bring-up.
 
 This runbook is for the first production deploy of the landing page to `brimax.life` and the API custom domain at `api.brimax.life`.
 
+For GitHub Actions IAM role bootstrap through OIDC, use [bootstrap-github-oidc.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrap-github-oidc.md:1).
+
 Use two terminals because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
 
 This bootstrap also establishes the baseline edge hardening through IaC:

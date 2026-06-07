@@ -1,0 +1,40 @@
+name: smoke-prod
+
+# On-demand READ-ONLY re-check of the public prod surface, without redeploying.
+# Same script as the post-deploy `smoke-prod-public` job in deploy-prod.yml.
+#
+# SAFETY INVARIANT — this workflow has `permissions: contents: read` only and no
+# AWS credentials, so it is structurally incapable of mutating prod. Do not add
+# `id-token: write` or a `configure-aws-credentials` step.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: prod
+    env:
+      ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+      WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+      API_DOMAIN: ${{ vars.API_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Run prod public smoke
+        run: pnpm smoke:prod

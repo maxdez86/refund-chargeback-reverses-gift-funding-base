@@ -1,14 +1,85 @@
-name: ci
+name: dev-pr-validation
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
-  validate:
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      frontend_build: ${{ steps.filter.outputs.frontend_build }}
+      cdk_synth: ${{ steps.filter.outputs.cdk_synth }}
+      opentofu_static: ${{ steps.filter.outputs.opentofu_static }}
+      workflow_yaml: ${{ steps.filter.outputs.workflow_yaml }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend_build:
+              - 'apps/web/**'
+              - 'packages/config/**'
+              - 'packages/contracts/**'
+              - 'scripts/build-landing-bundle.sh'
+              - 'scripts/dev-web.sh'
+              - 'scripts/dev-all-web-apps.sh'
+              - 'infra/cdk/lib/stacks/edge-stack.ts'
+              - 'infra/cdk/lib/constructs/website/**'
+              - 'apps/web/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - '.eslintrc*'
+              - 'eslint.config.*'
+              - 'vite.config.*'
+            cdk_synth:
+              - 'apps/api/**'
+              - 'infra/cdk/**'
+              - 'packages/config/**'
+              - 'packages/contracts/**'
+              - 'scripts/deploy-backend.sh'
+              - 'scripts/deploy-platform.sh'
+              - 'scripts/deploy-landing-edge.sh'
+              - 'scripts/deploy-landing-certificate.sh'
+              - 'scripts/landing-env.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - '.eslintrc*'
+              - 'eslint.config.*'
+            opentofu_static:
+              - 'infra/opentofu/**'
+            workflow_yaml:
+              - '.github/workflows/**'
+
+      - name: Summarize routing
+        run: |
+          {
+            echo "## PR validation routing"
+            echo ""
+            echo "- frontend_build: ${{ steps.filter.outputs.frontend_build }}"
+            echo "- cdk_synth: ${{ steps.filter.outputs.cdk_synth }}"
+            echo "- opentofu_static: ${{ steps.filter.outputs.opentofu_static }}"
+            echo "- workflow_yaml: ${{ steps.filter.outputs.workflow_yaml }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  baseline:
+    runs-on: ubuntu-latest
+    needs: detect-changes
     steps:
       - uses: actions/checkout@v4
 
@@ -33,26 +104,114 @@ jobs:
       - name: Test
         run: pnpm test
 
+  build-web:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend_build == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
       - name: Generate CI environment file
         shell: bash
         run: |
           {
-            printf 'STAGE=%q\n' "prod"
+            printf 'STAGE=%q\n' "dev"
             printf 'AWS_REGION=%q\n' "us-east-1"
-            printf 'ROOT_DOMAIN=%q\n' "brimax.life"
-            printf 'CONTACT_EMAIL=%q\n' "casamento@brimax.life"
-            printf 'API_DOMAIN=%q\n' "api.brimax.life"
-            printf 'WWW_DOMAIN=%q\n' "www.brimax.life"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "0x4AAAAAADWSl1ce7VLNgFRo"
-          } > .env
-          test -f .env
+            printf 'ROOT_DOMAIN=%q\n' "dev.brimax.life"
+            printf 'CONTACT_EMAIL=%q\n' "casamento-dev@brimax.life"
+            printf 'API_DOMAIN=%q\n' "api.dev.brimax.life"
+            printf 'WWW_DOMAIN=%q\n' "www.dev.brimax.life"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "1x00000000000000000000AA"
+          } > .env.dev
+          test -f .env.dev
 
       - name: Build landing page
-        run: pnpm build:web
-
-      - name: CDK Synth
-        run: pnpm synth
+        run: BRIMAX_ENV_FILE=.env.dev pnpm build:web
 
       - name: Remove CI environment file
         if: always()
-        run: rm -f .env
+        run: rm -f .env.dev
+
+  synth-cdk:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cdk_synth == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "dev"
+            printf 'AWS_REGION=%q\n' "us-east-1"
+            printf 'ROOT_DOMAIN=%q\n' "dev.brimax.life"
+            printf 'CONTACT_EMAIL=%q\n' "casamento-dev@brimax.life"
+            printf 'API_DOMAIN=%q\n' "api.dev.brimax.life"
+            printf 'WWW_DOMAIN=%q\n' "www.dev.brimax.life"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "1x00000000000000000000AA"
+          } > .env.dev
+          test -f .env.dev
+
+      - name: CDK Synth
+        run: BRIMAX_ENV_FILE=.env.dev pnpm synth
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env.dev
+
+  validate-opentofu:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.opentofu_static == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Check OpenTofu formatting
+        run: tofu fmt -check -recursive infra/opentofu
+
+  validate-workflows:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflow_yaml == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow YAML
+        run: |
+          ruby -e '
+            require "yaml"
+            Dir[".github/workflows/*.yml"].sort.each do |file|
+              YAML.load_file(file)
+              puts "validated #{file}"
+            end
+          '
