@@ -1,16 +1,28 @@
+import { resolveStage, stageAllowedOrigins } from "@brimax/config";
+
 type HeaderValue = string | number | boolean;
 
-const ALLOWED_ORIGINS = new Set([
-  "https://brimax.life",
-  "https://www.brimax.life"
-]);
+function allowedOrigins() {
+  const configured = process.env.ALLOWED_ORIGINS
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+
+  return stageAllowedOrigins(resolveStage(process.env.STAGE));
+}
 
 function toHeaderRecord(headers: Record<string, HeaderValue>) {
   return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, String(value)]));
 }
 
 export function corsHeaders(requestOrigin: string | undefined): Record<string, string> {
-  if (!requestOrigin || !ALLOWED_ORIGINS.has(requestOrigin)) {
+  const allowed = new Set(allowedOrigins());
+
+  if (!requestOrigin || !allowed.has(requestOrigin)) {
     return { vary: "Origin" };
   }
 

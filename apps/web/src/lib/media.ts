@@ -7,8 +7,6 @@ import {
 } from "@/lib/media-policy";
 import type { PictureSource } from "@/components/ResponsivePhoto";
 
-export const MEDIA_BUCKET = import.meta.env.VITE_MEDIA_BUCKET as string | undefined;
-
 export type DeviceImageSection = "hero" | "footer";
 export type SharedWidthImageSection = "story" | "padrinhos" | "presentes";
 export type SharedWidthVariant = 480 | 960 | 1440;
@@ -80,10 +78,4 @@ export function buildSharedWidthImageFallbackSrc(
   slug: string,
 ): string {
   return sharedWidthImageUrl(section, slug, 960, "jpeg");
-}
-
-if (import.meta.env.DEV && !MEDIA_BUCKET) {
-  console.warn(
-    "[media] VITE_MEDIA_BUCKET is not set in apps/web/.env. CloudFront /media/* still routes correctly in deployed environments, but the env var keeps the bucket name in sync with infra tooling.",
-  );
 }

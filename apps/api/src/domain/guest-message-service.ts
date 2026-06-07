@@ -132,6 +132,6 @@ function buildGuestMessageNotificationHtml(message: { authorName: string; create
         '<p style="margin:0 0 8px;"><strong>Recado:</strong></p>' +
           `<p style="margin:0;white-space:normal;">${renderMultilineText(message.message)}</p>`
       ) +
-      `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml("brimax.life")}.</p>`
+      `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml(getEnv().siteLabel)}.</p>`
   );
 }

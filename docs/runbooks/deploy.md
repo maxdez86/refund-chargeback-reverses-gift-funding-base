@@ -2,6 +2,8 @@
 
 Use this runbook for repeatable production deploys after the environment has already been bootstrapped.
 
+For the isolated public dev environment, use [deploy-dev.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/deploy-dev.md:1) for repeatable deploys, and [bootstrapping-dev.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping-dev.md:1) for the first dev bring-up.
+
 ## Quick Commands
 
 ### Refresh Sentry Infrastructure
@@ -34,6 +36,13 @@ pnpm opentofu:ses-dns:init
 pnpm opentofu:ses-dns:apply
 ```
 
+If the shared Cloudflare zone baseline changes, also run:
+
+```bash
+pnpm opentofu:zone-settings:init
+pnpm opentofu:zone-settings:apply
+```
+
 ### Deploy Frontend
 
 ```bash
@@ -53,6 +62,7 @@ Rebuilds and deploys the landing page edge stack.
 
 Notes:
 - The deploy scripts auto-load `.env`, so manual `source .env` is optional.
+- To use a non-default env file, prefix commands with `BRIMAX_ENV_FILE=.env.dev`.
 - `prod` is the default stage, so you do not need to pass `stage=prod`.
 - Use `STAGE=dev` or `--context stage=dev` only when you intentionally want prefixed development resources.
 - For future `dev` Sentry rollout, first apply `infra/opentofu/sentry` with `STAGE=dev`, then deploy the dev backend so it picks up the dev DSN.
@@ -71,6 +81,42 @@ pnpm --filter @brimax/infra-cdk cdk synth
 pnpm opentofu:ses-dns:plan
 ```
 
+Before any `dev` rollout, production OpenTofu must also be clean:
+
+```bash
+pnpm opentofu:zone-settings:init && pnpm opentofu:zone-settings:plan
+pnpm opentofu:dns:init && pnpm opentofu:dns:plan
+pnpm opentofu:api-dns:init && pnpm opentofu:api-dns:plan
+pnpm opentofu:ses-dns:init && pnpm opentofu:ses-dns:plan
+pnpm opentofu:sentry:init && pnpm opentofu:sentry:plan
+pnpm opentofu:cert:init && pnpm opentofu:cert:plan
+```
+
+Treat `No changes` across the shared zone-settings module and all five production stage modules as the gate before you bootstrap or deploy `dev`.
+
+## OpenTofu State Reconciliation
+
+Production Cloudflare resources may already exist before OpenTofu starts managing them. In that case:
+
+1. Fix the CDK/OpenTofu contract first.
+   - CDK owns AWS resources and must expose any values OpenTofu needs, such as the landing CloudFront distribution domain name.
+   - OpenTofu owns Cloudflare DNS records and Sentry resources.
+2. Import the live Cloudflare resources into the correct OpenTofu module state instead of creating duplicates.
+3. Re-run `plan` until each production module reports `No changes`.
+
+For the DNS isolation split:
+- import the live zone settings into `infra/opentofu/zone-settings`
+- remove the old zone-setting ownership from `infra/opentofu/edge-dns` state
+- keep the root and `www` records in `infra/opentofu/edge-dns`
+
+Use imports for pre-existing production resources in these modules:
+- `infra/opentofu/certificate-validation`: ACM validation CNAMEs for root, `www`, and `api`
+- `infra/opentofu/api-dns`: `api.brimax.life`
+- `infra/opentofu/edge-dns`: `brimax.life` and `www.brimax.life`
+- `infra/opentofu/zone-settings`: the managed Cloudflare zone settings
+
+Do not destroy and recreate working production DNS records just to satisfy state ownership.
+
 ## Full Deployment Sequence
 
 This is the standard post-bootstrap production sequence. It assumes the platform resources, certificates, and initial DNS/certificate validation are already in place.
@@ -79,7 +125,12 @@ This is the standard post-bootstrap production sequence. It assumes the platform
 
    ```bash
    pnpm build:web
-   pnpm dev:all-web
+   ```
+
+   Optional local check against the isolated dev environment:
+
+   ```bash
+   pnpm dev:web
    ```
 
 2. Deploy the landing page edge stack:
@@ -128,7 +179,7 @@ This is the standard post-bootstrap production sequence. It assumes the platform
 The normal managed deploy keeps these production settings aligned:
 - CloudFront adds the baseline security headers.
 - CloudFront only serves the canonical hosts and rejects the default `cloudfront.net` hostname.
-- OpenTofu keeps Cloudflare `ssl`, `always_use_https`, and `min_tls_version` aligned.
+- OpenTofu `zone-settings` keeps Cloudflare `ssl`, `always_use_https`, and `min_tls_version` aligned.
 - OpenTofu keeps SES DKIM, MAIL FROM, SPF, and DMARC DNS records aligned when the sender config changes.
 
 ## Outputs / What To Check
@@ -231,3 +282,5 @@ Run this after a production backend deploy when you want to validate event-chain
 ## First-Time Setup
 
 For first production setup, certificate issuance, or first DNS wiring, use [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1).
+
+For the first `dev` environment bring-up (two-terminal certificate dance), use [bootstrapping-dev.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping-dev.md:1).

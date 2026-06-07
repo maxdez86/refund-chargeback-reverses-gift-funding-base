@@ -9,8 +9,13 @@ source "${SCRIPT_DIR}/landing-env.sh"
 export PAYMENTS_DATA_STACK_NAME="${PAYMENTS_DATA_STACK_NAME:-${STAGE_PREFIX}BrimaxDataStack}"
 export PAYMENTS_STACK_NAME="${PAYMENTS_STACK_NAME:-${STAGE_PREFIX}BrimaxAppStack}"
 export PAYMENTS_OBSERVABILITY_STACK_NAME="${PAYMENTS_OBSERVABILITY_STACK_NAME:-${STAGE_PREFIX}BrimaxObservabilityStack}"
-export ASAAS_ENV="${ASAAS_ENV:-production}"
-export ASAAS_API_BASE_URL="${ASAAS_API_BASE_URL:-https://api.asaas.com/v3}"
+if [[ "${STAGE}" == "dev" ]]; then
+  export ASAAS_ENV="${ASAAS_ENV:-sandbox}"
+  export ASAAS_API_BASE_URL="${ASAAS_API_BASE_URL:-https://api-sandbox.asaas.com/v3}"
+else
+  export ASAAS_ENV="${ASAAS_ENV:-production}"
+  export ASAAS_API_BASE_URL="${ASAAS_API_BASE_URL:-https://api.asaas.com/v3}"
+fi
 export PAYMENTS_TEST_GIFT_ID="${PAYMENTS_TEST_GIFT_ID:-g-test-pix}"
 export PAYMENTS_TEST_GIFT_QUANTITY="${PAYMENTS_TEST_GIFT_QUANTITY:-1}"
 

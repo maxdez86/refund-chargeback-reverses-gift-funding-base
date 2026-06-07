@@ -57,21 +57,3 @@ resource "cloudflare_dns_record" "www" {
   type    = "CNAME"
   zone_id = var.cloudflare_zone_id
 }
-
-resource "cloudflare_zone_setting" "ssl" {
-  setting_id = "ssl"
-  value      = "strict"
-  zone_id    = var.cloudflare_zone_id
-}
-
-resource "cloudflare_zone_setting" "always_use_https" {
-  setting_id = "always_use_https"
-  value      = "on"
-  zone_id    = var.cloudflare_zone_id
-}
-
-resource "cloudflare_zone_setting" "min_tls_version" {
-  setting_id = "min_tls_version"
-  value      = "1.2"
-  zone_id    = var.cloudflare_zone_id
-}

@@ -5,14 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOG_DIR="${REPO_ROOT}/.tmp/dev-all-web-apps"
 
+export BRIMAX_ENV_FILE="${BRIMAX_ENV_FILE:-.env.dev}"
 source "${SCRIPT_DIR}/landing-env.sh"
 
-export VITE_CONTACT_EMAIL="${VITE_CONTACT_EMAIL:-${CONTACT_EMAIL}}"
+assert_local_frontend_target_safe
+export_public_web_env
+
+export MEDIA_PROXY_TARGET="${MEDIA_PROXY_TARGET:-https://${ROOT_DOMAIN}}"
+export API_PROXY_TARGET="${API_PROXY_TARGET:-https://${API_DOMAIN}}"
 
 mkdir -p "${LOG_DIR}"
 
 apps=(
-  "web|5173|pnpm --filter @brimax/web dev -- --host 0.0.0.0 --port 5173 --strictPort"
+  "web|5173|pnpm --filter @brimax/web exec vite --config vite.config.ts --host 0.0.0.0 --port 5173 --strictPort"
 )
 
 pids=()
@@ -66,6 +71,9 @@ trap cleanup EXIT INT TERM
 
 cd "${REPO_ROOT}"
 
+print_env_summary "Local web dev"
+printf '  media proxy target: %s\n' "${MEDIA_PROXY_TARGET}"
+printf '  api proxy target: %s\n' "${API_PROXY_TARGET}"
 printf 'Logs: %s\n' "${LOG_DIR}"
 
 for app in "${apps[@]}"; do

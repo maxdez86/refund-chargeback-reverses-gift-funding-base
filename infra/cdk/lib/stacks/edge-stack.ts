@@ -31,6 +31,12 @@ export class EdgeStack extends cdk.Stack {
     const site = new StaticSiteConstruct(this, "Site", { ...props, mediaBucket: media.bucket });
     this.distribution = site.distribution;
 
+    new cdk.CfnOutput(this, "CloudFrontDistributionDomainName", {
+      description: "Canonical CloudFront distribution domain for the landing site DNS records.",
+      exportName: resourceName("BrimaxCloudFrontDistributionDomainName", props.stage),
+      value: this.distribution.distributionDomainName
+    });
+
     new cdk.CfnOutput(this, "MediaBucketName", {
       description: "S3 bucket fronted by CloudFront under /media/*. Upload videos/photos here.",
       exportName: resourceName("BrimaxMediaBucketName", props.stage),

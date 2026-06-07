@@ -114,7 +114,7 @@ describe("asaas webhook sync", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("skips cleanly outside prod", async () => {
+  it("skips cleanly for unsupported stages", async () => {
     const { syncAsaasWebhook } = await loadModule();
     const fetchImpl = vi.fn();
 
@@ -124,15 +124,91 @@ describe("asaas webhook sync", () => {
       apiKey: "asaas-key",
       contactEmail: "casamento@brimax.life",
       fetchImpl,
-      stage: "dev",
+      stage: "qa",
       webhookToken: "whsec_test_token_123456789012345678901234567890"
     });
 
     expect(result).toEqual({
       action: "skipped",
-      reason: "non-prod"
+      reason: "unsupported-stage"
     });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("creates a dev webhook in sandbox when none matches", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev" }));
+
+    const result = await syncAsaasWebhook({
+      apiBaseUrl: "https://api-sandbox.asaas.com/v3",
+      apiDomain: "api.dev.brimax.life",
+      apiKey: "asaas-key",
+      contactEmail: "maxreis86@gmail.com",
+      fetchImpl,
+      stage: "dev",
+      webhookToken: "whsec_dev_token_123456789012345678901234567890"
+    });
+
+    expect(result.action).toBe("created");
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://api-sandbox.asaas.com/v3/webhooks",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toEqual(
+      expect.objectContaining({
+        name: "brimax-dev-asaas-webhook",
+        url: "https://api.dev.brimax.life/webhooks/asaas",
+        email: "maxreis86@gmail.com",
+        enabled: true,
+        interrupted: false,
+        apiVersion: 3,
+        authToken: "whsec_dev_token_123456789012345678901234567890",
+        sendType: "SEQUENTIALLY"
+      })
+    );
+  });
+
+  it("updates a dev webhook by managed name when the URL is different", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: "wh_dev_name",
+              name: "brimax-dev-asaas-webhook",
+              url: "https://old.dev.example.com/webhooks/asaas"
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev_name" }));
+
+    const result = await syncAsaasWebhook({
+      apiBaseUrl: "https://api-sandbox.asaas.com/v3",
+      apiDomain: "api.dev.brimax.life",
+      apiKey: "asaas-key",
+      contactEmail: "maxreis86@gmail.com",
+      fetchImpl,
+      stage: "dev",
+      webhookToken: "whsec_dev_token_123456789012345678901234567890"
+    });
+
+    expect(result.action).toBe("updated");
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://api-sandbox.asaas.com/v3/webhooks/wh_dev_name",
+      expect.objectContaining({
+        method: "PUT"
+      })
+    );
   });
 
   it("updates by managed name when the URL is different", async () => {

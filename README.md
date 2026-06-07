@@ -34,10 +34,15 @@ pnpm synth
 Run the frontend locally and open it in your browser:
 
 ```bash
-pnpm build:web && pnpm dev:all-web
+cp .env.dev.example .env.dev
+```
+```bash
+pnpm dev:web
 ```
 
 This starts `apps/web` on `http://127.0.0.1:5173`.
+By default it loads `.env.dev` and targets the isolated `dev` domains.
+To debug against production intentionally, run `BRIMAX_ENV_FILE=.env BRIMAX_LOCAL_ALLOW_PROD=true pnpm dev:web`.
 
 Logs are written to `.tmp/dev-all-web-apps/`. Keep the command running; use `Ctrl+C` to stop every app.
 

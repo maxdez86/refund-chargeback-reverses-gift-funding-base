@@ -10,7 +10,8 @@ cd "${REPO_ROOT}"
 
 rm -rf apps/web/dist
 
-export VITE_CONTACT_EMAIL="${VITE_CONTACT_EMAIL:-${CONTACT_EMAIL}}"
+export_public_web_env
+print_env_summary "Building landing bundle"
 pnpm --filter @brimax/web build
 
 required_files=(

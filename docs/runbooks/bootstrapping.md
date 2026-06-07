@@ -67,6 +67,18 @@ First-time Sentry setup:
    pnpm opentofu:sentry:apply
    ```
 
+5. Initialize the shared Cloudflare zone-settings module:
+
+   ```bash
+   pnpm opentofu:zone-settings:init
+   ```
+
+6. Apply the shared Cloudflare zone-settings module:
+
+   ```bash
+   pnpm opentofu:zone-settings:apply
+   ```
+
 Expected behavior:
 - OpenTofu creates the shared `brimax-life` Sentry team on the first `prod` apply.
 - OpenTofu creates the `prod` backend Sentry project and runtime key.
@@ -189,7 +201,7 @@ pnpm opentofu:api-dns:apply
 This creates the Cloudflare DNS record that points:
 - `api.brimax.life` to the API Gateway custom-domain regional target
 
-This same `edge-dns` apply also enforces:
+The shared `zone-settings` module enforces:
 - `ssl = strict`
 - `always_use_https = on`
 - `min_tls_version = 1.2`
@@ -229,6 +241,8 @@ pnpm cdk:bootstrap
 pnpm deploy:platform
 pnpm opentofu:sentry:init
 pnpm opentofu:sentry:apply
+pnpm opentofu:zone-settings:init
+pnpm opentofu:zone-settings:apply
 pnpm build:web
 pnpm deploy:landing:cert
 pnpm wait:landing:cert

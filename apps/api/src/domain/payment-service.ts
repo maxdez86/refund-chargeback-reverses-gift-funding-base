@@ -7,6 +7,7 @@ import {
   type PaymentSummary
 } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
+import { resolveSiteBaseUrl } from "../lib/env";
 import { stableJsonHash } from "../lib/security";
 import { AsaasClient } from "../services/asaas/client";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
@@ -17,7 +18,6 @@ function toBrlDecimal(valueInCents: number) {
   return valueInCents / 100;
 }
 
-const DEFAULT_SITE_BASE_URL = "https://brimax.life";
 const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
 
 type NormalizedCreatePaymentRequest = {
@@ -43,7 +43,7 @@ type CreatePaymentTimings = {
 };
 
 function getSiteBaseUrl() {
-  return process.env.PAYMENTS_SITE_BASE_URL?.trim() || DEFAULT_SITE_BASE_URL;
+  return resolveSiteBaseUrl();
 }
 
 function getCheckoutExpirationMinutes() {

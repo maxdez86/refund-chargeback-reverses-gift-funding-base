@@ -4,6 +4,9 @@ import {
   isProductionStage,
   resourceName,
   resolveStage,
+  stageAllowedOrigins,
+  stageApiDomain,
+  stageRootDomain,
   stageNamePrefix
 } from "../src";
 
@@ -22,5 +25,16 @@ describe("@brimax/config", () => {
     expect(isProductionStage("dev")).toBe(false);
     expect(stageNamePrefix("dev")).toBe("dev-");
     expect(resourceName("brimax-wedding", "dev")).toBe("dev-brimax-wedding");
+  });
+
+  it("derives stage-specific public domains", () => {
+    expect(stageRootDomain("prod")).toBe("brimax.life");
+    expect(stageRootDomain("dev")).toBe("dev.brimax.life");
+    expect(stageApiDomain("prod")).toBe("api.brimax.life");
+    expect(stageApiDomain("dev")).toBe("api.dev.brimax.life");
+    expect(stageAllowedOrigins("dev")).toEqual([
+      "https://dev.brimax.life",
+      "https://www.dev.brimax.life"
+    ]);
   });
 });

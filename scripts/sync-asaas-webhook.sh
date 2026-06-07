@@ -5,8 +5,8 @@ source "$(dirname "$0")/payments-env.sh"
 
 require_command curl node
 
-if [[ "${STAGE}" != "prod" ]]; then
-  printf 'Skipping Asaas webhook sync for STAGE=%s. Only prod is managed.\n' "${STAGE}"
+if [[ "${STAGE}" != "prod" && "${STAGE}" != "dev" ]]; then
+  printf 'Skipping Asaas webhook sync for STAGE=%s. Only prod and dev are managed.\n' "${STAGE}"
   exit 0
 fi
 

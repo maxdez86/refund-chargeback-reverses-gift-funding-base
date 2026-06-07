@@ -23,10 +23,12 @@ describe("ObservabilityStack", () => {
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento@brimax.life",
+      rootDomain: "brimax.life",
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "prod",
       table: dataStack.table,
       turnstileSecretKey: "0x4AAAA-test-secret",
+      wwwDomain: "www.brimax.life",
       xrayEnabled: true
     });
     const edgeStack = new EdgeStack(app, "ObservabilityEdgeStack", {
@@ -62,8 +64,8 @@ describe("ObservabilityStack", () => {
     });
 
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      AlarmDescription: "Alerts when the public HTTP API emits 5XX responses.",
-      Threshold: 1
+      AlarmDescription: "Alerts when the public HTTP API emits a high 5XX rate under meaningful traffic.",
+      Threshold: 20
     });
 
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {

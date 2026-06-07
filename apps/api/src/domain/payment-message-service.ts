@@ -7,6 +7,7 @@ import { getEnv } from "../lib/env";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { EmailService } from "../services/email/client";
 import {
+  escapeHtml,
   renderDetailLine,
   renderEmailDocument,
   renderMultilineText
@@ -164,6 +165,6 @@ function buildCoupleMessageHtml(input: {
       renderDetailLine("Remetente", input.payerEmail ?? "não informado") +
       '<p style="margin:16px 0 8px;"><strong>💌 Mensagem deixada:</strong></p>' +
       `<p style="margin:0 0 16px;">${renderMultilineText(input.message)}</p>` +
-      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+      `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml(getEnv().siteLabel)}.</p>`
   );
 }

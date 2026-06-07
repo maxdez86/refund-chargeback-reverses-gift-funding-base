@@ -19,14 +19,16 @@ describe("AppStack", () => {
         "ImportedApiCertificate",
         "arn:aws:acm:us-east-1:123456789012:certificate/test-api"
       ),
-      apiDomain: "api.brimax.life",
+      apiDomain: "api.dev.brimax.life",
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
-      contactEmail: "casamento@brimax.life",
+      contactEmail: "casamento-dev@brimax.life",
+      rootDomain: "dev.brimax.life",
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "1x0000000000000000000000000000000AA",
+      wwwDomain: "www.dev.brimax.life",
       xrayEnabled: true
     });
     const template = Template.fromStack(stack);
@@ -35,7 +37,7 @@ describe("AppStack", () => {
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
     template.resourceCountIs("AWS::SQS::Queue", 2);
     template.resourceCountIs("AWS::SecretsManager::Secret", 1);
-    template.resourceCountIs("AWS::SES::EmailIdentity", 2);
+    template.resourceCountIs("AWS::SES::EmailIdentity", 0);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
     template.resourceCountIs("AWS::SES::ConfigurationSetEventDestination", 1);
     template.resourceCountIs("Custom::LogRetention", 0);
@@ -65,7 +67,7 @@ describe("AppStack", () => {
       RouteKey: "POST /webhooks/asaas"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::DomainName", {
-      DomainName: "api.brimax.life",
+      DomainName: "api.dev.brimax.life",
       Tags: {
         project: "brimax-life",
         stage: "dev"
@@ -95,23 +97,6 @@ describe("AppStack", () => {
     // Non-prod secret is disposable for clean pre-launch teardown.
     template.hasResource("AWS::SecretsManager::Secret", {
       DeletionPolicy: "Delete"
-    });
-    template.hasResourceProperties("AWS::SES::EmailIdentity", {
-      EmailIdentity: "casamento@brimax.life"
-    });
-    template.hasResourceProperties("AWS::SES::EmailIdentity", {
-      EmailIdentity: "brimax.life",
-      DkimSigningAttributes: {
-        NextSigningKeyLength: "RSA_2048_BIT"
-      },
-      MailFromAttributes: {
-        BehaviorOnMxFailure: "REJECT_MESSAGE",
-        MailFromDomain: "mail.brimax.life"
-      },
-      Tags: Match.arrayWith([
-        { Key: "project", Value: "brimax-life" },
-        { Key: "stage", Value: "dev" }
-      ])
     });
     template.hasResourceProperties("AWS::SES::ConfigurationSet", {
       Name: "brimax-dev-transactional",
@@ -207,13 +192,17 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          CONTACT_EMAIL: "casamento@brimax.life",
-          EMAIL_FROM: "Casamento Brimax <casamento@brimax.life>",
+          ALLOWED_ORIGINS: "https://dev.brimax.life,https://www.dev.brimax.life",
+          CONTACT_EMAIL: "casamento-dev@brimax.life",
+          EMAIL_FROM: "Casamento Brimax <casamento-dev@brimax.life>",
           EMAIL_CONFIGURATION_SET_NAME: Match.anyValue(),
           APP_SECRET_ARN: Match.anyValue(),
+          HOSTED_CHECKOUT_SUCCESS_URL: "https://dev.brimax.life",
+          PAYMENTS_SITE_BASE_URL: "https://dev.brimax.life",
           SENTRY_DSN: "https://public@example.ingest.sentry.io/123456",
+          SITE_BASE_URL: "https://dev.brimax.life",
           XRAY_ENABLED: "true",
-          RSVP_NOTIFICATION_TO: "casamento@brimax.life"
+          RSVP_NOTIFICATION_TO: "casamento-dev@brimax.life"
         })
       }
     });
@@ -259,12 +248,6 @@ describe("AppStack", () => {
     template.hasOutput("SesMailFromDomain", {});
     template.hasOutput("SesMailFromMxValue", {});
     template.hasOutput("SesMailFromTxtValue", {});
-    template.hasOutput("SesDkimDnsTokenName1", {});
-    template.hasOutput("SesDkimDnsTokenValue1", {});
-    template.hasOutput("SesDkimDnsTokenName2", {});
-    template.hasOutput("SesDkimDnsTokenValue2", {});
-    template.hasOutput("SesDkimDnsTokenName3", {});
-    template.hasOutput("SesDkimDnsTokenValue3", {});
 
     expect(template.toJSON()).toBeDefined();
   });

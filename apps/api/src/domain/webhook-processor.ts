@@ -1,7 +1,7 @@
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
-import { getEnv } from "../lib/env";
+import { getEnv, resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
@@ -54,16 +54,8 @@ function toDisplayNameCase(value: string | undefined) {
     .join(" ");
 }
 
-const DEFAULT_SITE_ORIGIN = "https://brimax.life";
-
 function getSiteOrigin() {
-  const fallbackOrigin = new URL(DEFAULT_SITE_ORIGIN).origin;
-
-  try {
-    return new URL(getEnv().hostedCheckoutSuccessUrl).origin;
-  } catch {
-    return fallbackOrigin;
-  }
+  return resolveSiteOrigin();
 }
 
 function getGiftImageUrl(imageSlug: string | undefined) {
@@ -235,6 +227,7 @@ export class WebhookProcessor {
     });
 
     try {
+      const siteLabel = resolveSiteLabel();
       const giftImageSlug = payment.gift.image ?? (await this.repository.getGift(payment.gift.id))?.image;
       const giftImageUrl = getGiftImageUrl(giftImageSlug);
 
@@ -247,12 +240,13 @@ export class WebhookProcessor {
           `Presente: ${payment.gift.name}\n` +
           `Valor: ${amount}\n\n` +
           "Se precisar de ajuda, basta responder este e-mail.\n" +
-          "brimax.life\n",
+          `${siteLabel}\n`,
         html: buildPayerConfirmationHtml({
           amount,
           giftName: payment.gift.name,
           giftImageUrl,
-          payerFirstName: payment.payerFirstName
+          payerFirstName: payment.payerFirstName,
+          siteLabel
         })
       });
       await this.repository.markNotificationSent({
@@ -274,11 +268,12 @@ function buildPayerConfirmationHtml(input: {
   giftName: string;
   giftImageUrl?: string;
   payerFirstName: string;
+  siteLabel: string;
 }) {
   return renderEmailDocument(
     renderEmailSection(
       '<p style="margin:0;color:#6b7280;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Brida &amp; Max</p>' +
-        '<p style="margin:8px 0 0;font-size:14px;color:#6b7280;">brimax.life</p>'
+        `<p style="margin:8px 0 0;font-size:14px;color:#6b7280;">${escapeHtml(input.siteLabel)}</p>`
     ) +
       renderEmailSection(
         `<p style="margin:0 0 12px;font-size:18px;color:#111827;">Oi, ${escapeHtml(input.payerFirstName)}!</p>` +
@@ -295,7 +290,7 @@ function buildPayerConfirmationHtml(input: {
           renderDetailLine("Valor", input.amount) +
           '<p style="margin:16px 0 0;color:#4b5563;font-size:14px;">Se precisar de ajuda, basta responder este e-mail.</p>'
       ) +
-      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado por brimax.life.</p>',
+      `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado por ${escapeHtml(input.siteLabel)}.</p>`,
     {
       preheader: "Confirmamos o recebimento do seu presente para Brida & Max."
     }

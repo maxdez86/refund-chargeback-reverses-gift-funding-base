@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import * as cdk from "aws-cdk-lib";
-import { resourceName, resolveStage } from "@brimax/config";
+import { resourceName, resolveStage, stageRootDomain } from "@brimax/config";
 import { AppStack } from "../lib/stacks/app-stack";
 import { CertificateStack } from "../lib/stacks/certificate-stack";
 import { DataStack } from "../lib/stacks/data-stack";
@@ -18,9 +18,9 @@ cdk.Tags.of(app).add("stage", stage);
 // Account stays portable via CDK_DEFAULT_ACCOUNT (set by the CDK CLI from the
 // active profile). Bootstrap must exist in us-east-1 for the target account.
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: "us-east-1" };
-const rootDomain = process.env.ROOT_DOMAIN ?? "brimax.life";
+const rootDomain = process.env.ROOT_DOMAIN ?? stageRootDomain(stage);
 const apiDomain = process.env.API_DOMAIN ?? `api.${rootDomain}`;
-const wwwDomain = `www.${rootDomain}`;
+const wwwDomain = process.env.WWW_DOMAIN ?? `www.${rootDomain}`;
 const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
@@ -119,10 +119,12 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   asaasWebhookToken,
   contactEmail,
   env,
+  rootDomain,
   stage,
   sentryDsn,
   table: dataStack.table,
   turnstileSecretKey,
+  wwwDomain,
   xrayEnabled
 });
 

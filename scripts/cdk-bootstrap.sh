@@ -25,6 +25,7 @@ if [[ -n "${AWS_PROFILE:-}" ]]; then
   CDK_ARGS+=(--profile "${AWS_PROFILE}")
 fi
 
+print_env_summary "CDK bootstrap"
 printf 'Bootstrapping CDK for aws://%s/%s\n' "${ACCOUNT_ID}" "${AWS_REGION}"
 
 pnpm --filter @brimax/infra-cdk cdk bootstrap "aws://${ACCOUNT_ID}/${AWS_REGION}" "${CDK_ARGS[@]}"

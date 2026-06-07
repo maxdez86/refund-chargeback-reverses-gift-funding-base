@@ -20,8 +20,8 @@ All scripts live in [package.json](package.json) and wrap shell scripts in [scri
 
 ```bash
 pnpm install                 # bootstrap workspace
-pnpm dev:all-web             # run apps/web (logs in .tmp/dev-all-web-apps/)
-pnpm dev:web                 # apps/web only (port 5173)
+pnpm dev:all-web             # run apps/web with .env.dev by default (logs in .tmp/dev-all-web-apps/)
+pnpm dev:web                 # apps/web only, defaults to .env.dev (port 5173)
 pnpm build:web               # production bundle → apps/web/dist
 pnpm build                   # tsc -b across all workspaces
 pnpm lint                    # eslint .

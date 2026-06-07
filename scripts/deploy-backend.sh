@@ -3,14 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ENV_FILE="${REPO_ROOT}/.env"
-
-if [[ -f "${ENV_FILE}" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
-fi
 
 source "$(dirname "$0")/landing-env.sh"
 source <(bash "$(dirname "$0")/export-sentry-config.sh")
@@ -64,6 +56,7 @@ fi
 
 CDK_OUTPUT_DIR="${REPO_ROOT}/infra/cdk/cdk.out.backend"
 
+print_env_summary "Deploying backend"
 printf 'Deploying backend stacks in %s (%s)\n' "${AWS_REGION}" "${STAGE}"
 printf '  - %s\n' "${PAYMENTS_DATA_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_STACK_NAME}"

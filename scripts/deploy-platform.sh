@@ -15,6 +15,7 @@ if [[ "${STAGE}" == "dev" ]]; then
   CDK_ARGS+=(--context "stage=dev")
 fi
 
+print_env_summary "Deploying platform"
 pnpm --filter @brimax/infra-cdk cdk deploy \
   "${PLATFORM_STACK_NAME}" \
   --output "${CDK_OUTPUT_DIR}" \

@@ -9,6 +9,8 @@ const MANAGED_ASAAS_WEBHOOK_EVENTS = [
   "PAYMENT_AWAITING_CHARGEBACK_REVERSAL"
 ];
 
+const MANAGED_STAGES = new Set(["prod", "dev"]);
+
 function requiredEnv(name) {
   const value = process.env[name];
 
@@ -40,11 +42,12 @@ function uniqueById(items) {
 export function buildManagedWebhookConfig({
   apiDomain,
   contactEmail,
+  stage,
   webhookToken,
   webhookUrl
 }) {
   return {
-    name: "brimax-prod-asaas-webhook",
+    name: `brimax-${stage}-asaas-webhook`,
     url: webhookUrl ?? `https://${apiDomain}/webhooks/asaas`,
     email: contactEmail,
     enabled: true,
@@ -115,17 +118,18 @@ export async function syncAsaasWebhook({
   webhookToken,
   webhookUrl
 }) {
-  if (stage !== "prod") {
-    logger.info(`Skipping Asaas webhook sync for STAGE=${stage}. Only prod is managed.`);
+  if (!MANAGED_STAGES.has(stage)) {
+    logger.info(`Skipping Asaas webhook sync for STAGE=${stage}. Only prod and dev are managed.`);
     return {
       action: "skipped",
-      reason: "non-prod"
+      reason: "unsupported-stage"
     };
   }
 
   const desiredWebhook = buildManagedWebhookConfig({
     apiDomain,
     contactEmail,
+    stage,
     webhookToken,
     webhookUrl
   });

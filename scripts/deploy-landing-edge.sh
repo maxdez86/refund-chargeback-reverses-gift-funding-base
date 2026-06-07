@@ -15,6 +15,7 @@ if [[ "${STAGE}" == "dev" ]]; then
   CDK_ARGS+=(--context "stage=dev")
 fi
 
+print_env_summary "Deploying landing edge"
 pnpm build:web
 pnpm --filter @brimax/infra-cdk cdk deploy \
   "${LANDING_EDGE_STACK_NAME}" \

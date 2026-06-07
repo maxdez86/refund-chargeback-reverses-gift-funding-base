@@ -160,7 +160,7 @@ function buildRsvpNotificationHtml(
       (musicSuggestion ? renderDetailLine("Sugestão musical", musicSuggestion) : "") +
       '<p style="margin:16px 0 8px;"><strong>Convidados:</strong></p>' +
       `<ul style="margin:0 0 16px 20px;padding:0;">${guestItems}</ul>` +
-      '<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por brimax.life.</p>'
+      `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml(getEnv().siteLabel)}.</p>`
   );
 }
 

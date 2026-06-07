@@ -34,6 +34,13 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     ]
   },
   {
+    invitationCode: "CD6788",
+    householdName: "Ronaldo da Silva",
+    guests: [
+      { guestName: "Ronaldo da Silva", slot: 1 }
+    ]
+  },
+  {
     invitationCode: "CD6789",
     householdName: "Ronaldo da Silva e família",
     guests: [
@@ -169,8 +176,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "FH2738",
-    householdName: "Drielly Alves",
-    guests: [{ guestName: "Drielly Alves", slot: 1 }]
+    householdName: "Drielly Carvalho",
+    guests: [{ guestName: "Drielly Carvalho", slot: 1 }]
   },
   {
     invitationCode: "GJ8526",
@@ -489,7 +496,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
       { guestName: "Karen Leal", slot: 1 },
       { guestName: "Julio Gorato", slot: 2 },
       { guestName: "Marina", slot: 3, isChild: true },
-      { guestName: "Enteado", slot: 4, isChild: true }
+      { guestName: "Jonatas", slot: 4, isChild: true }
     ]
   },
   {
@@ -524,7 +531,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Rodrigo Silva", slot: 1 },
       { guestName: "Lea Silva", slot: 2 },
-      { guestName: "Kauê", slot: 3, isChild: true }
+      { guestName: "Kauan", slot: 3, isChild: true }
     ]
   },
   {
@@ -625,10 +632,9 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "EK8395",
-    householdName: "Letícia Vilas Boas e Namorado",
+    householdName: "Letícia Vilas Boas",
     guests: [
-      { guestName: "Letícia Vilas Boas", slot: 1 },
-      { guestName: "Namorado", slot: 2 }
+      { guestName: "Letícia Vilas Boas", slot: 1 }
     ]
   },
   {
@@ -683,10 +689,9 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
   },
   {
     invitationCode: "HR5837",
-    householdName: "Patrícia Kanô e Thiago Yoshimura",
+    householdName: "Patrícia Kanô",
     guests: [
-      { guestName: "Patrícia Kanô", slot: 1 },
-      { guestName: "Thiago Yoshimura", slot: 2 }
+      { guestName: "Patrícia Kanô", slot: 1 }
     ]
   }
 ] as const;

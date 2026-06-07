@@ -21,10 +21,12 @@ export interface AppStackProps extends cdk.StackProps {
   asaasApiKey: string;
   asaasWebhookToken: string;
   contactEmail: string;
+  rootDomain: string;
   sentryDsn: string;
   stage: AppStage;
   table: dynamodb.ITable;
   turnstileSecretKey: string;
+  wwwDomain: string;
   xrayEnabled: boolean;
 }
 
@@ -47,6 +49,8 @@ export class AppStack extends cdk.Stack {
     const senderMailFromDomain = `mail.${senderDomainIdentity}`;
     const senderMailFromMxValue = `10 feedback-smtp.${this.region}.amazonses.com`;
     const senderMailFromTxtValue = "v=spf1 include:amazonses.com ~all";
+    const siteBaseUrl = `https://${props.rootDomain}`;
+    const allowedOrigins = [`https://${props.rootDomain}`, `https://${props.wwwDomain}`];
     // One JSON "bucket" secret per stage holds every credential the API needs.
     // The 3 vendor values are injected via secretStringTemplate; lookupProofSecret
     // is auto-generated so it is never present in `.env`. Secrets Manager has no
@@ -85,19 +89,25 @@ export class AppStack extends cdk.Stack {
     });
     this.webhookDlq = webhookDlq;
     this.webhookQueue = webhookQueue;
-    const senderDomain = new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
-      emailIdentity: senderDomainIdentity,
-      dkimSigningAttributes: {
-        nextSigningKeyLength: "RSA_2048_BIT"
-      },
-      mailFromAttributes: {
-        behaviorOnMxFailure: "REJECT_MESSAGE",
-        mailFromDomain: senderMailFromDomain
-      }
-    });
-    const senderIdentity = new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
-      emailIdentity: senderEmailIdentity
-    });
+    const senderDomain =
+      props.stage === "prod"
+        ? new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
+            emailIdentity: senderDomainIdentity,
+            dkimSigningAttributes: {
+              nextSigningKeyLength: "RSA_2048_BIT"
+            },
+            mailFromAttributes: {
+              behaviorOnMxFailure: "REJECT_MESSAGE",
+              mailFromDomain: senderMailFromDomain
+            }
+          })
+        : undefined;
+    const senderIdentity =
+      props.stage === "prod"
+        ? new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
+            emailIdentity: senderEmailIdentity
+          })
+        : undefined;
     const emailConfigurationSet = new ses.ConfigurationSet(this, "TransactionalEmailConfigurationSet", {
       configurationSetName: `brimax-${props.stage}-transactional`,
       reputationMetrics: true,
@@ -130,7 +140,7 @@ export class AppStack extends cdk.Stack {
           apigwv2.CorsHttpMethod.DELETE,
           apigwv2.CorsHttpMethod.OPTIONS
         ],
-        allowOrigins: ["https://brimax.life", "https://www.brimax.life"],
+        allowOrigins: allowedOrigins,
         maxAge: cdk.Duration.minutes(10)
       }
     });
@@ -228,9 +238,13 @@ export class AppStack extends cdk.Stack {
       SENTRY_DSN: props.sentryDsn,
       STAGE: props.stage,
       XRAY_ENABLED: String(props.xrayEnabled),
+      ALLOWED_ORIGINS: allowedOrigins.join(","),
       CONTACT_EMAIL: props.contactEmail,
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
       EMAIL_CONFIGURATION_SET_NAME: emailConfigurationSet.configurationSetName,
+      HOSTED_CHECKOUT_SUCCESS_URL: siteBaseUrl,
+      PAYMENTS_SITE_BASE_URL: siteBaseUrl,
+      SITE_BASE_URL: siteBaseUrl,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
@@ -506,13 +520,13 @@ export class AppStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "SesSenderEmailIdentity", {
-      description: "SES sender identity created by CloudFormation. Verification still requires clicking the SES email link once.",
-      value: senderIdentity.emailIdentity
+      description: "Sender address used by the application for transactional email.",
+      value: senderEmailIdentity
     });
 
     new cdk.CfnOutput(this, "SesSenderDomainIdentity", {
       description: "SES domain identity used to unlock production access after DKIM DNS verification.",
-      value: senderDomain.emailIdentity
+      value: senderDomainIdentity
     });
     new cdk.CfnOutput(this, "SesConfigurationSetName", {
       value: emailConfigurationSet.configurationSetName
@@ -527,24 +541,26 @@ export class AppStack extends cdk.Stack {
       value: senderMailFromTxtValue
     });
 
-    new cdk.CfnOutput(this, "SesDkimDnsTokenName1", {
-      value: senderDomain.attrDkimDnsTokenName1
-    });
-    new cdk.CfnOutput(this, "SesDkimDnsTokenValue1", {
-      value: senderDomain.attrDkimDnsTokenValue1
-    });
-    new cdk.CfnOutput(this, "SesDkimDnsTokenName2", {
-      value: senderDomain.attrDkimDnsTokenName2
-    });
-    new cdk.CfnOutput(this, "SesDkimDnsTokenValue2", {
-      value: senderDomain.attrDkimDnsTokenValue2
-    });
-    new cdk.CfnOutput(this, "SesDkimDnsTokenName3", {
-      value: senderDomain.attrDkimDnsTokenName3
-    });
-    new cdk.CfnOutput(this, "SesDkimDnsTokenValue3", {
-      value: senderDomain.attrDkimDnsTokenValue3
-    });
+    if (senderDomain) {
+      new cdk.CfnOutput(this, "SesDkimDnsTokenName1", {
+        value: senderDomain.attrDkimDnsTokenName1
+      });
+      new cdk.CfnOutput(this, "SesDkimDnsTokenValue1", {
+        value: senderDomain.attrDkimDnsTokenValue1
+      });
+      new cdk.CfnOutput(this, "SesDkimDnsTokenName2", {
+        value: senderDomain.attrDkimDnsTokenName2
+      });
+      new cdk.CfnOutput(this, "SesDkimDnsTokenValue2", {
+        value: senderDomain.attrDkimDnsTokenValue2
+      });
+      new cdk.CfnOutput(this, "SesDkimDnsTokenName3", {
+        value: senderDomain.attrDkimDnsTokenName3
+      });
+      new cdk.CfnOutput(this, "SesDkimDnsTokenValue3", {
+        value: senderDomain.attrDkimDnsTokenValue3
+      });
+    }
   }
 
   private createTaggedNodejsFunction(
@@ -552,7 +568,11 @@ export class AppStack extends cdk.Stack {
     props: nodejs.NodejsFunctionProps
   ): nodejs.NodejsFunction {
     const functionName = resourceName(`brimax-${id}`, props.environment?.STAGE as AppStage);
-    const logGroup = this.createFunctionLogGroup(`${id}LogGroup`, functionName);
+    const logGroup = this.createFunctionLogGroup(
+      `${id}LogGroup`,
+      functionName,
+      props.environment?.STAGE as AppStage
+    );
     const fn = new nodejs.NodejsFunction(this, id, {
       ...props,
       logGroup,
@@ -571,11 +591,11 @@ export class AppStack extends cdk.Stack {
     return fn;
   }
 
-  private createFunctionLogGroup(id: string, functionName: string): logs.LogGroup {
+  private createFunctionLogGroup(id: string, functionName: string, stage: AppStage): logs.LogGroup {
     return new logs.LogGroup(this, id, {
       logGroupName: `/aws/lambda/${functionName}`,
       retention: logs.RetentionDays.ONE_YEAR,
-      removalPolicy: cdk.RemovalPolicy.RETAIN
+      removalPolicy: stage === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY
     });
   }
 
