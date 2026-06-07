@@ -89,34 +89,26 @@ This assumes the dev platform stack, certificate, and initial DNS/certificate va
 in place from [bootstrapping-dev.md](bootstrapping-dev.md). **There is no certificate dance here** —
 the dev certificate is already issued.
 
-1. Build the landing page bundle:
+Recurring `dev` deploys are selective by changed live target:
 
-   ```bash
-   BRIMAX_ENV_FILE=.env.dev pnpm build:web
-   ```
+- frontend changes deploy the landing edge stack
+- backend changes deploy the data/app/observability stacks
+- landing-DNS changes apply only `opentofu:dns`
+- API-target changes apply only `opentofu:api-dns`
+- Sentry changes apply `opentofu:sentry`, then redeploy the backend when the DSN/output glue changed
 
-2. Deploy the landing page edge stack:
+Shared live files can fan out to multiple targets. For example, a common CDK entrypoint change can
+trigger frontend, backend, and the affected DNS jobs together.
 
-   ```bash
-   BRIMAX_ENV_FILE=.env.dev pnpm deploy:landing:edge
-   ```
+The recurring `dev` workflow intentionally excludes bootstrap-only paths:
 
-3. Deploy the backend application stack:
+- `deploy:platform`
+- `deploy:landing:cert`
+- `opentofu:cert:*`
+- `opentofu:zone-settings:*`
+- `opentofu:ses-dns:*`
 
-   ```bash
-   BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
-   ```
-
-4. **Only when DNS wiring changed** (new hostname, CloudFront/API target moved), reapply the DNS
-   modules:
-
-   ```bash
-   BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:apply
-   BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply
-   ```
-
-Dev intentionally does **not** run `ses-dns` (SES identities are prod-only) or `zone-settings` (the
-shared Cloudflare baseline is applied once during prod bootstrap and is not stage-scoped).
+Use the quick commands above to run only the live target you intend to refresh locally.
 
 ## Asaas Sandbox
 
@@ -153,3 +145,4 @@ Never point sandbox traffic or credentials at production Asaas resources.
 - dev email notifications point at `dev.brimax.life`
 - dev media bucket and DynamoDB table names differ from prod
 - `BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:plan` only targets `dev.brimax.life` and `www.dev.brimax.life`
+- `BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:plan` only targets `api.dev.brimax.life`

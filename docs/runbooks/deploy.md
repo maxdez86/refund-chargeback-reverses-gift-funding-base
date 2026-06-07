@@ -37,12 +37,9 @@ pnpm opentofu:ses-dns:init
 pnpm opentofu:ses-dns:apply
 ```
 
-If the shared Cloudflare zone baseline changes, also run:
-
-```bash
-pnpm opentofu:zone-settings:init
-pnpm opentofu:zone-settings:apply
-```
+Do not treat `zone-settings` as part of the recurring application deploy. That module is shared
+bootstrap/baseline infrastructure and should only be changed deliberately outside the normal deploy
+workflow.
 
 ### Deploy Frontend
 
@@ -120,67 +117,34 @@ Do not destroy and recreate working production DNS records just to satisfy state
 
 ## Full Deployment Sequence
 
-This is the standard post-bootstrap production sequence. It assumes the platform resources, certificates, and initial DNS/certificate validation are already in place.
+This is the standard post-bootstrap production sequence. It assumes the platform resources,
+certificates, and initial DNS/certificate validation are already in place.
 
-1. Build the landing page bundle:
+Recurring production deploys are selective by changed live target:
 
-   ```bash
-   pnpm build:web
-   ```
+- frontend changes deploy the landing edge stack
+- backend changes deploy the data/app/observability stacks
+- landing-DNS changes apply only `opentofu:dns`
+- API-target changes apply only `opentofu:api-dns`
+- Sentry changes apply `opentofu:sentry`, then redeploy the backend when the DSN/output glue changed
+- SES/DKIM deliverability changes apply `opentofu:ses-dns`
 
-   Optional local check against the isolated dev environment:
+Shared live files can fan out to multiple targets. For example, a shared CDK app entrypoint change
+can trigger frontend, backend, and both DNS modules together.
 
-   ```bash
-   pnpm dev:web
-   ```
+The recurring production workflow intentionally excludes bootstrap-only paths:
 
-2. Deploy the landing page edge stack:
+- `deploy:platform`
+- `deploy:landing:cert`
+- `opentofu:cert:*`
+- `opentofu:zone-settings:*`
+- GitHub OIDC bootstrap
 
-   ```bash
-   pnpm deploy:landing:edge
-   ```
-
-3. Deploy the backend application stack:
-
-   ```bash
-   pnpm deploy:backend
-   ```
-
-4. Initialize the website DNS OpenTofu module:
-
-   ```bash
-   pnpm opentofu:dns:init
-   ```
-
-5. Apply the website DNS OpenTofu module:
-
-   ```bash
-   pnpm opentofu:dns:apply
-   ```
-
-6. Initialize the API DNS OpenTofu module:
-
-   ```bash
-   pnpm opentofu:api-dns:init
-   ```
-
-7. Apply the API DNS OpenTofu module:
-
-   ```bash
-   pnpm opentofu:api-dns:apply
-   ```
-
-8. If backend email deliverability settings changed, initialize and apply the SES DNS OpenTofu module:
-
-   ```bash
-   pnpm opentofu:ses-dns:init
-   pnpm opentofu:ses-dns:apply
-   ```
+Those remain runbook-driven bootstrap or remediation actions, not part of normal recurring deploys.
 
 The normal managed deploy keeps these production settings aligned:
 - CloudFront adds the baseline security headers.
 - CloudFront only serves the canonical hosts and rejects the default `cloudfront.net` hostname.
-- OpenTofu `zone-settings` keeps Cloudflare `ssl`, `always_use_https`, and `min_tls_version` aligned.
 - OpenTofu keeps SES DKIM, MAIL FROM, SPF, and DMARC DNS records aligned when the sender config changes.
 
 ## Outputs / What To Check

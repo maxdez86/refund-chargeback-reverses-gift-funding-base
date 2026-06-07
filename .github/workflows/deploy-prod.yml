@@ -10,43 +10,126 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  detect-changes:
     if: github.ref == 'refs/heads/prod'
-    environment: ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_frontend: ${{ steps.filter.outputs.deploy_frontend }}
+      deploy_backend: ${{ steps.filter.outputs.deploy_backend }}
+      apply_prod_landing_dns: ${{ steps.filter.outputs.apply_prod_landing_dns }}
+      apply_prod_api_dns: ${{ steps.filter.outputs.apply_prod_api_dns }}
+      apply_prod_sentry: ${{ steps.filter.outputs.apply_prod_sentry }}
+      apply_prod_ses_dns: ${{ steps.filter.outputs.apply_prod_ses_dns }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            deploy_frontend:
+              - 'apps/web/**'
+              - 'packages/config/**'
+              - 'packages/contracts/**'
+              - 'scripts/build-landing-bundle.sh'
+              - 'scripts/deploy-landing-edge.sh'
+              - 'scripts/landing-env.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/edge-stack.ts'
+              - 'infra/cdk/lib/constructs/media/**'
+              - 'infra/cdk/lib/constructs/website/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+            deploy_backend:
+              - 'apps/api/**'
+              - 'packages/config/**'
+              - 'packages/contracts/**'
+              - 'scripts/deploy-backend.sh'
+              - 'scripts/deploy-backend-and-sync-asaas-webhook.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/landing-env.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/app-stack.ts'
+              - 'infra/cdk/lib/stacks/data-stack.ts'
+              - 'infra/cdk/lib/stacks/observability-stack.ts'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+            apply_prod_landing_dns:
+              - 'infra/opentofu/edge-dns/**'
+              - 'scripts/landing-opentofu.sh'
+              - 'scripts/deploy-landing-edge.sh'
+              - 'scripts/landing-env.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/edge-stack.ts'
+              - 'infra/cdk/lib/constructs/media/**'
+              - 'infra/cdk/lib/constructs/website/**'
+            apply_prod_api_dns:
+              - 'infra/opentofu/api-dns/**'
+              - 'scripts/landing-opentofu.sh'
+              - 'scripts/deploy-backend.sh'
+              - 'scripts/deploy-backend-and-sync-asaas-webhook.sh'
+              - 'scripts/landing-env.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/app-stack.ts'
+              - 'infra/cdk/lib/stacks/data-stack.ts'
+              - 'infra/cdk/lib/stacks/observability-stack.ts'
+            apply_prod_sentry:
+              - 'infra/opentofu/sentry/**'
+              - 'scripts/landing-opentofu.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'scripts/landing-env.sh'
+            apply_prod_ses_dns:
+              - 'infra/opentofu/ses-dns/**'
+              - 'scripts/landing-opentofu.sh'
+              - 'scripts/export-ses-domain-dkim-records.sh'
+              - 'scripts/deploy-backend.sh'
+              - 'scripts/deploy-backend-and-sync-asaas-webhook.sh'
+              - 'scripts/landing-env.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/app-stack.ts'
+              - 'infra/cdk/lib/stacks/data-stack.ts'
+              - 'infra/cdk/lib/stacks/observability-stack.ts'
+
+      - name: Summarize routing
+        run: |
+          {
+            echo "## Prod deploy routing"
+            echo ""
+            echo "- deploy_frontend: ${{ steps.filter.outputs.deploy_frontend }}"
+            echo "- deploy_backend: ${{ steps.filter.outputs.deploy_backend }}"
+            echo "- apply_prod_landing_dns: ${{ steps.filter.outputs.apply_prod_landing_dns }}"
+            echo "- apply_prod_api_dns: ${{ steps.filter.outputs.apply_prod_api_dns }}"
+            echo "- apply_prod_sentry: ${{ steps.filter.outputs.apply_prod_sentry }}"
+            echo "- apply_prod_ses_dns: ${{ steps.filter.outputs.apply_prod_ses_dns }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-frontend:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.deploy_frontend == 'true'
+    needs: detect-changes
+    environment: prod
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-prod-${{ github.ref_name }}
+      group: deploy-prod-frontend
       cancel-in-progress: false
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
-      STAGE: ${{ vars.STAGE }}
-      ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
-      CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
-      API_DOMAIN: ${{ vars.API_DOMAIN }}
-      WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
-      OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
-      XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
-      ASAAS_ENV: ${{ vars.ASAAS_ENV }}
-      ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
-      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
-      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
-      TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
-      TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
-      PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
-      PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
-      PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
-      PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
-      PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
-      PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
-      TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-      SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -66,89 +149,484 @@ jobs:
         shell: bash
         run: |
           {
-            printf 'STAGE=%q\n' "${STAGE}"
-            printf 'AWS_REGION=%q\n' "${AWS_REGION}"
-            printf 'ROOT_DOMAIN=%q\n' "${ROOT_DOMAIN}"
-            printf 'CONTACT_EMAIL=%q\n' "${CONTACT_EMAIL}"
-            printf 'API_DOMAIN=%q\n' "${API_DOMAIN}"
-            printf 'WWW_DOMAIN=%q\n' "${WWW_DOMAIN}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${CLOUDFLARE_API_TOKEN}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${CLOUDFLARE_ZONE_ID}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${OBSERVABILITY_ALERT_EMAIL}"
-            printf 'XRAY_ENABLED=%q\n' "${XRAY_ENABLED}"
-            printf 'ASAAS_ENV=%q\n' "${ASAAS_ENV}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${ASAAS_API_BASE_URL}"
-            printf 'ASAAS_API_KEY=%q\n' "${ASAAS_API_KEY}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${ASAAS_WEBHOOK_TOKEN}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${TURNSTILE_SECRET_KEY}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${TURNSTILE_SITE_KEY}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${PAYMENTS_TEST_GIFT_ID}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${PAYMENTS_TEST_GIFT_QUANTITY}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${PAYMENTS_TEST_PAYER_NAME}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${PAYMENTS_TEST_PAYER_EMAIL}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${PAYMENTS_TEST_PAYER_CPF}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${PAYMENTS_TEST_PAYER_PHONE}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${TOFU_STATE_KEY_PREFIX}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${SENTRY_AUTH_TOKEN}"
-            printf 'SENTRY_ORG=%q\n' "${SENTRY_ORG}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${SENTRY_TEAM_SLUG}"
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env
           test -f .env
-
-      - name: Build landing page
-        run: pnpm build:web
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+
+      - name: Deploy landing edge stack
+        run: pnpm deploy:landing:edge
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
+
+  apply-prod-sentry:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.apply_prod_sentry == 'true'
+    needs: detect-changes
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-sentry
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env
+          test -f .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: 1.8.6
 
-      - name: Deploy platform stack
-        run: pnpm deploy:platform
+      - name: Init Sentry OpenTofu
+        run: pnpm opentofu:sentry:init
 
-      - name: Deploy certificate stack
-        run: pnpm deploy:landing:cert
-
-      - name: Init certificate validation OpenTofu
-        run: bash scripts/landing-opentofu.sh certificate-validation init
-
-      - name: Apply certificate validation OpenTofu
-        run: bash scripts/landing-opentofu.sh certificate-validation apply -auto-approve
-
-      - name: Wait for ACM certificate issuance
-        run: pnpm wait:landing:cert
-
-      - name: Deploy landing edge stack
-        run: pnpm deploy:landing:edge
-
-      - name: Init landing DNS OpenTofu
-        run: bash scripts/landing-opentofu.sh edge-dns init
-
-      - name: Apply landing DNS OpenTofu
-        run: bash scripts/landing-opentofu.sh edge-dns apply -auto-approve
+      - name: Apply Sentry OpenTofu
+        run: pnpm opentofu:sentry:apply -auto-approve
 
       - name: Remove CI environment file
         if: always()
         run: rm -f .env
 
-  # Post-deploy, READ-ONLY smoke test of the public surface (CloudFront site +
-  # two anonymous API GETs). It runs after `deploy` succeeds and only ever issues
-  # GET requests.
+  deploy-backend:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.deploy_backend == 'true' &&
+      (needs.apply-prod-sentry.result == 'success' || needs.apply-prod-sentry.result == 'skipped')
+    needs:
+      - detect-changes
+      - apply-prod-sentry
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-backend
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env
+          test -f .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      # deploy:backend resolves SENTRY_DSN from the sentry module's remote state
+      # (scripts/export-sentry-config.sh), which needs tofu on PATH and the module
+      # initialized in this job — the apply-prod-sentry job runs on a separate runner,
+      # so its .terraform does not carry over.
+      - name: Init Sentry OpenTofu
+        run: pnpm opentofu:sentry:init
+
+      - name: Deploy backend stacks
+        run: pnpm deploy:backend
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
+
+  apply-prod-landing-dns:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.apply_prod_landing_dns == 'true' &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
+    needs:
+      - detect-changes
+      - deploy-frontend
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-landing-dns
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env
+          test -f .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Init landing DNS OpenTofu
+        run: pnpm opentofu:dns:init
+
+      - name: Apply landing DNS OpenTofu
+        run: pnpm opentofu:dns:apply -auto-approve
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
+
+  apply-prod-api-dns:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.apply_prod_api_dns == 'true' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    needs:
+      - detect-changes
+      - deploy-backend
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-api-dns
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env
+          test -f .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Init API DNS OpenTofu
+        run: pnpm opentofu:api-dns:init
+
+      - name: Apply API DNS OpenTofu
+        run: pnpm opentofu:api-dns:apply -auto-approve
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
+
+  apply-prod-ses-dns:
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.outputs.apply_prod_ses_dns == 'true' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    needs:
+      - detect-changes
+      - deploy-backend
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod-ses-dns
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env
+          test -f .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Init SES DNS OpenTofu
+        run: pnpm opentofu:ses-dns:init
+
+      - name: Apply SES DNS OpenTofu
+        run: pnpm opentofu:ses-dns:apply -auto-approve
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
+
+  # Post-deploy, READ-ONLY smoke test of the public surface (CloudFront site + two
+  # anonymous API GETs). Runs after the deploy jobs and only ever issues GET requests.
   #
   # SAFETY INVARIANT — DO NOT add `id-token: write` here and DO NOT add a
-  # `configure-aws-credentials` step. The job intentionally has no AWS credentials
-  # (job-level `permissions: contents: read` overrides the workflow-level
-  # `id-token: write`), so it is structurally incapable of mutating prod. Adding
-  # either would reopen the write surface this guard exists to prevent.
+  # `configure-aws-credentials` step. The job-level `permissions: contents: read`
+  # overrides the workflow-level `id-token: write`, so this job is structurally
+  # incapable of mutating prod. Adding either would reopen that write surface.
   smoke-prod-public:
-    needs: deploy
-    if: github.ref == 'refs/heads/prod'
+    needs:
+      - detect-changes
+      - deploy-frontend
+      - apply-prod-sentry
+      - deploy-backend
+      - apply-prod-landing-dns
+      - apply-prod-api-dns
+      - apply-prod-ses-dns
+    if: |
+      github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.result == 'success' &&
+      contains(fromJSON('["success","skipped"]'), needs.deploy-frontend.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.apply-prod-sentry.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.deploy-backend.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.apply-prod-landing-dns.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.apply-prod-api-dns.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.apply-prod-ses-dns.result)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: prod
@@ -173,6 +651,5 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile=false
 
-      # No build:web, no configure-aws-credentials, no OpenTofu — public HTTPS only.
       - name: Run prod public smoke
         run: pnpm smoke:prod

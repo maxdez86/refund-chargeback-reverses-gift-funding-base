@@ -20,7 +20,8 @@ jobs:
     outputs:
       deploy_frontend: ${{ steps.filter.outputs.deploy_frontend }}
       deploy_backend: ${{ steps.filter.outputs.deploy_backend }}
-      apply_dev_dns: ${{ steps.filter.outputs.apply_dev_dns }}
+      apply_dev_landing_dns: ${{ steps.filter.outputs.apply_dev_landing_dns }}
+      apply_dev_api_dns: ${{ steps.filter.outputs.apply_dev_api_dns }}
       apply_dev_sentry: ${{ steps.filter.outputs.apply_dev_sentry }}
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +39,9 @@ jobs:
               - 'scripts/build-landing-bundle.sh'
               - 'scripts/deploy-landing-edge.sh'
               - 'scripts/landing-env.sh'
+              - 'infra/cdk/bin/app.ts'
               - 'infra/cdk/lib/stacks/edge-stack.ts'
+              - 'infra/cdk/lib/constructs/media/**'
               - 'infra/cdk/lib/constructs/website/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -54,6 +57,7 @@ jobs:
               - 'scripts/payments-env.sh'
               - 'scripts/landing-env.sh'
               - 'scripts/export-sentry-config.sh'
+              - 'infra/cdk/bin/app.ts'
               - 'infra/cdk/lib/stacks/app-stack.ts'
               - 'infra/cdk/lib/stacks/data-stack.ts'
               - 'infra/cdk/lib/stacks/observability-stack.ts'
@@ -61,18 +65,32 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'tsconfig*.json'
-            apply_dev_dns:
+            apply_dev_landing_dns:
               - 'infra/opentofu/edge-dns/**'
-              - 'infra/opentofu/api-dns/**'
               - 'scripts/landing-opentofu.sh'
               - 'scripts/deploy-landing-edge.sh'
-              - 'scripts/deploy-backend-and-sync-asaas-webhook.sh'
+              - 'scripts/landing-env.sh'
+              - 'infra/cdk/bin/app.ts'
               - 'infra/cdk/lib/stacks/edge-stack.ts'
-              - 'infra/cdk/lib/stacks/app-stack.ts'
+              - 'infra/cdk/lib/constructs/media/**'
               - 'infra/cdk/lib/constructs/website/**'
+            apply_dev_api_dns:
+              - 'infra/opentofu/api-dns/**'
+              - 'scripts/landing-opentofu.sh'
+              - 'scripts/deploy-backend.sh'
+              - 'scripts/deploy-backend-and-sync-asaas-webhook.sh'
+              - 'scripts/landing-env.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/export-sentry-config.sh'
+              - 'infra/cdk/bin/app.ts'
+              - 'infra/cdk/lib/stacks/app-stack.ts'
+              - 'infra/cdk/lib/stacks/data-stack.ts'
+              - 'infra/cdk/lib/stacks/observability-stack.ts'
             apply_dev_sentry:
               - 'infra/opentofu/sentry/**'
+              - 'scripts/landing-opentofu.sh'
               - 'scripts/export-sentry-config.sh'
+              - 'scripts/landing-env.sh'
 
       - name: Summarize routing
         run: |
@@ -81,7 +99,8 @@ jobs:
             echo ""
             echo "- deploy_frontend: ${{ steps.filter.outputs.deploy_frontend }}"
             echo "- deploy_backend: ${{ steps.filter.outputs.deploy_backend }}"
-            echo "- apply_dev_dns: ${{ steps.filter.outputs.apply_dev_dns }}"
+            echo "- apply_dev_landing_dns: ${{ steps.filter.outputs.apply_dev_landing_dns }}"
+            echo "- apply_dev_api_dns: ${{ steps.filter.outputs.apply_dev_api_dns }}"
             echo "- apply_dev_sentry: ${{ steps.filter.outputs.apply_dev_sentry }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -215,8 +234,11 @@ jobs:
         with:
           tofu_version: 1.8.6
 
+      - name: Init dev Sentry infrastructure
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:sentry:init
+
       - name: Apply dev Sentry infrastructure
-        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:sentry:apply
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:sentry:apply -auto-approve
 
       - name: Remove dev environment file
         if: always()
@@ -285,6 +307,18 @@ jobs:
           } > .env.dev
           test -f .env.dev
 
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      # deploy:backend resolves SENTRY_DSN from the sentry module's remote state
+      # (scripts/export-sentry-config.sh), which needs tofu on PATH and the module
+      # initialized in this job — the apply-dev-sentry job runs on a separate runner,
+      # so its .terraform does not carry over.
+      - name: Init dev Sentry infrastructure
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:sentry:init
+
       - name: Deploy backend stacks
         run: BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
 
@@ -292,15 +326,91 @@ jobs:
         if: always()
         run: rm -f .env.dev
 
-  apply-dev-dns:
+  apply-dev-landing-dns:
     runs-on: ubuntu-latest
     needs:
       - detect-changes
       - deploy-frontend
+    if: |
+      needs.detect-changes.outputs.apply_dev_landing_dns == 'true' &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate dev environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
+            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
+            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
+            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
+            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
+            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
+            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
+            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
+            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ vars.PAYMENTS_TEST_PAYER_NAME }}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ vars.PAYMENTS_TEST_PAYER_EMAIL }}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ vars.PAYMENTS_TEST_PAYER_CPF }}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ vars.PAYMENTS_TEST_PAYER_PHONE }}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
+            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
+          } > .env.dev
+          test -f .env.dev
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.6
+
+      - name: Init dev landing DNS
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:init
+
+      - name: Apply dev landing DNS
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:apply -auto-approve
+
+      - name: Remove dev environment file
+        if: always()
+        run: rm -f .env.dev
+
+  apply-dev-api-dns:
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
       - deploy-backend
     if: |
-      needs.detect-changes.outputs.apply_dev_dns == 'true' &&
-      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped') &&
+      needs.detect-changes.outputs.apply_dev_api_dns == 'true' &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     environment: dev
     steps:
@@ -362,8 +472,8 @@ jobs:
         with:
           tofu_version: 1.8.6
 
-      - name: Apply dev landing DNS
-        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:apply -auto-approve
+      - name: Init dev API DNS
+        run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:init
 
       - name: Apply dev API DNS
         run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply -auto-approve
