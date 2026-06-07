@@ -9,13 +9,36 @@ permissions:
 
 jobs:
   deploy:
+    environment: production
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME_PERSONAL_STG: ${{ secrets.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
+      STAGE: ${{ vars.STAGE }}
+      ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+      CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+      API_DOMAIN: ${{ vars.API_DOMAIN }}
+      WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-      ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
-      TOFU_STATE_KEY_PREFIX: ${{ secrets.TOFU_STATE_KEY_PREFIX }}
+      CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+      XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+      ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+      ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+      TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+      TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+      PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+      PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+      PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+      PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+      PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+      PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+      TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
 
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +55,39 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile=false
 
+      - name: Generate CI environment file
+        shell: bash
+        run: |
+          {
+            printf 'STAGE=%q\n' "${STAGE}"
+            printf 'AWS_REGION=%q\n' "${AWS_REGION}"
+            printf 'ROOT_DOMAIN=%q\n' "${ROOT_DOMAIN}"
+            printf 'CONTACT_EMAIL=%q\n' "${CONTACT_EMAIL}"
+            printf 'API_DOMAIN=%q\n' "${API_DOMAIN}"
+            printf 'WWW_DOMAIN=%q\n' "${WWW_DOMAIN}"
+            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${CLOUDFLARE_API_TOKEN}"
+            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${CLOUDFLARE_ZONE_ID}"
+            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${OBSERVABILITY_ALERT_EMAIL}"
+            printf 'XRAY_ENABLED=%q\n' "${XRAY_ENABLED}"
+            printf 'ASAAS_ENV=%q\n' "${ASAAS_ENV}"
+            printf 'ASAAS_API_BASE_URL=%q\n' "${ASAAS_API_BASE_URL}"
+            printf 'ASAAS_API_KEY=%q\n' "${ASAAS_API_KEY}"
+            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${ASAAS_WEBHOOK_TOKEN}"
+            printf 'TURNSTILE_SECRET_KEY=%q\n' "${TURNSTILE_SECRET_KEY}"
+            printf 'TURNSTILE_SITE_KEY=%q\n' "${TURNSTILE_SITE_KEY}"
+            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${PAYMENTS_TEST_GIFT_ID}"
+            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${PAYMENTS_TEST_GIFT_QUANTITY}"
+            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${PAYMENTS_TEST_PAYER_NAME}"
+            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${PAYMENTS_TEST_PAYER_EMAIL}"
+            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${PAYMENTS_TEST_PAYER_CPF}"
+            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${PAYMENTS_TEST_PAYER_PHONE}"
+            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${TOFU_STATE_KEY_PREFIX}"
+            printf 'SENTRY_AUTH_TOKEN=%q\n' "${SENTRY_AUTH_TOKEN}"
+            printf 'SENTRY_ORG=%q\n' "${SENTRY_ORG}"
+            printf 'SENTRY_TEAM_SLUG=%q\n' "${SENTRY_TEAM_SLUG}"
+          } > .env
+          test -f .env
+
       - name: Build landing page
         run: pnpm build:web
 
@@ -39,7 +95,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME_PERSONAL_STG }}
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -69,3 +125,7 @@ jobs:
 
       - name: Apply landing DNS OpenTofu
         run: bash scripts/landing-opentofu.sh edge-dns apply -auto-approve
+
+      - name: Remove CI environment file
+        if: always()
+        run: rm -f .env
