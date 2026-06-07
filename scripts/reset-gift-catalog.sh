@@ -3,7 +3,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/payments-env.sh"
 
-require_command aws jq node
+require_command aws jq node pnpm
 require_payments_test_env
 
 mapfile -t _aws_args < <(aws_args)
@@ -32,4 +32,4 @@ fi
 
 printf 'Deleted %s payment and gift catalog items from %s.\n' "${count}" "${PAYMENTS_TABLE_NAME}"
 
-node --experimental-strip-types "$(dirname "$0")/lib/seed-gift-catalog.ts"
+pnpm exec tsx "$(dirname "$0")/lib/seed-gift-catalog.ts"
