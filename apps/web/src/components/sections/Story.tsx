@@ -93,7 +93,7 @@ function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
       aria-roledescription="capítulo"
       aria-label={chapter.title}
     >
-      <div className="flex min-h-[24rem] flex-col rounded-2xl bg-[#efe6d7] p-5 md:min-h-[24.5rem] md:p-5 lg:min-h-[26rem] lg:p-5 xl:min-h-[30rem] xl:p-6">
+      <div className="flex min-h-[24rem] flex-col rounded-2xl bg-[#e6e2d8] p-5 md:min-h-[24.5rem] md:p-5 lg:min-h-[26rem] lg:p-5 xl:min-h-[30rem] xl:p-6">
         <h3 className="mb-2 font-serif text-[1.65rem] text-foreground md:text-[1.85rem] lg:text-[1.95rem] xl:mb-3 xl:text-[2rem]">
           {chapter.title}
         </h3>
@@ -263,7 +263,7 @@ export function Story() {
   }, [emblaApi]);
 
   return (
-    <section id="historia" className="overflow-hidden bg-[#f4eee5] py-3 md:py-4">
+    <section id="historia" className="overflow-hidden bg-[#edeae3] py-3 md:py-4">
       <div className="container relative mx-auto mb-2 flex flex-col gap-6 px-6 md:mb-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-end lg:gap-4 xl:gap-6">
         <motion.div
           initial={{ opacity: 0, x: -20 }}

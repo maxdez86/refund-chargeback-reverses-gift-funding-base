@@ -92,7 +92,7 @@ function ComposeCard({
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d3cdbe]/60 bg-[#fcfbf7] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
         <div className="mb-2 border-b border-[#e6d9c4] pb-2">
           <p className="font-serif text-[1.45rem] text-foreground">Deixe seu recado</p>
         </div>
@@ -194,7 +194,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
         transition={{ duration: 0.55, delay: Math.min(index, 3) * 0.08 }}
         data-recado-card
       >
-        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d3cdbe]/60 bg-[#fcfbf7] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
           <Quote
             aria-hidden="true"
             className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/20 md:right-5 md:top-5 md:h-12 md:w-12"
@@ -215,7 +215,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
               <>
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#fffaf3] to-transparent"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#fcfbf7] to-transparent"
                 />
                 <button
                   type="button"
@@ -236,7 +236,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
       </motion.article>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#d8c6ab]/60 bg-[#fffaf3] p-0 sm:max-w-2xl">
+        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#d3cdbe]/60 bg-[#fcfbf7] p-0 sm:max-w-2xl">
           <DialogHeader className="border-b border-[#e6d9c4] px-8 pb-5 pt-8">
             <DialogTitle className="font-serif text-3xl text-foreground">
               {message.authorName}
@@ -266,7 +266,7 @@ function FeedbackCard({ children }: { children: React.ReactNode }) {
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#d3cdbe]/60 bg-[#fcfbf7] p-4 md:p-5 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
         <div className="text-sm leading-6 text-muted-foreground">{children}</div>
       </div>
     </motion.article>
@@ -417,7 +417,7 @@ export function GuestMessages() {
   return (
     <section
       id="recados"
-      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#f4eee5_0%,#efe4d4_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
+      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#edeae3_0%,#e3ded2_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
     >
       <div className="container mx-auto px-6">
         <div className="relative mb-3 md:mb-4">

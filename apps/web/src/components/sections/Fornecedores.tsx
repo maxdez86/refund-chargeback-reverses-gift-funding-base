@@ -55,7 +55,7 @@ export function Fornecedores() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`${fornecedor.name} — ${fornecedor.role} — abrir Instagram em nova aba`}
-                  className="group flex h-full flex-col items-center rounded-2xl border border-[#9f7a34]/15 bg-white/40 p-5 text-center shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#9f7a34]/40 hover:bg-white/80 hover:shadow-md"
+                  className="group flex h-full flex-col items-center rounded-2xl border border-[#9f7a34]/15 bg-[#fcfbf7]/50 p-5 text-center shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#9f7a34]/40 hover:bg-[#fcfbf7]/90 hover:shadow-md"
                 >
                   <FaInstagram
                     aria-hidden="true"
