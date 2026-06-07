@@ -17,7 +17,7 @@ export function StoryReview() {
   }, []);
 
   return (
-    <section id="review" className="bg-[#f4eee5] py-12 md:py-16 overflow-hidden">
+    <section id="review" className="bg-[#edeae3] py-12 md:py-16 overflow-hidden">
       <div className="container mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

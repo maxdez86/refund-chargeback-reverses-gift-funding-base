@@ -86,30 +86,30 @@ type GiftImagePresentation = {
 
 const GIFT_CARD_IMAGE_PRESENTATION: Record<string, GiftImagePresentation> = {
   "g-batedeira": {
-    containerClassName: "bg-[#f7f4ee]",
+    containerClassName: "bg-[#f2f1ec]",
     imageClassName: "object-contain object-center",
   },
   "g-liquidificador": {
-    containerClassName: "bg-[#f7f4ee]",
+    containerClassName: "bg-[#f2f1ec]",
     imageClassName: "object-contain object-center",
   },
   "g-travesseiros": {
-    containerClassName: "bg-[#f7f1e8]",
+    containerClassName: "bg-[#efece4]",
     imageClassName: "object-contain object-center",
   },
 };
 
 const GIFT_DIALOG_IMAGE_PRESENTATION: Record<string, GiftImagePresentation> = {
   "g-batedeira": {
-    containerClassName: "bg-[#f7f4ee]",
+    containerClassName: "bg-[#f2f1ec]",
     imageClassName: "object-contain object-center scale-[1.08]",
   },
   "g-liquidificador": {
-    containerClassName: "bg-[#f7f4ee]",
+    containerClassName: "bg-[#f2f1ec]",
     imageClassName: "object-contain object-center scale-[1.06]",
   },
   "g-travesseiros": {
-    containerClassName: "bg-[#f7f1e8]",
+    containerClassName: "bg-[#efece4]",
     imageClassName: "object-contain object-center scale-[1.08]",
   },
 };
@@ -858,7 +858,7 @@ export function Presentes() {
   return (
     <section
       id="presentes"
-      className="overflow-hidden border-t border-border/30 bg-[#fbf7f0] py-3 md:py-4 lg:py-3"
+      className="overflow-hidden border-t border-border/30 bg-[#f7f6f2] py-3 md:py-4 lg:py-3"
     >
       <div className="container relative mx-auto mb-1 flex flex-col justify-between gap-2 px-6 md:mb-2 md:flex-row md:items-end md:gap-6 lg:gap-4">
         <motion.div
