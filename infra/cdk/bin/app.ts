@@ -6,6 +6,7 @@ import { AppStack } from "../lib/stacks/app-stack";
 import { CertificateStack } from "../lib/stacks/certificate-stack";
 import { DataStack } from "../lib/stacks/data-stack";
 import { EdgeStack } from "../lib/stacks/edge-stack";
+import { GithubOidcStack } from "../lib/stacks/github-oidc-stack";
 import { ObservabilityStack } from "../lib/stacks/observability-stack";
 import { PlatformStack } from "../lib/stacks/platform-stack";
 
@@ -94,6 +95,25 @@ const asaasApiKey = rawAsaasApiKey ?? "cdk-placeholder-asaas-api-key";
 const asaasWebhookToken = rawAsaasWebhookToken ?? "cdk-placeholder-asaas-webhook-token";
 const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 const sentryDsn = rawSentryDsn ?? "";
+
+function envOrDefault(name: string, fallback: string) {
+  return process.env[name]?.trim() || fallback;
+}
+
+new GithubOidcStack(app, resourceName("BrimaxGithubOidcStack", stage), {
+  env,
+  existingProviderArn: process.env.GITHUB_OIDC_PROVIDER_ARN?.trim() || undefined,
+  githubRepository: process.env.GITHUB_OIDC_REPOSITORY?.trim() || "maxdez86/brimax-life",
+  lockTableName: envOrDefault(
+    "GITHUB_OIDC_LOCK_TABLE_NAME",
+    stage === "dev" ? "dev-BrimaxPlatformStack-TofuLockTable" : "BrimaxPlatformStack-TofuLockTable"
+  ),
+  stage,
+  stateBucketName: envOrDefault(
+    "GITHUB_OIDC_STATE_BUCKET_NAME",
+    stage === "dev" ? "dev-brimaxplatformstack-tofustatebucket" : "brimaxplatformstack-tofustatebucket"
+  )
+});
 
 new PlatformStack(app, resourceName("BrimaxPlatformStack", stage), {
   env,

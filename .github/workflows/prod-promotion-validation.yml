@@ -1,0 +1,181 @@
+name: prod-promotion-validation
+
+on:
+  pull_request:
+    branches:
+      - prod
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: read
+
+concurrency:
+  group: prod-promotion-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  skip-draft:
+    if: github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize draft skip
+        run: |
+          {
+            echo "## Prod promotion validation"
+            echo ""
+            echo "- draft PR detected"
+            echo "- integration validation starts when the PR is marked ready for review"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  discover-context:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    environment: dev
+    outputs:
+      api_base_url: ${{ steps.context.outputs.api_base_url }}
+      artifact_dir: ${{ steps.context.outputs.artifact_dir }}
+      invitation_code: ${{ steps.context.outputs.invitation_code }}
+      gift_id: ${{ steps.context.outputs.gift_id }}
+      wedding_table_name: ${{ steps.context.outputs.wedding_table_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Configure dev validation AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
+
+      - id: context
+        name: Resolve validation context
+        env:
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROD_PROMOTION_GIFT_ID: g-batedeira
+          PROD_PROMOTION_INVITATION_CODE: AB2345
+          STAGE: dev
+        run: |
+          artifact_dir=".tmp/prod-promotion-validation/${{ github.run_id }}"
+          table_name="$(
+            pnpm exec tsx -e '
+            import { resolveWeddingTableName } from "./scripts/lib/prod-promotion-support.ts";
+            process.stdout.write(await resolveWeddingTableName());
+            '
+          )"
+          {
+            echo "api_base_url=https://${API_DOMAIN}"
+            echo "artifact_dir=${artifact_dir}"
+            echo "invitation_code=${PROD_PROMOTION_INVITATION_CODE}"
+            echo "gift_id=${PROD_PROMOTION_GIFT_ID}"
+            echo "wedding_table_name=${table_name}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Prod promotion context"
+            echo ""
+            echo "- api_base_url: https://${API_DOMAIN}"
+            echo "- invitation_code: ${PROD_PROMOTION_INVITATION_CODE}"
+            echo "- gift_id: ${PROD_PROMOTION_GIFT_ID}"
+            echo "- wedding_table_name: ${table_name}"
+            echo "- prod role intentionally unused"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  prepare-dev-test-data:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs: discover-context
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Configure dev validation AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
+
+      - name: Prepare integration-owned dev data
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROD_PROMOTION_GIFT_ID: ${{ needs.discover-context.outputs.gift_id }}
+          PROD_PROMOTION_INVITATION_CODE: ${{ needs.discover-context.outputs.invitation_code }}
+          STAGE: dev
+          WEDDING_TABLE_NAME: ${{ needs.discover-context.outputs.wedding_table_name }}
+        run: pnpm prepare:integration:prod-promotion
+
+  run-dev-integration-suite:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs:
+      - discover-context
+      - prepare-dev-test-data
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Configure dev validation AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
+
+      - name: Run prod-promotion integration suite
+        env:
+          API_BASE_URL: ${{ needs.discover-context.outputs.api_base_url }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROD_PROMOTION_ARTIFACT_DIR: ${{ needs.discover-context.outputs.artifact_dir }}
+          PROD_PROMOTION_GIFT_ID: ${{ needs.discover-context.outputs.gift_id }}
+          PROD_PROMOTION_INVITATION_CODE: ${{ needs.discover-context.outputs.invitation_code }}
+          STAGE: dev
+          WEDDING_TABLE_NAME: ${{ needs.discover-context.outputs.wedding_table_name }}
+        run: pnpm test:integration:prod-promotion
+
+      - name: Upload integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-promotion-validation-${{ github.run_id }}
+          path: ${{ needs.discover-context.outputs.artifact_dir }}
+          if-no-files-found: warn
