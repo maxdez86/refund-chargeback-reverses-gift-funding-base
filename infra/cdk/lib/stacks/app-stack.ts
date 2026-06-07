@@ -102,12 +102,11 @@ export class AppStack extends cdk.Stack {
             }
           })
         : undefined;
-    const senderIdentity =
-      props.stage === "prod"
-        ? new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
-            emailIdentity: senderEmailIdentity
-          })
-        : undefined;
+    if (props.stage === "prod") {
+      new ses.CfnEmailIdentity(this, "PaymentSenderIdentity", {
+        emailIdentity: senderEmailIdentity
+      });
+    }
     const emailConfigurationSet = new ses.ConfigurationSet(this, "TransactionalEmailConfigurationSet", {
       configurationSetName: `brimax-${props.stage}-transactional`,
       reputationMetrics: true,

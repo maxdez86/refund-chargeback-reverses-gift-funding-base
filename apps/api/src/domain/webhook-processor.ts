@@ -1,7 +1,7 @@
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
-import { getEnv, resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
+import { resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
