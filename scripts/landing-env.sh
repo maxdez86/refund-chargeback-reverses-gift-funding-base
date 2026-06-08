@@ -91,7 +91,7 @@ load_local_env_file() {
   while IFS= read -r line; do
     key="${line%%=*}"
 
-    if [[ -n "${!key+x}" ]]; then
+    if [[ -n "${!key:-}" ]]; then
       continue
     fi
 
