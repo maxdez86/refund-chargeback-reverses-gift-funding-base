@@ -1,4 +1,3 @@
-### Test
 import path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
