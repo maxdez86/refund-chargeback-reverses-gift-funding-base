@@ -12,6 +12,7 @@ AWS_BIN="${AWS_BIN:-aws}"
 PNPM_BIN="${PNPM_BIN:-pnpm}"
 SETUP_GITHUB_ENVIRONMENT_SCRIPT="${SETUP_GITHUB_ENVIRONMENT_SCRIPT:-${SCRIPT_DIR}/setup-github-environment.sh}"
 GITHUB_OIDC_STACK_NAME="BrimaxGithubOidcStack"
+LEGACY_DEV_GITHUB_OIDC_STACK_NAME="dev-BrimaxGithubOidcStack"
 SELECTED_STAGE="${STAGE}"
 
 AWS_ARGS=(--region "${AWS_REGION}")
@@ -43,6 +44,32 @@ resolve_stack_output() {
     --stack-name "${stack_name}" \
     --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue | [0]" \
     --output text
+}
+
+stack_exists() {
+  local stack_name="${1}"
+
+  "${AWS_BIN}" cloudformation describe-stacks \
+    "${AWS_ARGS[@]}" \
+    --stack-name "${stack_name}" >/dev/null 2>&1
+}
+
+delete_legacy_dev_oidc_stack_if_present() {
+  if ! stack_exists "${LEGACY_DEV_GITHUB_OIDC_STACK_NAME}"; then
+    return 0
+  fi
+
+  printf 'Migrating legacy GitHub OIDC stack: deleting %s before deploying %s.\n' \
+    "${LEGACY_DEV_GITHUB_OIDC_STACK_NAME}" \
+    "${GITHUB_OIDC_STACK_NAME}"
+
+  "${AWS_BIN}" cloudformation delete-stack \
+    "${AWS_ARGS[@]}" \
+    --stack-name "${LEGACY_DEV_GITHUB_OIDC_STACK_NAME}"
+
+  "${AWS_BIN}" cloudformation wait stack-delete-complete \
+    "${AWS_ARGS[@]}" \
+    --stack-name "${LEGACY_DEV_GITHUB_OIDC_STACK_NAME}"
 }
 
 resolve_required_stack_output() {
@@ -105,6 +132,8 @@ printf '  dev state bucket: %s\n' "${GITHUB_OIDC_DEV_STATE_BUCKET_NAME}"
 printf '  dev lock table: %s\n' "${GITHUB_OIDC_DEV_LOCK_TABLE_NAME}"
 printf '  prod state bucket: %s\n' "${GITHUB_OIDC_PROD_STATE_BUCKET_NAME}"
 printf '  prod lock table: %s\n' "${GITHUB_OIDC_PROD_LOCK_TABLE_NAME}"
+
+delete_legacy_dev_oidc_stack_if_present
 
 "${PNPM_BIN}" --filter @brimax/infra-cdk cdk deploy \
   "${GITHUB_OIDC_STACK_NAME}" \

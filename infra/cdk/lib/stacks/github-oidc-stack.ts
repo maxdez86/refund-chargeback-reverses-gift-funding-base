@@ -68,7 +68,9 @@ export class GithubOidcStack extends cdk.Stack {
         stateBucketName: props.stageConfigs.dev.stateBucketName,
         stackNames: this.stackNamesFor("dev")
       }),
-      prod: this.createDeployRole("GithubActionsProdDeployRole", {
+      // Preserve the original logical ID so the existing prod role in
+      // BrimaxGithubOidcStack is updated in-place instead of recreated.
+      prod: this.createDeployRole("GithubActionsDeployRole", {
         branchName: "prod",
         bootstrapQualifier: "hnb659fds",
         githubEnvironment: "prod",

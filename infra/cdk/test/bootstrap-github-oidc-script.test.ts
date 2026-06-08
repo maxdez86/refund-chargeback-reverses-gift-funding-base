@@ -13,7 +13,11 @@ function writeExecutable(filePath: string, content: string) {
   writeFileSync(filePath, content, { mode: 0o755 });
 }
 
-function createHarness(stage: "dev" | "prod", missingStacks: string[] = []) {
+function createHarness(
+  stage: "dev" | "prod",
+  missingStacks: string[] = [],
+  existingStacks: string[] = ["BrimaxPlatformStack", "dev-BrimaxPlatformStack", "BrimaxGithubOidcStack"]
+) {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "bootstrap-github-oidc-"));
   tempDirs.push(tempDir);
 
@@ -76,6 +80,20 @@ if [[ "$1" == "cloudformation" && "$2" == "describe-stacks" ]]; then
       ;;
   esac
 
+  case " ${existingStacks.join(" ")} " in
+    *" \${stack_name} "*)
+      ;;
+    *)
+      echo "stack does not exist: \${stack_name}" >&2
+      exit 255
+      ;;
+  esac
+
+  if [[ -z "\${query}" ]]; then
+    echo "exists"
+    exit 0
+  fi
+
   case "\${stack_name}|\${query}" in
     "BrimaxPlatformStack|Stacks[0].Outputs[?OutputKey=='TofuStateBucketName'].OutputValue | [0]")
       echo "prod-state-bucket"
@@ -101,6 +119,44 @@ if [[ "$1" == "cloudformation" && "$2" == "describe-stacks" ]]; then
       ;;
   esac
 
+  exit 0
+fi
+
+if [[ "$1" == "cloudformation" && "$2" == "delete-stack" ]]; then
+  stack_name=""
+
+  while (( "$#" > 0 )); do
+    case "$1" in
+      --stack-name)
+        stack_name="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  printf 'aws-delete|stack=%s\\n' "\${stack_name}" >> "${logFile}"
+  exit 0
+fi
+
+if [[ "$1" == "cloudformation" && "$2" == "wait" && "$3" == "stack-delete-complete" ]]; then
+  stack_name=""
+
+  while (( "$#" > 0 )); do
+    case "$1" in
+      --stack-name)
+        stack_name="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  printf 'aws-wait-delete|stack=%s\\n' "\${stack_name}" >> "${logFile}"
   exit 0
 fi
 
@@ -159,8 +215,12 @@ printf 'setup|stage=%s|role=%s\\n' "\${STAGE:-}" "$1" >> "${logFile}"
   };
 }
 
-function runBootstrap(stage: "dev" | "prod", missingStacks: string[] = []) {
-  const harness = createHarness(stage, missingStacks);
+function runBootstrap(
+  stage: "dev" | "prod",
+  missingStacks: string[] = [],
+  existingStacks?: string[]
+) {
+  const harness = createHarness(stage, missingStacks, existingStacks);
   const result = spawnSync("bash", [bootstrapScript], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -205,6 +265,26 @@ describe("bootstrap-github-oidc.sh", () => {
 
     expect(logLines(result.log, "setup|")).toEqual([
       "setup|stage=dev|role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy"
+    ]);
+  });
+
+  it("deletes the legacy dev oidc stack before deploying the shared stack", () => {
+    const result = runBootstrap("prod", [], [
+      "BrimaxPlatformStack",
+      "dev-BrimaxPlatformStack",
+      "BrimaxGithubOidcStack",
+      "dev-BrimaxGithubOidcStack"
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(logLines(result.log, "aws-delete|")).toEqual([
+      "aws-delete|stack=dev-BrimaxGithubOidcStack"
+    ]);
+    expect(logLines(result.log, "aws-wait-delete|")).toEqual([
+      "aws-wait-delete|stack=dev-BrimaxGithubOidcStack"
+    ]);
+    expect(logLines(result.log, "pnpm|")).toEqual([
+      expect.stringContaining("pnpm|stage=prod|stack=BrimaxGithubOidcStack")
     ]);
   });
 
