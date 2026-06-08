@@ -37,6 +37,7 @@
     "opentofu:ses-dns:apply": "bash scripts/landing-opentofu.sh ses-dns apply",
     "opentofu:ses-dns:init": "bash scripts/landing-opentofu.sh ses-dns init",
     "opentofu:ses-dns:plan": "bash scripts/landing-opentofu.sh ses-dns plan",
+    "precommit:check": "bash scripts/precommit-checks.sh",
     "reset:payments:test-data": "bash scripts/reset-payments-test-data.sh",
     "reset:gifts:catalog": "bash scripts/reset-gift-catalog.sh",
     "reset:wedding:fresh-start": "bash scripts/reset-wedding-fresh-start.sh --apply",

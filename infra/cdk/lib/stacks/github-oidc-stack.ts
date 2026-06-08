@@ -53,7 +53,6 @@ export class GithubOidcStack extends cdk.Stack {
 
     this.githubProviderArn = provider.openIdConnectProviderArn;
 
-    const stagePrefix = props.stage === "dev" ? "dev-" : "";
     const stackNames =
       props.stage === "dev"
         ? [
