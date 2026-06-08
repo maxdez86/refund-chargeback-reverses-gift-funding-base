@@ -100,20 +100,34 @@ function envOrDefault(name: string, fallback: string) {
   return process.env[name]?.trim() || fallback;
 }
 
-new GithubOidcStack(app, resourceName("BrimaxGithubOidcStack", stage), {
+const githubOidcStack = new GithubOidcStack(app, "BrimaxGithubOidcStack", {
   env,
   existingProviderArn: process.env.GITHUB_OIDC_PROVIDER_ARN?.trim() || undefined,
   githubRepository: process.env.GITHUB_OIDC_REPOSITORY?.trim() || "maxdez86/brimax-life",
-  lockTableName: envOrDefault(
-    "GITHUB_OIDC_LOCK_TABLE_NAME",
-    stage === "dev" ? "dev-BrimaxPlatformStack-TofuLockTable" : "BrimaxPlatformStack-TofuLockTable"
-  ),
-  stage,
-  stateBucketName: envOrDefault(
-    "GITHUB_OIDC_STATE_BUCKET_NAME",
-    stage === "dev" ? "dev-brimaxplatformstack-tofustatebucket" : "brimaxplatformstack-tofustatebucket"
-  )
+  stageConfigs: {
+    dev: {
+      lockTableName: envOrDefault(
+        "GITHUB_OIDC_DEV_LOCK_TABLE_NAME",
+        "dev-BrimaxPlatformStack-TofuLockTable"
+      ),
+      stateBucketName: envOrDefault(
+        "GITHUB_OIDC_DEV_STATE_BUCKET_NAME",
+        "dev-brimaxplatformstack-tofustatebucket"
+      )
+    },
+    prod: {
+      lockTableName: envOrDefault(
+        "GITHUB_OIDC_PROD_LOCK_TABLE_NAME",
+        "BrimaxPlatformStack-TofuLockTable"
+      ),
+      stateBucketName: envOrDefault(
+        "GITHUB_OIDC_PROD_STATE_BUCKET_NAME",
+        "brimaxplatformstack-tofustatebucket"
+      )
+    }
+  }
 });
+cdk.Tags.of(githubOidcStack).add("stage", "shared", { priority: 300 });
 
 new PlatformStack(app, resourceName("BrimaxPlatformStack", stage), {
   env,

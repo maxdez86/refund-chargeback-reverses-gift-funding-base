@@ -1,14 +1,17 @@
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
-import { type AppStage } from "@brimax/config";
+import { APP_STAGES, type AppStage } from "@brimax/config";
 import { Construct } from "constructs";
+
+interface StageBackendConfig {
+  lockTableName: string;
+  stateBucketName: string;
+}
 
 export interface GithubOidcStackProps extends cdk.StackProps {
   existingProviderArn?: string;
   githubRepository: string;
-  lockTableName: string;
-  stage: AppStage;
-  stateBucketName: string;
+  stageConfigs: Record<AppStage, StageBackendConfig>;
 }
 
 interface DeployRoleProps {
@@ -34,7 +37,7 @@ interface ValidationRoleProps {
 
 export class GithubOidcStack extends cdk.Stack {
   readonly githubProviderArn: string;
-  readonly deployRole: iam.Role;
+  readonly deployRoles: Record<AppStage, iam.Role>;
   readonly prodPromotionValidationRole?: iam.Role;
 
   constructor(scope: Construct, id: string, props: GithubOidcStackProps) {
@@ -53,72 +56,91 @@ export class GithubOidcStack extends cdk.Stack {
 
     this.githubProviderArn = provider.openIdConnectProviderArn;
 
-    const stackNames =
-      props.stage === "dev"
-        ? [
-            "CDKToolkit",
-            "dev-BrimaxPlatformStack",
-            "dev-BrimaxCertificateStack",
-            "dev-BrimaxEdgeStack",
-            "dev-BrimaxAppStack"
-          ]
-        : [
-            "CDKToolkit",
-            "BrimaxPlatformStack",
-            "BrimaxCertificateStack",
-            "BrimaxEdgeStack",
-            "BrimaxAppStack"
-          ];
-
-    this.deployRole = this.createDeployRole("GithubActionsDeployRole", {
-      branchName: props.stage,
-      bootstrapQualifier: "hnb659fds",
-      githubEnvironment: props.stage,
-      githubRepository: props.githubRepository,
-      lockTableName: props.lockTableName,
-      provider,
-      roleName: `brimax-github-actions-${props.stage}-deploy`,
-      stateBucketName: props.stateBucketName,
-      stackNames
-    });
+    this.deployRoles = {
+      dev: this.createDeployRole("GithubActionsDevDeployRole", {
+        branchName: "dev",
+        bootstrapQualifier: "hnb659fds",
+        githubEnvironment: "dev",
+        githubRepository: props.githubRepository,
+        lockTableName: props.stageConfigs.dev.lockTableName,
+        provider,
+        roleName: "brimax-github-actions-dev-deploy",
+        stateBucketName: props.stageConfigs.dev.stateBucketName,
+        stackNames: this.stackNamesFor("dev")
+      }),
+      prod: this.createDeployRole("GithubActionsProdDeployRole", {
+        branchName: "prod",
+        bootstrapQualifier: "hnb659fds",
+        githubEnvironment: "prod",
+        githubRepository: props.githubRepository,
+        lockTableName: props.stageConfigs.prod.lockTableName,
+        provider,
+        roleName: "brimax-github-actions-prod-deploy",
+        stateBucketName: props.stageConfigs.prod.stateBucketName,
+        stackNames: this.stackNamesFor("prod")
+      })
+    };
 
     new cdk.CfnOutput(this, "GithubOidcProviderArn", {
       value: this.githubProviderArn
     });
 
-    new cdk.CfnOutput(this, "GithubActionsDeployRoleArn", {
-      value: this.deployRole.roleArn
-    });
+    for (const stage of APP_STAGES) {
+      const stageUpper = stage.toUpperCase();
+      const logicalPrefix = stage === "prod" ? "Prod" : "Dev";
 
-    new cdk.CfnOutput(this, "GithubActionsDeployRoleSecretName", {
-      value: `AWS_ROLE_TO_ASSUME_${props.stage.toUpperCase()}`
-    });
-
-    new cdk.CfnOutput(this, "GithubActionsEnvironmentName", {
-      value: props.stage
-    });
-
-    if (props.stage === "dev") {
-      this.prodPromotionValidationRole = this.createProdPromotionValidationRole(
-        "ProdPromotionValidationRole",
-        {
-          githubEnvironment: "dev",
-          githubRepository: props.githubRepository,
-          provider,
-          roleName: "brimax-github-actions-dev-prod-promotion-validation",
-          stackName: "dev-BrimaxAppStack",
-          tableName: "dev-brimax-wedding"
-        }
-      );
-
-      new cdk.CfnOutput(this, "ProdPromotionValidationRoleArn", {
-        value: this.prodPromotionValidationRole.roleArn
+      new cdk.CfnOutput(this, `GithubActions${logicalPrefix}DeployRoleArn`, {
+        value: this.deployRoles[stage].roleArn
       });
 
-      new cdk.CfnOutput(this, "ProdPromotionValidationRoleSecretName", {
-        value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
+      new cdk.CfnOutput(this, `GithubActions${logicalPrefix}DeployRoleSecretName`, {
+        value: `AWS_ROLE_TO_ASSUME_${stageUpper}`
+      });
+
+      new cdk.CfnOutput(this, `GithubActions${logicalPrefix}EnvironmentName`, {
+        value: stage
       });
     }
+
+    this.prodPromotionValidationRole = this.createProdPromotionValidationRole(
+      "ProdPromotionValidationRole",
+      {
+        githubEnvironment: "dev",
+        githubRepository: props.githubRepository,
+        provider,
+        roleName: "brimax-github-actions-dev-prod-promotion-validation",
+        stackName: "dev-BrimaxAppStack",
+        tableName: "dev-brimax-wedding"
+      }
+    );
+
+    new cdk.CfnOutput(this, "ProdPromotionValidationRoleArn", {
+      value: this.prodPromotionValidationRole.roleArn
+    });
+
+    new cdk.CfnOutput(this, "ProdPromotionValidationRoleSecretName", {
+      value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
+    });
+  }
+
+  private stackNamesFor(stage: AppStage) {
+    if (stage === "dev") {
+      return [
+        "CDKToolkit",
+        "dev-BrimaxPlatformStack",
+        "dev-BrimaxCertificateStack",
+        "dev-BrimaxEdgeStack",
+        "dev-BrimaxAppStack"
+      ];
+    }
+
+    return [
+      "CDKToolkit",
+      "BrimaxPlatformStack",
+      "BrimaxCertificateStack",
+      "BrimaxEdgeStack",
+      "BrimaxAppStack"
+    ];
   }
 
   private createDeployRole(id: string, props: DeployRoleProps) {
