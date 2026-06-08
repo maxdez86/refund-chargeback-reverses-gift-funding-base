@@ -1,5 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 
+Object.defineProperty(HTMLMediaElement.prototype, "play", {
+  writable: true,
+  value: vi.fn().mockResolvedValue(undefined),
+});
+
+Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+  writable: true,
+  value: vi.fn(),
+});
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({

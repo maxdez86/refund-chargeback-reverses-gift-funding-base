@@ -49,6 +49,12 @@ pnpm test
 
 If you want to inspect failures one step at a time, run the commands individually in that order.
 
+Coverage is intentionally separate because it is slower than the default pre-commit checks:
+
+```bash
+pnpm test:coverage
+```
+
 Run the frontend locally and open it in your browser:
 
 ```bash
