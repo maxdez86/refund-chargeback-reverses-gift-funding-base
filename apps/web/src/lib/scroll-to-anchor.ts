@@ -45,11 +45,13 @@ export function scrollToAnchor(
   if (typeof window === "undefined" || typeof document === "undefined") {
     return noop;
   }
+  const win = window;
+  const doc = document;
 
   let resolved: Element | null;
   if (typeof target === "string") {
     try {
-      resolved = document.querySelector(target);
+      resolved = doc.querySelector(target);
     } catch {
       // Non-anchor hashes (e.g. "#paymentId=...") aren't valid selectors — no-op.
       return noop;
@@ -65,14 +67,14 @@ export function scrollToAnchor(
   const settleMs = opts.settleMs ?? DEFAULT_SETTLE_MS;
 
   const measure = () =>
-    element.getBoundingClientRect().top + window.pageYOffset - offset;
+    element.getBoundingClientRect().top + win.pageYOffset - offset;
 
   let desiredY = measure();
-  window.scrollTo({ top: desiredY, behavior });
+  win.scrollTo({ top: desiredY, behavior });
 
   if (opts.updateHash) {
     try {
-      window.history.replaceState(null, "", opts.updateHash);
+      win.history.replaceState(null, "", opts.updateHash);
     } catch {
       /* ignore history errors (e.g. sandboxed environments) */
     }
@@ -92,12 +94,12 @@ export function scrollToAnchor(
     if (cancelled) return;
     cancelled = true;
     if (timer !== null) {
-      window.clearTimeout(timer);
+      win.clearTimeout(timer);
       timer = null;
     }
-    window.removeEventListener("wheel", onInterrupt);
-    window.removeEventListener("touchstart", onInterrupt);
-    window.removeEventListener("keydown", onKeyDown);
+    win.removeEventListener("wheel", onInterrupt);
+    win.removeEventListener("touchstart", onInterrupt);
+    win.removeEventListener("keydown", onKeyDown);
   }
 
   const tick = () => {
@@ -105,7 +107,7 @@ export function scrollToAnchor(
     const nextY = measure();
     if (Math.abs(nextY - desiredY) > TOLERANCE_PX) {
       desiredY = nextY;
-      window.scrollTo({ top: desiredY, behavior: "auto" });
+      win.scrollTo({ top: desiredY, behavior: "auto" });
       stableTicks = 0;
     } else {
       stableTicks += 1;
@@ -115,13 +117,13 @@ export function scrollToAnchor(
       cancel();
       return;
     }
-    timer = window.setTimeout(tick, TICK_MS);
+    timer = win.setTimeout(tick, TICK_MS);
   };
 
-  window.addEventListener("wheel", onInterrupt, { passive: true });
-  window.addEventListener("touchstart", onInterrupt, { passive: true });
-  window.addEventListener("keydown", onKeyDown);
-  timer = window.setTimeout(tick, TICK_MS);
+  win.addEventListener("wheel", onInterrupt, { passive: true });
+  win.addEventListener("touchstart", onInterrupt, { passive: true });
+  win.addEventListener("keydown", onKeyDown);
+  timer = win.setTimeout(tick, TICK_MS);
 
   return cancel;
 }
