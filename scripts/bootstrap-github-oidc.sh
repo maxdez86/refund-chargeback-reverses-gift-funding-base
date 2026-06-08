@@ -110,10 +110,8 @@ export GITHUB_OIDC_PROD_LOCK_TABLE_NAME
 if "${AWS_BIN}" iam get-open-id-connect-provider \
   --open-id-connect-provider-arn "${OIDC_PROVIDER_ARN}" \
   "${AWS_ARGS[@]}" >/dev/null 2>&1; then
-  export GITHUB_OIDC_PROVIDER_ARN="${OIDC_PROVIDER_ARN}"
   provider_status="reusing existing provider"
 else
-  unset GITHUB_OIDC_PROVIDER_ARN || true
   provider_status="creating new provider"
 fi
 
@@ -147,9 +145,13 @@ DEV_ROLE_ARN="$(
 PROD_ROLE_ARN="$(
   resolve_required_stack_output "${GITHUB_OIDC_STACK_NAME}" "GithubActionsProdDeployRoleArn"
 )"
+DEV_VALIDATION_ROLE_ARN="$(
+  resolve_required_stack_output "${GITHUB_OIDC_STACK_NAME}" "ProdPromotionValidationRoleArn"
+)"
 
 printf 'Deploy role ARN for dev: %s\n' "${DEV_ROLE_ARN}"
 printf 'Deploy role ARN for prod: %s\n' "${PROD_ROLE_ARN}"
+printf 'Validation role ARN for dev prod-promotion checks: %s\n' "${DEV_VALIDATION_ROLE_ARN}"
 
 ROLE_ARN="${PROD_ROLE_ARN}"
 if [[ "${SELECTED_STAGE}" == "dev" ]]; then
@@ -157,4 +159,4 @@ if [[ "${SELECTED_STAGE}" == "dev" ]]; then
 fi
 
 printf 'Selected GitHub environment role ARN for %s: %s\n' "${SELECTED_STAGE}" "${ROLE_ARN}"
-bash "${SETUP_GITHUB_ENVIRONMENT_SCRIPT}" "${ROLE_ARN}"
+bash "${SETUP_GITHUB_ENVIRONMENT_SCRIPT}" "${ROLE_ARN}" "${DEV_VALIDATION_ROLE_ARN}"

@@ -10,6 +10,7 @@ require_env GITHUB_TOKEN AWS_REGION STAGE ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN W
   PAYMENTS_TEST_PAYER_EMAIL PAYMENTS_TEST_PAYER_CPF PAYMENTS_TEST_PAYER_PHONE SENTRY_AUTH_TOKEN
 
 ROLE_ARN="${1:?Expected the stage-specific AWS role ARN as the first argument}"
+DEV_VALIDATION_ROLE_ARN="${2:-}"
 STAGE_UPPER="$(printf '%s' "${STAGE}" | tr '[:lower:]' '[:upper:]')"
 ROLE_SECRET_NAME="AWS_ROLE_TO_ASSUME_${STAGE_UPPER}"
 ENVIRONMENT_NAME="${STAGE}"
@@ -95,6 +96,18 @@ set_environment_secret "PAYMENTS_TEST_PAYER_PHONE" "${PAYMENTS_TEST_PAYER_PHONE}
 set_environment_secret "SENTRY_AUTH_TOKEN" "${SENTRY_AUTH_TOKEN}"
 set_environment_secret "${ROLE_SECRET_NAME}" "${ROLE_ARN}"
 
+if [[ "${STAGE}" == "dev" ]]; then
+  if [[ -z "${DEV_VALIDATION_ROLE_ARN}" ]]; then
+    printf 'Expected the dev validation AWS role ARN as the second argument when STAGE=dev.\n' >&2
+    exit 1
+  fi
+
+  set_environment_secret "AWS_ROLE_TO_ASSUME_DEV_VALIDATION" "${DEV_VALIDATION_ROLE_ARN}"
+fi
+
 printf 'Updated GitHub environment %s.\n' "${ENVIRONMENT_NAME}"
 printf '  variable set: STAGE=%s\n' "${STAGE}"
 printf '  secret set: %s\n' "${ROLE_SECRET_NAME}"
+if [[ "${STAGE}" == "dev" ]]; then
+  printf '  secret set: AWS_ROLE_TO_ASSUME_DEV_VALIDATION\n'
+fi

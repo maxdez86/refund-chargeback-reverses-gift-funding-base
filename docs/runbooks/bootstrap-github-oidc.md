@@ -5,10 +5,10 @@ Use this runbook to bootstrap GitHub Actions OIDC through one shared AWS stack, 
 In this repository, `.env` currently sets:
 
 ```bash
-STAGE=prod
+STAGE=dev
 ```
 
-That means this flow updates only the `prod` GitHub Environment in GitHub. On the AWS side it deploys one shared OIDC stack that always contains both the `prod` and `dev` deploy roles.
+That means a local run against the default `.env` updates only the `dev` GitHub Environment in GitHub. On the AWS side it still deploys one shared OIDC stack that always contains both the `prod` and `dev` deploy roles, plus the dev-only validation role used by `prod-promotion-validation.yml`.
 
 ## What This Creates
 
@@ -34,9 +34,11 @@ The role trust is restricted to:
 
 With the current `.env`, that means:
 
-- GitHub environment updated: `prod`
+- GitHub environment updated: `dev`
 - AWS stack deployed: `BrimaxGithubOidcStack`
-- GitHub secret created or updated: `AWS_ROLE_TO_ASSUME_PROD`
+- GitHub secrets created or updated:
+  - `AWS_ROLE_TO_ASSUME_DEV`
+  - `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
 
 ## Prerequisites
 
@@ -77,6 +79,7 @@ The bootstrap script now performs the full AWS + GitHub setup in one run:
    - `GithubActionsProdDeployRoleArn`
 8. Uses `GITHUB_TOKEN` from `.env` to create or update only the GitHub Environment named exactly `STAGE`.
 9. Writes only that environment’s GitHub variables and secrets required by the current repository workflows.
+10. When `STAGE=dev`, also writes the validation-only secret `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` because `.github/workflows/prod-promotion-validation.yml` reads it from the `dev` environment.
 
 ## AWS Outputs
 
@@ -103,7 +106,12 @@ Expected outputs from the shared stack:
 - `ProdPromotionValidationRoleArn`
 - `ProdPromotionValidationRoleSecretName`
 
-With `STAGE=prod`, the environment-specific secret name still used in GitHub should be:
+With `STAGE=dev`, the GitHub environment should contain:
+
+- `AWS_ROLE_TO_ASSUME_DEV`
+- `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
+
+With `STAGE=prod`, the environment-specific secret name used in GitHub should be:
 
 - `AWS_ROLE_TO_ASSUME_PROD`
 
@@ -113,7 +121,7 @@ The bootstrap now creates or updates only the GitHub Environment named `STAGE` a
 
 For the current `.env`, the GitHub environment is:
 
-- `prod`
+- `dev`
 
 Environment variables set by the script:
 
@@ -148,9 +156,11 @@ Environment secrets set by the script:
 - `SENTRY_AUTH_TOKEN`
 - `AWS_ROLE_TO_ASSUME_${STAGE_UPPER}`
 
-When bootstrapping `STAGE=dev`, keep the separate validation secret for `prod-promotion-validation.yml`:
+Additional environment secret set only when bootstrapping `STAGE=dev`:
 
 - `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
+
+When bootstrapping `STAGE=prod`, the script does not modify `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`.
 
 The opposite GitHub environment is not modified by this command.
 
@@ -181,11 +191,14 @@ Inspect the trust policy and confirm:
 
 GitHub validation:
 
-1. Open the GitHub repository environment `prod`.
+1. Open the GitHub repository environment that matches `STAGE`.
 2. Confirm the environment now exists.
 3. Confirm the variables and secrets above are present.
-4. Confirm the `dev` environment was not modified by this run.
-5. Trigger the existing `deploy-prod` workflow on branch `prod`.
+4. If `STAGE=dev`, confirm `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` is present because `prod-promotion-validation.yml` depends on it.
+5. Confirm the opposite environment was not modified by this run.
+6. Trigger the stage-matching deploy workflow on the stage-matching branch:
+   - `deploy-dev` on branch `dev`
+   - `deploy-prod` on branch `prod`
 
 Minimum success signals:
 
@@ -200,7 +213,7 @@ Minimum success signals:
 - This flow only updates the GitHub Environment for the current stage from `.env`.
 - This flow always deploys the shared AWS OIDC stack and requires both stage platform stacks to exist.
 - During migration from the old model, this flow deletes `dev-BrimaxGithubOidcStack` before creating the shared dev-owned OIDC resources.
-- If the GitHub cutover fails, revert the affected GitHub Environment secret values in the `prod` environment.
+- If the GitHub cutover fails, revert the affected GitHub Environment secret values in the environment selected by `STAGE`.
 - If the trust policy is wrong, update the OIDC stack and rerun the bootstrap.
 - Do not delete the shared OIDC provider unless you have confirmed nothing else depends on it.
 - The stack is isolated from application stacks, so fixing OIDC does not require touching Lambda, API Gateway, DynamoDB, or CloudFront resources.

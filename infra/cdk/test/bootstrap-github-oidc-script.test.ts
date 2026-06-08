@@ -16,7 +16,8 @@ function writeExecutable(filePath: string, content: string) {
 function createHarness(
   stage: "dev" | "prod",
   missingStacks: string[] = [],
-  existingStacks: string[] = ["BrimaxPlatformStack", "dev-BrimaxPlatformStack", "BrimaxGithubOidcStack"]
+  existingStacks: string[] = ["BrimaxPlatformStack", "dev-BrimaxPlatformStack", "BrimaxGithubOidcStack"],
+  providerExists = true
 ) {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "bootstrap-github-oidc-"));
   tempDirs.push(tempDir);
@@ -50,7 +51,12 @@ if [[ "$1" == "sts" && "$2" == "get-caller-identity" ]]; then
 fi
 
 if [[ "$1" == "iam" && "$2" == "get-open-id-connect-provider" ]]; then
-  exit 0
+  if [[ "${providerExists ? "true" : "false"}" == "true" ]]; then
+    exit 0
+  fi
+
+  echo "provider does not exist" >&2
+  exit 254
 fi
 
 if [[ "$1" == "cloudformation" && "$2" == "describe-stacks" ]]; then
@@ -112,6 +118,9 @@ if [[ "$1" == "cloudformation" && "$2" == "describe-stacks" ]]; then
       ;;
     "BrimaxGithubOidcStack|Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0]")
       echo "arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy"
+      ;;
+    "BrimaxGithubOidcStack|Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0]")
+      echo "arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
       ;;
     *)
       echo "unexpected cloudformation lookup: \${stack_name} | \${query}" >&2
@@ -197,7 +206,7 @@ printf 'pnpm|stage=%s|stack=%s|root=%s|api=%s|www=%s|state=%s|lock=%s|args=%s\\n
     setupScript,
     `#!/usr/bin/env bash
 set -euo pipefail
-printf 'setup|stage=%s|role=%s\\n' "\${STAGE:-}" "$1" >> "${logFile}"
+printf 'setup|stage=%s|role=%s|validation_role=%s\\n' "\${STAGE:-}" "$1" "\${2:-}" >> "${logFile}"
 `
   );
 
@@ -218,9 +227,10 @@ printf 'setup|stage=%s|role=%s\\n' "\${STAGE:-}" "$1" >> "${logFile}"
 function runBootstrap(
   stage: "dev" | "prod",
   missingStacks: string[] = [],
-  existingStacks?: string[]
+  existingStacks?: string[],
+  providerExists = true
 ) {
-  const harness = createHarness(stage, missingStacks, existingStacks);
+  const harness = createHarness(stage, missingStacks, existingStacks, providerExists);
   const result = spawnSync("bash", [bootstrapScript], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -269,12 +279,24 @@ describe("bootstrap-github-oidc.sh", () => {
         ),
         expect.stringContaining(
           "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
+        ),
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0] --output text"
         )
       ])
     );
 
     expect(logLines(result.log, "setup|")).toEqual([
-      "setup|stage=dev|role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy"
+      "setup|stage=dev|role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy|validation_role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
+    ]);
+  });
+
+  it("uses the same CDK deploy shape whether the provider already exists or not", () => {
+    const result = runBootstrap("dev", [], undefined, false);
+
+    expect(result.status).toBe(0);
+    expect(logLines(result.log, "pnpm|")).toEqual([
+      expect.stringContaining("pnpm|stage=dev|stack=BrimaxGithubOidcStack"),
     ]);
   });
 
@@ -314,12 +336,15 @@ describe("bootstrap-github-oidc.sh", () => {
         ),
         expect.stringContaining(
           "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
+        ),
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0] --output text"
         )
       ])
     );
 
     expect(logLines(result.log, "setup|")).toEqual([
-      "setup|stage=prod|role=arn:aws:iam::183286346090:role/brimax-github-actions-prod-deploy"
+      "setup|stage=prod|role=arn:aws:iam::183286346090:role/brimax-github-actions-prod-deploy|validation_role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
     ]);
   });
 

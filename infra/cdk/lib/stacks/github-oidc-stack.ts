@@ -9,7 +9,6 @@ interface StageBackendConfig {
 }
 
 export interface GithubOidcStackProps extends cdk.StackProps {
-  existingProviderArn?: string;
   githubRepository: string;
   stageConfigs: Record<AppStage, StageBackendConfig>;
 }
@@ -43,16 +42,10 @@ export class GithubOidcStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GithubOidcStackProps) {
     super(scope, id, props);
 
-    const provider = props.existingProviderArn
-      ? iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
-          this,
-          "ImportedGithubOidcProvider",
-          props.existingProviderArn
-        )
-      : new iam.OpenIdConnectProvider(this, "GithubOidcProvider", {
-          url: "https://token.actions.githubusercontent.com",
-          clientIds: ["sts.amazonaws.com"]
-        });
+    const provider = new iam.OpenIdConnectProvider(this, "GithubOidcProvider", {
+      url: "https://token.actions.githubusercontent.com",
+      clientIds: ["sts.amazonaws.com"]
+    });
 
     this.githubProviderArn = provider.openIdConnectProviderArn;
 

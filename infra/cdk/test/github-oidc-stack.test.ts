@@ -185,13 +185,11 @@ describe("GithubOidcStack", () => {
     });
   });
 
-  it("reuses an existing provider ARN when supplied", () => {
+  it("always manages the GitHub OIDC provider in the shared stack", () => {
     const app = new cdk.App();
     applyCostAllocationTags(app, "prod");
-    const stack = new GithubOidcStack(app, "ImportedProviderStack", {
+    const stack = new GithubOidcStack(app, "ManagedProviderStack", {
       env: { account: "183286346090", region: "us-east-1" },
-      existingProviderArn:
-        "arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com",
       githubRepository: "maxdez86/brimax-life",
       stageConfigs: {
         dev: {
@@ -206,9 +204,7 @@ describe("GithubOidcStack", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs("AWS::IAM::OIDCProvider", 0);
-    template.hasOutput("GithubOidcProviderArn", {
-      Value: "arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com"
-    });
+    template.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 1);
+    template.hasOutput("GithubOidcProviderArn", {});
   });
 });
