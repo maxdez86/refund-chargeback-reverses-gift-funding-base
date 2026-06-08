@@ -39,6 +39,27 @@ describe("GithubOidcStack", () => {
       }
     });
 
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: "ReadStageCloudFormation",
+            Action: Match.arrayWith([
+              "cloudformation:DescribeStacks",
+              "cloudformation:GetTemplate"
+            ]),
+            Resource: Match.arrayWith([
+              "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
+              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxPlatformStack/*",
+              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxCertificateStack/*",
+              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxEdgeStack/*",
+              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxAppStack/*"
+            ])
+          })
+        ])
+      }
+    });
+
     template.hasOutput("GithubOidcProviderArn", {});
     template.hasOutput("GithubActionsDeployRoleArn", {});
     template.hasOutput("GithubActionsDeployRoleSecretName", {

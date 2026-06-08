@@ -142,7 +142,7 @@ export class GithubOidcStack extends cdk.Stack {
     role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         sid: "ReadStageCloudFormation",
-        actions: ["cloudformation:DescribeStacks"],
+        actions: ["cloudformation:DescribeStacks", "cloudformation:GetTemplate"],
         resources: props.stackNames.map((stackName) => this.stackArnFor(stackName))
       })
     );
