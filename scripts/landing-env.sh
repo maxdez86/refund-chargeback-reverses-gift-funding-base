@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# redeploy trigger 2026-06-07 — forces apply-*-sentry path-filter to match; no functional effect
+# redeploy trigger 2026-06-08 — forces apply-*-sentry path-filter to match; no functional effect
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

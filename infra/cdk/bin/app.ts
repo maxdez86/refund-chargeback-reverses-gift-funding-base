@@ -14,7 +14,7 @@ const app = new cdk.App();
 const stage = resolveStage(app.node.tryGetContext("stage") ?? process.env.STAGE);
 cdk.Tags.of(app).add("project", "brimax-life");
 cdk.Tags.of(app).add("stage", stage);
-cdk.Tags.of(app).add("redeploy", "2026-06-07");
+cdk.Tags.of(app).add("redeploy", "2026-06-08");
 // Region is hard-pinned: the CloudFront viewer cert (CertificateStack) MUST live
 // in us-east-1, and the regional API Gateway cert must match the API region.
 // Account stays portable via CDK_DEFAULT_ACCOUNT (set by the CDK CLI from the
