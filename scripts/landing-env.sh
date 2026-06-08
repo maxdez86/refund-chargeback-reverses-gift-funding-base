@@ -76,8 +76,8 @@ load_local_env_file() {
   local key
   local output
 
-  output="$(
-    ENV_FILE="${ENV_FILE}" bash -lc '
+  if ! output="$(
+    ENV_FILE="${ENV_FILE}" bash -lec '
       set -a
       source "${ENV_FILE}"
       set +a
@@ -86,7 +86,10 @@ load_local_env_file() {
         printf "%s=%q\n" "${key}" "${!key-}"
       done
     ' bash "${env_keys[@]}"
-  )"
+  )"; then
+    printf 'Failed to load environment file: %s\n' "${ENV_FILE}" >&2
+    exit 1
+  fi
 
   while IFS= read -r line; do
     key="${line%%=*}"
