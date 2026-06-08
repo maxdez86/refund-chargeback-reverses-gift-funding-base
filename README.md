@@ -31,6 +31,24 @@ pnpm test
 pnpm synth
 ```
 
+## Pre-Commit Validation
+
+Run the full local validation suite before creating any commit:
+
+```bash
+pnpm precommit:check
+```
+
+That command runs the same manual checks in sequence:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+If you want to inspect failures one step at a time, run the commands individually in that order.
+
 Run the frontend locally and open it in your browser:
 
 ```bash
