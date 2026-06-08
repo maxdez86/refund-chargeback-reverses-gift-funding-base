@@ -141,12 +141,20 @@ delete_legacy_dev_oidc_stack_if_present
   --require-approval never \
   "${CDK_ARGS[@]}"
 
-ROLE_OUTPUT_KEY="GithubActionsProdDeployRoleArn"
+DEV_ROLE_ARN="$(
+  resolve_required_stack_output "${GITHUB_OIDC_STACK_NAME}" "GithubActionsDevDeployRoleArn"
+)"
+PROD_ROLE_ARN="$(
+  resolve_required_stack_output "${GITHUB_OIDC_STACK_NAME}" "GithubActionsProdDeployRoleArn"
+)"
+
+printf 'Deploy role ARN for dev: %s\n' "${DEV_ROLE_ARN}"
+printf 'Deploy role ARN for prod: %s\n' "${PROD_ROLE_ARN}"
+
+ROLE_ARN="${PROD_ROLE_ARN}"
 if [[ "${SELECTED_STAGE}" == "dev" ]]; then
-  ROLE_OUTPUT_KEY="GithubActionsDevDeployRoleArn"
+  ROLE_ARN="${DEV_ROLE_ARN}"
 fi
 
-ROLE_ARN="$(resolve_required_stack_output "${GITHUB_OIDC_STACK_NAME}" "${ROLE_OUTPUT_KEY}")"
-
-printf 'Deploy role ARN for %s: %s\n' "${SELECTED_STAGE}" "${ROLE_ARN}"
+printf 'Selected GitHub environment role ARN for %s: %s\n' "${SELECTED_STAGE}" "${ROLE_ARN}"
 bash "${SETUP_GITHUB_ENVIRONMENT_SCRIPT}" "${ROLE_ARN}"

@@ -262,6 +262,16 @@ describe("bootstrap-github-oidc.sh", () => {
     expect(pnpmLines).toEqual([
       expect.stringContaining("pnpm|stage=dev|stack=BrimaxGithubOidcStack")
     ]);
+    expect(logLines(result.log, "aws|")).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0] --output text"
+        ),
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
+        )
+      ])
+    );
 
     expect(logLines(result.log, "setup|")).toEqual([
       "setup|stage=dev|role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy"
@@ -297,6 +307,16 @@ describe("bootstrap-github-oidc.sh", () => {
     expect(pnpmLines).toEqual([
       expect.stringContaining("pnpm|stage=prod|stack=BrimaxGithubOidcStack")
     ]);
+    expect(logLines(result.log, "aws|")).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0] --output text"
+        ),
+        expect.stringContaining(
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
+        )
+      ])
+    );
 
     expect(logLines(result.log, "setup|")).toEqual([
       "setup|stage=prod|role=arn:aws:iam::183286346090:role/brimax-github-actions-prod-deploy"

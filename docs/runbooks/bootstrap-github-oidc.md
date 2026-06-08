@@ -70,12 +70,13 @@ The bootstrap script now performs the full AWS + GitHub setup in one run:
 2. Uses the current `STAGE` from `.env` only to choose which GitHub Environment to update.
 3. Checks whether `arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com` already exists.
 4. Resolves the exact OpenTofu backend bucket and lock table for both `dev` and `prod`.
-5. Deploys the shared OIDC stack `BrimaxGithubOidcStack`.
-6. Reads the selected stage role ARN from the shared stack outputs:
+5. Deletes the legacy `dev-BrimaxGithubOidcStack` first when it still exists from the old ownership model.
+6. Deploys the shared OIDC stack `BrimaxGithubOidcStack`.
+7. Verifies both deploy-role outputs exist in the shared stack:
    - `GithubActionsDevDeployRoleArn`
    - `GithubActionsProdDeployRoleArn`
-7. Uses `GITHUB_TOKEN` from `.env` to create or update only the GitHub Environment named exactly `STAGE`.
-8. Writes only that environment’s GitHub variables and secrets required by the current repository workflows.
+8. Uses `GITHUB_TOKEN` from `.env` to create or update only the GitHub Environment named exactly `STAGE`.
+9. Writes only that environment’s GitHub variables and secrets required by the current repository workflows.
 
 ## AWS Outputs
 
@@ -198,6 +199,7 @@ Minimum success signals:
 
 - This flow only updates the GitHub Environment for the current stage from `.env`.
 - This flow always deploys the shared AWS OIDC stack and requires both stage platform stacks to exist.
+- During migration from the old model, this flow deletes `dev-BrimaxGithubOidcStack` before creating the shared dev-owned OIDC resources.
 - If the GitHub cutover fails, revert the affected GitHub Environment secret values in the `prod` environment.
 - If the trust policy is wrong, update the OIDC stack and rerun the bootstrap.
 - Do not delete the shared OIDC provider unless you have confirmed nothing else depends on it.

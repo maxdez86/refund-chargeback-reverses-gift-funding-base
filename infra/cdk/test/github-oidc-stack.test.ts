@@ -66,26 +66,55 @@ describe("GithubOidcStack", () => {
       }
     });
 
-    template.hasResourceProperties("AWS::IAM::Policy", {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Sid: "ReadStageCloudFormation",
-            Action: Match.arrayWith([
-              "cloudformation:DescribeStacks",
-              "cloudformation:GetTemplate"
-            ]),
-            Resource: Match.arrayWith([
-              "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
-              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxPlatformStack/*",
-              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxCertificateStack/*",
-              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxEdgeStack/*",
-              "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxAppStack/*"
-            ])
-          })
-        ])
-      }
+    const policies = template.findResources("AWS::IAM::Policy");
+    const deployPolicies = Object.values(policies).filter((policy) => {
+      const roles = policy.Properties?.Roles;
+      return Array.isArray(roles) && roles.length === 1;
     });
+
+    const devPolicy = deployPolicies.find((policy) =>
+      JSON.stringify(policy.Properties?.Roles?.[0]).includes("GithubActionsDevDeployRole")
+    );
+    const prodPolicy = deployPolicies.find((policy) =>
+      JSON.stringify(policy.Properties?.Roles?.[0]).includes("GithubActionsDeployRole")
+    );
+
+    expect(devPolicy).toBeDefined();
+    expect(prodPolicy).toBeDefined();
+
+    const devStatements = devPolicy?.Properties?.PolicyDocument?.Statement as Array<Record<string, unknown>>;
+    const prodStatements = prodPolicy?.Properties?.PolicyDocument?.Statement as Array<Record<string, unknown>>;
+    const devReadStage = devStatements.find((statement) => statement.Sid === "ReadStageCloudFormation");
+    const prodReadStage = prodStatements.find((statement) => statement.Sid === "ReadStageCloudFormation");
+    const devBucketAccess = devStatements.find((statement) => statement.Sid === "OpenTofuStateBucketAccess");
+    const prodBucketAccess = prodStatements.find((statement) => statement.Sid === "OpenTofuStateBucketAccess");
+    const devLockAccess = devStatements.find((statement) => statement.Sid === "OpenTofuLockTableAccess");
+    const prodLockAccess = prodStatements.find((statement) => statement.Sid === "OpenTofuLockTableAccess");
+
+    expect(devReadStage?.Resource).toEqual(
+      expect.arrayContaining([
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxPlatformStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxCertificateStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxEdgeStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxAppStack/*"
+      ])
+    );
+    expect(prodReadStage?.Resource).toEqual(
+      expect.arrayContaining([
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxPlatformStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxCertificateStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxEdgeStack/*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxAppStack/*"
+      ])
+    );
+    expect(devBucketAccess?.Resource).toBe("arn:aws:s3:::dev-state-bucket");
+    expect(prodBucketAccess?.Resource).toBe("arn:aws:s3:::prod-state-bucket");
+    expect(devLockAccess?.Resource).toBe("arn:aws:dynamodb:us-east-1:183286346090:table/dev-lock-table");
+    expect(prodLockAccess?.Resource).toBe(
+      "arn:aws:dynamodb:us-east-1:183286346090:table/prod-lock-table"
+    );
 
     template.hasOutput("GithubOidcProviderArn", {});
     template.hasOutput("GithubActionsDevDeployRoleArn", {});
