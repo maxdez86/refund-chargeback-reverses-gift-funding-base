@@ -102,6 +102,10 @@ load_local_env_file() {
 ensure_env_file_exists
 load_local_env_file
 
+if [[ -z "${AWS_PROFILE:-}" ]]; then
+  unset AWS_PROFILE
+fi
+
 export STAGE="${STAGE:-prod}"
 export AWS_REGION="${AWS_REGION:-us-east-1}"
 if [[ "${STAGE}" != "dev" && "${STAGE}" != "prod" ]]; then
