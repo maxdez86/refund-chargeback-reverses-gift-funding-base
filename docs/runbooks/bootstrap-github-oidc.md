@@ -1,6 +1,6 @@
 # GitHub OIDC Bootstrap Runbook
 
-Use this runbook to bootstrap GitHub Actions OIDC for the current local `.env` only.
+Use this runbook to bootstrap GitHub Actions OIDC with GitHub environment updates scoped to the current local `.env`.
 
 In this repository, `.env` currently sets:
 
@@ -8,17 +8,18 @@ In this repository, `.env` currently sets:
 STAGE=prod
 ```
 
-That means this flow creates and configures only the `prod` GitHub Environment and only the stage-specific AWS role for `prod`. It does not create a second `dev` role or configure the `dev` GitHub Environment.
+That means this flow updates only the `prod` GitHub Environment in GitHub. On the AWS side it now attempts to keep both the `prod` and `dev` deploy roles present, bootstrapping the selected stage first and then the opposite stage when its platform stack already exists.
 
 ## What This Creates
 
-- stage-specific CloudFormation stack:
+- stage-specific CloudFormation stacks:
   - `BrimaxGithubOidcStack` when `STAGE=prod`
   - `dev-BrimaxGithubOidcStack` when `STAGE=dev`
 - shared IAM OIDC provider for `https://token.actions.githubusercontent.com`
   - reused if it already exists in the AWS account
-- one stage-specific deploy role:
-  - `brimax-github-actions-${STAGE}-deploy`
+- one deploy role per stage when the matching platform stack exists:
+  - `brimax-github-actions-prod-deploy`
+  - `brimax-github-actions-dev-deploy`
 - one stage-specific GitHub Environment:
   - environment name = `STAGE`
 - one stage-specific environment secret:
@@ -34,23 +35,26 @@ The role trust is restricted to:
 
 With the current `.env`, that means:
 
-- environment: `prod`
-- branch: `prod`
-- secret created: `AWS_ROLE_TO_ASSUME_PROD`
+- GitHub environment updated: `prod`
+- AWS bootstrap order: `prod`, then `dev`
+- GitHub secret created or updated: `AWS_ROLE_TO_ASSUME_PROD`
 
 ## Prerequisites
 
 1. Local AWS CLI access through profile `personal-stg`.
 2. Account must be `183286346090`.
 3. Region must be `us-east-1`.
-4. The current stage platform stack must already exist:
+4. The selected stage platform stack must already exist:
    - `BrimaxPlatformStack` for `STAGE=prod`
    - `dev-BrimaxPlatformStack` for `STAGE=dev`
-5. `.env` must contain a valid `GITHUB_TOKEN` with permission to manage:
+5. The opposite stage platform stack is optional for the same run:
+   - if it exists, the bootstrap also refreshes that stage AWS deploy role
+   - if it does not exist yet, the bootstrap logs a warning and skips that stage
+6. `.env` must contain a valid `GITHUB_TOKEN` with permission to manage:
    - environments
    - environment secrets
    - environment variables
-6. Dependencies must already be installed locally.
+7. Dependencies must already be installed locally.
 
 The bootstrap uses values from `.env` through `scripts/landing-env.sh`, including `STAGE`, AWS settings, Cloudflare settings, application secrets, and `GITHUB_TOKEN`.
 
@@ -67,13 +71,14 @@ pnpm deploy:github-oidc
 The bootstrap script now performs the full AWS + GitHub setup in one run:
 
 1. Confirms the active AWS account is `183286346090`.
-2. Uses the current `STAGE` from `.env`.
+2. Uses the current `STAGE` from `.env` as the only GitHub Environment to update.
 3. Checks whether `arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com` already exists.
-4. Resolves the exact OpenTofu backend bucket and lock table from the current stage platform stack.
-5. Deploys the current stage OIDC stack.
-6. Reads `GithubActionsDeployRoleArn` from CloudFormation.
-7. Uses `GITHUB_TOKEN` from `.env` to create or update the GitHub Environment named exactly `STAGE`.
-8. Writes the GitHub Environment variables and secrets required by the current repository workflows.
+4. Resolves the exact OpenTofu backend bucket and lock table for the selected stage.
+5. Deploys the selected stage OIDC stack and reads its `GithubActionsDeployRoleArn`.
+6. Attempts the same for the opposite stage so both AWS deploy roles stay present.
+7. If the opposite stage platform stack is missing, prints a warning and skips that stage without failing the selected-stage bootstrap.
+8. Uses `GITHUB_TOKEN` from `.env` to create or update only the GitHub Environment named exactly `STAGE`.
+9. Writes only that environment’s GitHub variables and secrets required by the current repository workflows.
 
 ## AWS Outputs
 
@@ -88,22 +93,22 @@ aws cloudformation describe-stacks \
   --output table
 ```
 
-Expected outputs for the current `.env`:
+Expected outputs for the selected stage stack:
 
 - `GithubOidcProviderArn`
 - `GithubActionsDeployRoleArn`
 - `GithubActionsDeployRoleSecretName`
 - `GithubActionsEnvironmentName`
 
-With `STAGE=prod`, the secret-name output should be:
+With `STAGE=prod`, the selected-stage secret-name output should be:
 
 - `AWS_ROLE_TO_ASSUME_PROD`
 
 ## GitHub Setup Performed Automatically
 
-The bootstrap now creates or updates the GitHub Environment named `STAGE` and populates it automatically.
+The bootstrap now creates or updates only the GitHub Environment named `STAGE` and populates it automatically.
 
-For the current `.env`, the environment is:
+For the current `.env`, the GitHub environment is:
 
 - `prod`
 
@@ -144,6 +149,8 @@ When bootstrapping `STAGE=dev`, keep the separate validation secret for `prod-pr
 
 - `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
 
+The opposite GitHub environment is not modified by this command.
+
 No manual GitHub Environment setup is required after the command succeeds.
 
 ## Validation
@@ -174,7 +181,8 @@ GitHub validation:
 1. Open the GitHub repository environment `prod`.
 2. Confirm the environment now exists.
 3. Confirm the variables and secrets above are present.
-4. Trigger the existing `deploy-prod` workflow on branch `prod`.
+4. Confirm the `dev` environment was not modified by this run.
+5. Trigger the existing `deploy-prod` workflow on branch `prod`.
 
 Minimum success signals:
 
@@ -186,7 +194,8 @@ Minimum success signals:
 
 ## Rollback / Safety
 
-- This flow only updates the current stage from `.env`.
+- This flow only updates the GitHub Environment for the current stage from `.env`.
+- This flow attempts to refresh both AWS deploy roles, but it warns and skips the opposite stage if its platform stack does not exist yet.
 - If the GitHub cutover fails, revert the affected GitHub Environment secret values in the `prod` environment.
 - If the trust policy is wrong, update the OIDC stack and rerun the bootstrap.
 - Do not delete the shared OIDC provider unless you have confirmed nothing else depends on it.
