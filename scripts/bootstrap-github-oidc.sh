@@ -63,18 +63,22 @@ resolve_required_stack_output() {
 }
 
 export GITHUB_OIDC_REPOSITORY="${GITHUB_OIDC_REPOSITORY:-maxdez86/brimax-life}"
-export GITHUB_OIDC_DEV_STATE_BUCKET_NAME="$(
+GITHUB_OIDC_DEV_STATE_BUCKET_NAME="$(
   resolve_required_stack_output "dev-BrimaxPlatformStack" "TofuStateBucketName"
 )"
-export GITHUB_OIDC_DEV_LOCK_TABLE_NAME="$(
+export GITHUB_OIDC_DEV_STATE_BUCKET_NAME
+GITHUB_OIDC_DEV_LOCK_TABLE_NAME="$(
   resolve_required_stack_output "dev-BrimaxPlatformStack" "TofuLockTableName"
 )"
-export GITHUB_OIDC_PROD_STATE_BUCKET_NAME="$(
+export GITHUB_OIDC_DEV_LOCK_TABLE_NAME
+GITHUB_OIDC_PROD_STATE_BUCKET_NAME="$(
   resolve_required_stack_output "BrimaxPlatformStack" "TofuStateBucketName"
 )"
-export GITHUB_OIDC_PROD_LOCK_TABLE_NAME="$(
+export GITHUB_OIDC_PROD_STATE_BUCKET_NAME
+GITHUB_OIDC_PROD_LOCK_TABLE_NAME="$(
   resolve_required_stack_output "BrimaxPlatformStack" "TofuLockTableName"
 )"
+export GITHUB_OIDC_PROD_LOCK_TABLE_NAME
 
 if "${AWS_BIN}" iam get-open-id-connect-provider \
   --open-id-connect-provider-arn "${OIDC_PROVIDER_ARN}" \
