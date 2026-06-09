@@ -10,6 +10,9 @@ permissions:
   pull-requests: read
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: dev-deploy
   cancel-in-progress: false
@@ -24,12 +27,12 @@ jobs:
       apply_dev_api_dns: ${{ steps.filter.outputs.apply_dev_api_dns }}
       apply_dev_sentry: ${{ steps.filter.outputs.apply_dev_sentry }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             deploy_frontend:
@@ -110,7 +113,7 @@ jobs:
     if: needs.detect-changes.outputs.deploy_frontend == 'true'
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -178,7 +181,7 @@ jobs:
     if: needs.detect-changes.outputs.apply_dev_sentry == 'true'
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -258,7 +261,7 @@ jobs:
       (needs.apply-dev-sentry.result == 'success' || needs.apply-dev-sentry.result == 'skipped')
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -341,7 +344,7 @@ jobs:
       (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -421,7 +424,7 @@ jobs:
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:

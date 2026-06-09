@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -22,7 +25,7 @@ jobs:
       WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
       API_DOMAIN: ${{ vars.API_DOMAIN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:

@@ -15,6 +15,9 @@ permissions:
   id-token: write
   pull-requests: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: prod-promotion-validation-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -44,7 +47,7 @@ jobs:
       gift_id: ${{ steps.context.outputs.gift_id }}
       wedding_table_name: ${{ steps.context.outputs.wedding_table_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -112,7 +115,7 @@ jobs:
     needs: discover-context
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -158,7 +161,7 @@ jobs:
       - prepare-dev-test-data
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:

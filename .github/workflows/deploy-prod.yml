@@ -10,6 +10,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: deploy-prod
   cancel-in-progress: false
@@ -26,12 +29,12 @@ jobs:
       apply_prod_sentry: ${{ steps.filter.outputs.apply_prod_sentry }}
       apply_prod_ses_dns: ${{ steps.filter.outputs.apply_prod_ses_dns }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             deploy_frontend:
@@ -131,7 +134,7 @@ jobs:
       group: deploy-prod-frontend
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -202,7 +205,7 @@ jobs:
       group: deploy-prod-sentry
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -284,7 +287,7 @@ jobs:
       group: deploy-prod-backend
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -370,7 +373,7 @@ jobs:
       group: deploy-prod-landing-dns
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -452,7 +455,7 @@ jobs:
       group: deploy-prod-api-dns
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -534,7 +537,7 @@ jobs:
       group: deploy-prod-ses-dns
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
@@ -637,7 +640,7 @@ jobs:
       WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
       API_DOMAIN: ${{ vars.API_DOMAIN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
