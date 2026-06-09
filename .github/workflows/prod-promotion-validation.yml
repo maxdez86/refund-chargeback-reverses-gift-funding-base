@@ -64,6 +64,15 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
 
+      - name: Confirm dev validation caller identity
+        run: |
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          {
+            echo "## Dev validation AWS caller"
+            echo ""
+            echo "- caller_arn: ${caller_arn}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - id: context
         name: Resolve validation context
         env:
@@ -123,6 +132,15 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
 
+      - name: Confirm dev validation caller identity
+        run: |
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          {
+            echo "## Dev validation AWS caller"
+            echo ""
+            echo "- caller_arn: ${caller_arn}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Prepare integration-owned dev data
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -159,6 +177,15 @@ jobs:
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV_VALIDATION }}
+
+      - name: Confirm dev validation caller identity
+        run: |
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          {
+            echo "## Dev validation AWS caller"
+            echo ""
+            echo "- caller_arn: ${caller_arn}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run prod-promotion integration suite
         env:

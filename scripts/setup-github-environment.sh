@@ -14,6 +14,7 @@ DEV_VALIDATION_ROLE_ARN="${2:-}"
 STAGE_UPPER="$(printf '%s' "${STAGE}" | tr '[:lower:]' '[:upper:]')"
 ROLE_SECRET_NAME="AWS_ROLE_TO_ASSUME_${STAGE_UPPER}"
 ENVIRONMENT_NAME="${STAGE}"
+DEV_ENVIRONMENT_NAME="dev"
 REPOSITORY="${GITHUB_OIDC_REPOSITORY:-}"
 
 resolve_repository() {
@@ -40,12 +41,22 @@ resolve_repository() {
 REPOSITORY="$(resolve_repository)"
 export GH_TOKEN="${GITHUB_TOKEN}"
 
+ensure_environment_exists() {
+  local environment_name="${1}"
+
+  gh api \
+    --method PUT \
+    --header "Accept: application/vnd.github+json" \
+    "repos/${REPOSITORY}/environments/${environment_name}" >/dev/null
+}
+
 set_environment_variable() {
   local name="${1}"
   local value="${2}"
+  local environment_name="${3:-${ENVIRONMENT_NAME}}"
 
   gh variable set "${name}" \
-    --env "${ENVIRONMENT_NAME}" \
+    --env "${environment_name}" \
     --repo "${REPOSITORY}" \
     --body "${value}"
 }
@@ -53,19 +64,17 @@ set_environment_variable() {
 set_environment_secret() {
   local name="${1}"
   local value="${2}"
+  local environment_name="${3:-${ENVIRONMENT_NAME}}"
 
   gh secret set "${name}" \
-    --env "${ENVIRONMENT_NAME}" \
+    --env "${environment_name}" \
     --repo "${REPOSITORY}" \
     --body "${value}"
 }
 
 printf 'Configuring GitHub environment %s in %s\n' "${ENVIRONMENT_NAME}" "${REPOSITORY}"
-
-gh api \
-  --method PUT \
-  --header "Accept: application/vnd.github+json" \
-  "repos/${REPOSITORY}/environments/${ENVIRONMENT_NAME}" >/dev/null
+ensure_environment_exists "${ENVIRONMENT_NAME}"
+ensure_environment_exists "${DEV_ENVIRONMENT_NAME}"
 
 set_environment_variable "AWS_REGION" "${AWS_REGION}"
 set_environment_variable "STAGE" "${STAGE}"
@@ -96,18 +105,15 @@ set_environment_secret "PAYMENTS_TEST_PAYER_PHONE" "${PAYMENTS_TEST_PAYER_PHONE}
 set_environment_secret "SENTRY_AUTH_TOKEN" "${SENTRY_AUTH_TOKEN}"
 set_environment_secret "${ROLE_SECRET_NAME}" "${ROLE_ARN}"
 
-if [[ "${STAGE}" == "dev" ]]; then
-  if [[ -z "${DEV_VALIDATION_ROLE_ARN}" ]]; then
-    printf 'Expected the dev validation AWS role ARN as the second argument when STAGE=dev.\n' >&2
-    exit 1
-  fi
-
-  set_environment_secret "AWS_ROLE_TO_ASSUME_DEV_VALIDATION" "${DEV_VALIDATION_ROLE_ARN}"
+if [[ -z "${DEV_VALIDATION_ROLE_ARN}" ]]; then
+  printf 'Expected the dev validation AWS role ARN as the second argument.\n' >&2
+  exit 1
 fi
+
+set_environment_secret "AWS_ROLE_TO_ASSUME_DEV_VALIDATION" "${DEV_VALIDATION_ROLE_ARN}" "${DEV_ENVIRONMENT_NAME}"
 
 printf 'Updated GitHub environment %s.\n' "${ENVIRONMENT_NAME}"
 printf '  variable set: STAGE=%s\n' "${STAGE}"
 printf '  secret set: %s\n' "${ROLE_SECRET_NAME}"
-if [[ "${STAGE}" == "dev" ]]; then
-  printf '  secret set: AWS_ROLE_TO_ASSUME_DEV_VALIDATION\n'
-fi
+printf 'Updated GitHub environment %s.\n' "${DEV_ENVIRONMENT_NAME}"
+printf '  secret set: AWS_ROLE_TO_ASSUME_DEV_VALIDATION\n'

@@ -5,6 +5,11 @@ Use this only for the **first** public bring-up of the isolated `dev` environmen
 
 For repeatable `dev` deploys after this bootstrap, use [deploy-dev.md](deploy-dev.md).
 
+Fresh-account note: when setting up a brand-new AWS account, do not run the shared GitHub OIDC
+bootstrap first. It currently depends on both `BrimaxPlatformStack` and `dev-BrimaxPlatformStack`
+already existing, so the correct order is prod platform bootstrap, then dev platform bootstrap,
+then `pnpm deploy:github-oidc`.
+
 Use **two terminals**. The ACM certificate stack pauses while waiting for DNS validation,
 and the DNS validation records are created by OpenTofu in a separate step. A single terminal
 deadlocks: the cert deploy blocks, so the OpenTofu command that would unblock it never runs.

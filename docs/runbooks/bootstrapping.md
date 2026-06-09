@@ -6,6 +6,10 @@ This runbook is for the first production deploy of the landing page to `brimax.l
 
 For GitHub Actions IAM role bootstrap through OIDC, use [bootstrap-github-oidc.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrap-github-oidc.md:1).
 
+Fresh-account note: the shared GitHub OIDC bootstrap depends on both `BrimaxPlatformStack` and
+`dev-BrimaxPlatformStack` already existing. Bring up prod platform first, then dev platform, and
+only then run `pnpm deploy:github-oidc`.
+
 Use two terminals because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
 
 This bootstrap also establishes the baseline edge hardening through IaC:

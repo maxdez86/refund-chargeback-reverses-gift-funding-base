@@ -61,6 +61,10 @@ pnpm test:payments:negative
 
 **Code style.** TypeScript strict; Zod for runtime validation at boundaries; Vitest for tests; functional React (no class components); `@/` alias in `apps/web`, relative imports in `apps/api`.
 
+**Testing.** Every new function ships with a Vitest unit test in the same workspace — mirror the existing style (`apps/api/tests/*.test.ts`, `apps/web/tests/`). CI's `dev-pr-validation` baseline job runs `pnpm test` and `pnpm test:coverage` on every PR. **Do not** write or modify the prod-promotion integration suite (`pnpm test:integration:prod-promotion` / `pnpm prepare:integration:prod-promotion`, driven by [.github/workflows/prod-promotion-validation.yml](.github/workflows/prod-promotion-validation.yml)) as part of a feature — that integration coverage is authored in a separate, dedicated prompt. Implement the feature and its unit tests only.
+
+**Git.** Never run `git push`, and never open or publish a branch or PR — pushing is always the user's action. Staging and committing are allowed only when the user explicitly asks; otherwise leave changes in the working tree.
+
 **Dev logs.** `pnpm dev:all-web` writes to [.tmp/dev-all-web-apps/](.tmp/dev-all-web-apps/) — tail those files instead of restarting the server.
 
 ## Where to read more

@@ -1,4 +1,3 @@
-//TESTMAX
 import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 

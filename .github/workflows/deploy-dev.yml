@@ -1,4 +1,3 @@
-### TESTMAX
 name: deploy-dev
 
 on:
@@ -163,6 +162,7 @@ jobs:
             printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env.dev
           test -f .env.dev
+          bash scripts/validate-github-env-file.sh .env.dev dev
 
       - name: Deploy landing edge stack
         run: BRIMAX_ENV_FILE=.env.dev pnpm deploy:landing:edge
@@ -229,6 +229,7 @@ jobs:
             printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env.dev
           test -f .env.dev
+          bash scripts/validate-github-env-file.sh .env.dev dev
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -307,6 +308,7 @@ jobs:
             printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env.dev
           test -f .env.dev
+          bash scripts/validate-github-env-file.sh .env.dev dev
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -389,6 +391,7 @@ jobs:
             printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env.dev
           test -f .env.dev
+          bash scripts/validate-github-env-file.sh .env.dev dev
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -467,6 +470,7 @@ jobs:
             printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
           } > .env.dev
           test -f .env.dev
+          bash scripts/validate-github-env-file.sh .env.dev dev
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1

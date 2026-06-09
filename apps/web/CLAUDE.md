@@ -43,6 +43,8 @@ pnpm --filter @brimax/web test
 
 Vitest config: [vitest.config.ts](vitest.config.ts). Setup file: [tests/setup.ts](tests/setup.ts).
 
+New functions and components ship with a Vitest unit test under `tests/`. **Don't** add prod-promotion integration tests as part of a feature — that's a separate, dedicated task (see root [CLAUDE.md](../../CLAUDE.md)).
+
 ## Don't read
 
 `dist/`, `node_modules/`, `node_modules/.vite/` — already in `.claudeignore`.

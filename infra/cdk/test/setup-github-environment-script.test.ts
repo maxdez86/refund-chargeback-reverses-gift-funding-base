@@ -81,11 +81,11 @@ printf 'gh|%s\\n' "$*" >> "${logFile}"
 
 function runSetup(stage: "dev" | "prod") {
   const harness = createHarness(stage);
-  const args = [setupScript, "arn:aws:iam::183286346090:role/stage-deploy-role"];
-
-  if (stage === "dev") {
-    args.push("arn:aws:iam::183286346090:role/dev-validation-role");
-  }
+  const args = [
+    setupScript,
+    "arn:aws:iam::183286346090:role/stage-deploy-role",
+    "arn:aws:iam::183286346090:role/dev-validation-role"
+  ];
 
   const result = spawnSync("bash", args, {
     cwd: repoRoot,
@@ -143,11 +143,14 @@ describe("setup-github-environment.sh", () => {
     expect(logLines(result.log, "gh|")).toEqual(
       expect.arrayContaining([
         expect.stringContaining("api --method PUT --header Accept: application/vnd.github+json repos/maxdez86/brimax-life/environments/prod"),
+        expect.stringContaining("api --method PUT --header Accept: application/vnd.github+json repos/maxdez86/brimax-life/environments/dev"),
         expect.stringContaining(
           "secret set AWS_ROLE_TO_ASSUME_PROD --env prod --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/stage-deploy-role"
+        ),
+        expect.stringContaining(
+          "secret set AWS_ROLE_TO_ASSUME_DEV_VALIDATION --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/dev-validation-role"
         )
       ])
     );
-    expect(result.log).not.toContain("AWS_ROLE_TO_ASSUME_DEV_VALIDATION");
   });
 });

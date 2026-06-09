@@ -263,7 +263,7 @@ afterEach(() => {
 });
 
 describe("bootstrap-github-oidc.sh", () => {
-  it("deploys the shared stack and only updates the dev GitHub environment secret", () => {
+  it("deploys the shared stack and refreshes the dev GitHub environment secrets", () => {
     const result = runBootstrap("dev");
 
     expect(result.status).toBe(0);
@@ -320,7 +320,7 @@ describe("bootstrap-github-oidc.sh", () => {
     ]);
   });
 
-  it("deploys the shared stack and only updates the prod GitHub environment secret", () => {
+  it("deploys the shared stack, updates the prod GitHub environment, and refreshes the dev validation secret", () => {
     const result = runBootstrap("prod");
 
     expect(result.status).toBe(0);

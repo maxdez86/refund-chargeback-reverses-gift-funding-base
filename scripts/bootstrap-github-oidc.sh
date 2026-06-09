@@ -159,4 +159,6 @@ if [[ "${SELECTED_STAGE}" == "dev" ]]; then
 fi
 
 printf 'Selected GitHub environment role ARN for %s: %s\n' "${SELECTED_STAGE}" "${ROLE_ARN}"
+printf 'Refreshing GitHub environment %s.\n' "${SELECTED_STAGE}"
+printf 'Refreshing GitHub environment dev validation secret AWS_ROLE_TO_ASSUME_DEV_VALIDATION from shared stack output.\n'
 bash "${SETUP_GITHUB_ENVIRONMENT_SCRIPT}" "${ROLE_ARN}" "${DEV_VALIDATION_ROLE_ARN}"

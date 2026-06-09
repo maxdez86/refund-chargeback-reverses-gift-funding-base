@@ -49,6 +49,8 @@ pnpm --filter @brimax/api test
 
 Existing examples: `tests/key-builder.test.ts`, `tests/payment-service.test.ts`, `tests/payment-state.test.ts`, `tests/rsvp-service.test.ts`. Mirror this style for new tests.
 
+Every new function gets a unit test here. **Don't** add or edit prod-promotion integration tests as part of a feature — those live in a separate, dedicated task (see root [CLAUDE.md](../../CLAUDE.md)).
+
 ## Don't read
 
 `dist/`, `node_modules/` — already in `.claudeignore`.
