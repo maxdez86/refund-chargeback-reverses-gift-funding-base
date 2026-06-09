@@ -89,7 +89,7 @@ jobs:
           table_name="$(
             pnpm exec tsx -e '
             import { resolveWeddingTableName } from "./scripts/lib/prod-promotion-support.ts";
-            process.stdout.write(await resolveWeddingTableName());
+            resolveWeddingTableName().then((name) => process.stdout.write(name));
             '
           )"
           {
