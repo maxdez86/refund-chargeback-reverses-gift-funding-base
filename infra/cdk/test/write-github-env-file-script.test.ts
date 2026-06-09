@@ -154,6 +154,30 @@ describe("write-github-env-file.sh", () => {
     expect(existsSync(envFile)).toBe(true);
   });
 
+  it("reports missing values when the workflow context is not exported", () => {
+    const tempDir = createTempDir();
+    const envFile = path.join(tempDir, ".env.dev");
+
+    const result = runScript(
+      [
+        envFile,
+        "full-stage",
+        "dev",
+        "STAGE",
+        "TOFU_STATE_KEY_PREFIX",
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_TEAM_SLUG"
+      ],
+      { PATH: process.env.PATH }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Missing required GitHub environment vars/secrets for "dev": STAGE TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG'
+    );
+  });
+
   it("supports backend-scoped validation without unrelated vars", () => {
     const tempDir = createTempDir();
     const envFile = path.join(tempDir, ".env.dev");

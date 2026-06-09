@@ -150,12 +150,36 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
         run: |
           bash scripts/write-github-env-file.sh .env full-stage prod \
-            STAGE AWS_REGION ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN WWW_DOMAIN \
-            OBSERVABILITY_ALERT_EMAIL XRAY_ENABLED ASAAS_ENV ASAAS_API_BASE_URL \
-            ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN TURNSTILE_SECRET_KEY \
-            TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG
+            STAGE AWS_REGION ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN WWW_DOMAIN TURNSTILE_SITE_KEY
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -197,7 +221,36 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: bash scripts/write-github-env-file.sh .env full-stage prod
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
+        run: |
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -250,7 +303,39 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: bash scripts/write-github-env-file.sh .env full-stage prod
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
+        run: |
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN WWW_DOMAIN \
+            OBSERVABILITY_ALERT_EMAIL XRAY_ENABLED ASAAS_ENV ASAAS_API_BASE_URL \
+            ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN TURNSTILE_SECRET_KEY \
+            TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -307,7 +392,36 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: bash scripts/write-github-env-file.sh .env full-stage prod
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
+        run: |
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION ROOT_DOMAIN WWW_DOMAIN CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID TOFU_STATE_KEY_PREFIX
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -360,7 +474,36 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: bash scripts/write-github-env-file.sh .env full-stage prod
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
+        run: |
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION ROOT_DOMAIN API_DOMAIN CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID TOFU_STATE_KEY_PREFIX
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -413,7 +556,36 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: bash scripts/write-github-env-file.sh .env full-stage prod
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          OBSERVABILITY_ALERT_EMAIL: ${{ vars.OBSERVABILITY_ALERT_EMAIL }}
+          XRAY_ENABLED: ${{ vars.XRAY_ENABLED }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          PAYMENTS_TEST_GIFT_ID: ${{ vars.PAYMENTS_TEST_GIFT_ID }}
+          PAYMENTS_TEST_GIFT_QUANTITY: ${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
+          TOFU_STATE_KEY_PREFIX: ${{ vars.TOFU_STATE_KEY_PREFIX }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_TEAM_SLUG: ${{ vars.SENTRY_TEAM_SLUG }}
+        run: |
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION ROOT_DOMAIN CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID TOFU_STATE_KEY_PREFIX
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
