@@ -325,6 +325,11 @@ jobs:
       - name: Init dev Sentry infrastructure
         run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:sentry:init
 
+      # The CDK app always instantiates EdgeStack, so backend-only deploys still
+      # need the static site bundle on disk for S3 asset staging.
+      - name: Build landing bundle for CDK asset staging
+        run: BRIMAX_ENV_FILE=.env.dev pnpm build:web
+
       - name: Deploy backend stacks
         run: BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
 
