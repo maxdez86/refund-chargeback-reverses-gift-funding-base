@@ -6,9 +6,10 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
-      "**/cdk.out/**",
+      "**/cdk.out*/**",
       "**/coverage/**",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "docs/experimentation/**"
     ]
   },
   js.configs.recommended,

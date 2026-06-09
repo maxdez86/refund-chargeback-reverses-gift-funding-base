@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
-printf 'Running pre-commit validation: lint\n'
+printf 'Running pre-commit validation: lint auto-fix\n'
+pnpm lint:fix
+
+printf '\nRunning pre-commit validation: lint check\n'
 pnpm lint
 
 printf '\nRunning pre-commit validation: typecheck\n'

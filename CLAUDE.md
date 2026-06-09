@@ -24,7 +24,8 @@ pnpm dev:all-web             # run apps/web with .env.dev by default (logs in .t
 pnpm dev:web                 # apps/web only, defaults to .env.dev (port 5173)
 pnpm build:web               # production bundle → apps/web/dist
 pnpm build                   # tsc -b across all workspaces
-pnpm lint                    # eslint .
+pnpm lint                    # check-only ESLint on maintained repo source
+pnpm lint:fix                # same lint scope, but auto-fixable issues are rewritten locally
 pnpm typecheck               # tsc --noEmit (recursive)
 pnpm test                    # vitest (recursive)
 pnpm synth                   # build:web + cdk synth (validates stacks)
@@ -62,6 +63,8 @@ pnpm test:payments:negative
 **Code style.** TypeScript strict; Zod for runtime validation at boundaries; Vitest for tests; functional React (no class components); `@/` alias in `apps/web`, relative imports in `apps/api`.
 
 **Testing.** Every new function ships with a Vitest unit test in the same workspace — mirror the existing style (`apps/api/tests/*.test.ts`, `apps/web/tests/`). CI's `dev-pr-validation` baseline job runs `pnpm test` and `pnpm test:coverage` on every PR. **Do not** write or modify the prod-promotion integration suite (`pnpm test:integration:prod-promotion` / `pnpm prepare:integration:prod-promotion`, driven by [.github/workflows/prod-promotion-validation.yml](.github/workflows/prod-promotion-validation.yml)) as part of a feature — that integration coverage is authored in a separate, dedicated prompt. Implement the feature and its unit tests only.
+
+**Pre-commit validation.** Local `pnpm precommit:check` is mutating by design: it runs `pnpm lint:fix`, then `pnpm lint`, then `pnpm typecheck`, then `pnpm test`. GitHub Actions stays check-only and runs `pnpm lint` without attempting fixes.
 
 **Git.** Never run `git push`, and never open or publish a branch or PR — pushing is always the user's action. Staging and committing are allowed only when the user explicitly asks; otherwise leave changes in the working tree.
 

@@ -1,4 +1,3 @@
-// TESTMAX
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import { resourceName, type AppStage } from "@brimax/config";

@@ -98,7 +98,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile=false
 
-      - name: Lint
+      - name: Lint repo source
         run: pnpm lint
 
       - name: Typecheck
@@ -143,17 +143,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "dev"
-            printf 'AWS_REGION=%q\n' "us-east-1"
-            printf 'ROOT_DOMAIN=%q\n' "dev.brimax.life"
-            printf 'CONTACT_EMAIL=%q\n' "casamento-dev@brimax.life"
-            printf 'API_DOMAIN=%q\n' "api.dev.brimax.life"
-            printf 'WWW_DOMAIN=%q\n' "www.dev.brimax.life"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "1x00000000000000000000AA"
-          } > .env.dev
-          test -f .env.dev
+        run: bash scripts/write-github-env-file.sh .env.dev ci-dev-minimal
 
       - name: Build landing page
         run: BRIMAX_ENV_FILE=.env.dev pnpm build:web
@@ -183,17 +173,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "dev"
-            printf 'AWS_REGION=%q\n' "us-east-1"
-            printf 'ROOT_DOMAIN=%q\n' "dev.brimax.life"
-            printf 'CONTACT_EMAIL=%q\n' "casamento-dev@brimax.life"
-            printf 'API_DOMAIN=%q\n' "api.dev.brimax.life"
-            printf 'WWW_DOMAIN=%q\n' "www.dev.brimax.life"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "1x00000000000000000000AA"
-          } > .env.dev
-          test -f .env.dev
+        run: bash scripts/write-github-env-file.sh .env.dev ci-dev-minimal
 
       - name: CDK Synth
         run: BRIMAX_ENV_FILE=.env.dev pnpm synth
@@ -224,12 +204,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Validate workflow YAML
-        run: |
-          ruby -e '
-            require "yaml"
-            Dir[".github/workflows/*.yml"].sort.each do |file|
-              YAML.load_file(file)
-              puts "validated #{file}"
-            end
-          '
+      - name: Lint workflows
+        uses: rhysd/actionlint@v1

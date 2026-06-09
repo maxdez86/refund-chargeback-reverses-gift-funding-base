@@ -151,35 +151,11 @@ jobs:
       - name: Generate CI environment file
         shell: bash
         run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+          bash scripts/write-github-env-file.sh .env full-stage prod \
+            STAGE AWS_REGION ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN WWW_DOMAIN \
+            OBSERVABILITY_ALERT_EMAIL XRAY_ENABLED ASAAS_ENV ASAAS_API_BASE_URL \
+            ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN TURNSTILE_SECRET_KEY \
+            TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -221,36 +197,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+        run: bash scripts/write-github-env-file.sh .env full-stage prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -303,36 +250,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+        run: bash scripts/write-github-env-file.sh .env full-stage prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -389,36 +307,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+        run: bash scripts/write-github-env-file.sh .env full-stage prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -471,36 +360,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+        run: bash scripts/write-github-env-file.sh .env full-stage prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -553,36 +413,7 @@ jobs:
 
       - name: Generate CI environment file
         shell: bash
-        run: |
-          {
-            printf 'STAGE=%q\n' "${{ vars.STAGE }}"
-            printf 'AWS_REGION=%q\n' "${{ vars.AWS_REGION }}"
-            printf 'ROOT_DOMAIN=%q\n' "${{ vars.ROOT_DOMAIN }}"
-            printf 'CONTACT_EMAIL=%q\n' "${{ vars.CONTACT_EMAIL }}"
-            printf 'API_DOMAIN=%q\n' "${{ vars.API_DOMAIN }}"
-            printf 'WWW_DOMAIN=%q\n' "${{ vars.WWW_DOMAIN }}"
-            printf 'CLOUDFLARE_API_TOKEN=%q\n' "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-            printf 'CLOUDFLARE_ZONE_ID=%q\n' "${{ vars.CLOUDFLARE_ZONE_ID }}"
-            printf 'OBSERVABILITY_ALERT_EMAIL=%q\n' "${{ vars.OBSERVABILITY_ALERT_EMAIL }}"
-            printf 'XRAY_ENABLED=%q\n' "${{ vars.XRAY_ENABLED }}"
-            printf 'ASAAS_ENV=%q\n' "${{ vars.ASAAS_ENV }}"
-            printf 'ASAAS_API_BASE_URL=%q\n' "${{ vars.ASAAS_API_BASE_URL }}"
-            printf 'ASAAS_API_KEY=%q\n' "${{ secrets.ASAAS_API_KEY }}"
-            printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${{ secrets.ASAAS_WEBHOOK_TOKEN }}"
-            printf 'TURNSTILE_SECRET_KEY=%q\n' "${{ secrets.TURNSTILE_SECRET_KEY }}"
-            printf 'TURNSTILE_SITE_KEY=%q\n' "${{ vars.TURNSTILE_SITE_KEY }}"
-            printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_ID }}"
-            printf 'PAYMENTS_TEST_GIFT_QUANTITY=%q\n' "${{ vars.PAYMENTS_TEST_GIFT_QUANTITY }}"
-            printf 'PAYMENTS_TEST_PAYER_NAME=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_NAME }}"
-            printf 'PAYMENTS_TEST_PAYER_EMAIL=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}"
-            printf 'PAYMENTS_TEST_PAYER_CPF=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_CPF }}"
-            printf 'PAYMENTS_TEST_PAYER_PHONE=%q\n' "${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}"
-            printf 'TOFU_STATE_KEY_PREFIX=%q\n' "${{ vars.TOFU_STATE_KEY_PREFIX }}"
-            printf 'SENTRY_AUTH_TOKEN=%q\n' "${{ secrets.SENTRY_AUTH_TOKEN }}"
-            printf 'SENTRY_ORG=%q\n' "${{ vars.SENTRY_ORG }}"
-            printf 'SENTRY_TEAM_SLUG=%q\n' "${{ vars.SENTRY_TEAM_SLUG }}"
-          } > .env
-          test -f .env
+        run: bash scripts/write-github-env-file.sh .env full-stage prod
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

@@ -39,13 +39,18 @@ Run the full local validation suite before creating any commit:
 pnpm precommit:check
 ```
 
-That command runs the same manual checks in sequence:
+`pnpm precommit:check` is a local convenience workflow. It auto-fixes ESLint issues first, then immediately re-runs the lint check to confirm no lint errors remain before continuing.
+
+That command runs these local checks in sequence:
 
 ```bash
+pnpm lint:fix
 pnpm lint
 pnpm typecheck
 pnpm test
 ```
+
+Only the local `pnpm precommit:check` flow attempts auto-fixes. GitHub Actions runs `pnpm lint` as a check-only step and fails on lint violations without modifying files.
 
 If you want to inspect failures one step at a time, run the commands individually in that order.
 

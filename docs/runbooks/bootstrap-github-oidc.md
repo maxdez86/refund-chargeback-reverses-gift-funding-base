@@ -184,6 +184,37 @@ Additional environment secret always refreshed in the `dev` environment:
 
 No manual GitHub Environment setup is required after the command succeeds.
 
+## Backend Deploy Secret Requirement
+
+`deploy-backend` is stricter than the other `dev` deploy jobs. It is the only `dev`
+deploy path that requires the raw Asaas deploy-time secrets to be present in the
+GitHub `dev` environment:
+
+- `ASAAS_API_KEY`
+- `ASAAS_WEBHOOK_TOKEN`
+
+Those values are consumed by `scripts/deploy-backend.sh` and enforced again by
+`infra/cdk/bin/app.ts` when the backend stacks are part of the CDK invocation.
+Frontend, DNS, and Sentry-only dev deploy jobs do not require the raw Asaas secrets.
+
+If `deploy-backend` fails at the "Generate dev environment file" step with:
+
+```text
+Missing required GitHub environment vars/secrets for "dev": ASAAS_API_KEY
+```
+
+refresh the `dev` GitHub environment from the current local env source instead of
+editing the GitHub secret manually:
+
+```bash
+BRIMAX_ENV_FILE=.env.dev bash scripts/setup-github-environment.sh \
+  <GithubActionsDevDeployRoleArn> \
+  <ProdPromotionValidationRoleArn>
+```
+
+Resolve those two ARN values from the shared stack outputs in `BrimaxGithubOidcStack`,
+then re-run `deploy-dev`.
+
 ## Validation
 
 Local AWS validation:
