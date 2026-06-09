@@ -88,8 +88,8 @@ jobs:
           artifact_dir=".tmp/prod-promotion-validation/${{ github.run_id }}"
           table_name="$(
             pnpm exec tsx -e '
-            import { resolveWeddingTableName } from "./scripts/lib/prod-promotion-support.ts";
-            resolveWeddingTableName().then((name) => process.stdout.write(name));
+            import { resolveStage, resourceName } from "./packages/config/src/index.ts";
+            process.stdout.write(resourceName("brimax-wedding", resolveStage(process.env.STAGE)));
             '
           )"
           {
