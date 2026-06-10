@@ -22,7 +22,7 @@ const getInstagramHandle = (url: string): string => {
 
 export function Fornecedores() {
   return (
-    <section id="fornecedores" className="fornecedores-v2 bg-muted py-20 md:py-24">
+    <section id="fornecedores" className="fornecedores-v2 bg-[#5C1A18] py-20 md:py-24">
       <div className="mx-auto max-w-6xl px-6 text-center">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -34,7 +34,7 @@ export function Fornecedores() {
           <p className="fornecedores-v2-eyebrow text-xs uppercase text-[#9f7a34]">
             Por trás do nosso dia
           </p>
-          <h2 className="fornecedores-v2-balance font-serif mt-4 text-3xl text-[#30251f] md:text-4xl">
+          <h2 className="fornecedores-v2-balance font-serif mt-4 text-3xl text-[#F5EBDD] md:text-4xl">
             Profissionais que tornaram tudo possível.
           </h2>
         </motion.div>
@@ -55,16 +55,16 @@ export function Fornecedores() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`${fornecedor.name} — ${fornecedor.role} — abrir Instagram em nova aba`}
-                  className="group flex h-full flex-col items-center rounded-2xl border border-[#9f7a34]/15 bg-[#fcfbf7]/50 p-5 text-center shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#9f7a34]/40 hover:bg-[#fcfbf7]/90 hover:shadow-md"
+                  className="group flex h-full flex-col items-center rounded-2xl border border-[#9f7a34]/30 bg-[#F5EBDD]/8 p-5 text-center shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#9f7a34]/55 hover:bg-[#F5EBDD]/14 hover:shadow-md"
                 >
                   <FaInstagram
                     aria-hidden="true"
                     className="text-2xl text-[#9f7a34] transition-transform duration-300 group-hover:scale-110"
                   />
-                  <div className="mt-3 font-serif text-lg leading-snug text-[#30251f] transition-colors group-hover:text-[#9f7a34]">
+                  <div className="mt-3 font-serif text-lg leading-snug text-[#F5EBDD] transition-colors group-hover:text-[#9f7a34]">
                     {fornecedor.name}
                   </div>
-                  <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-[#6e5b4f]">
+                  <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-[#E3D2BA]">
                     {fornecedor.role}
                   </div>
                   {handle && (
