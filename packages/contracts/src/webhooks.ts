@@ -16,5 +16,12 @@ export const WhatsappWebhookEventSchema = z.object({
   receivedAt: z.string()
 });
 
+export const AsaasWebhookResponseSchema = z.object({
+  ok: z.literal(true),
+  duplicate: z.boolean(),
+  eventId: z.string().min(1)
+});
+
 export type StripeWebhookEvent = z.infer<typeof StripeWebhookEventSchema>;
 export type WhatsappWebhookEvent = z.infer<typeof WhatsappWebhookEventSchema>;
+export type AsaasWebhookResponse = z.infer<typeof AsaasWebhookResponseSchema>;

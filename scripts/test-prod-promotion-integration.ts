@@ -16,6 +16,7 @@ import {
   InvitationLookupResponseSchema,
   RsvpSubmissionResponseSchema
 } from "../packages/contracts/src/rsvp.ts";
+import { AsaasWebhookResponseSchema } from "../packages/contracts/src/webhooks.ts";
 import {
   createDocumentClient,
   fetchStoredPayment,
@@ -100,6 +101,22 @@ function redactHeaders(headers: HeadersInit | undefined) {
   return result;
 }
 
+function redactBody(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactBody(item));
+  }
+
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      result[key] = key === "lookupProof" ? "[redacted]" : redactBody(nested);
+    }
+    return result;
+  }
+
+  return value;
+}
+
 async function safeJson(response: Response) {
   const text = await response.text();
   if (!text) {
@@ -132,11 +149,11 @@ async function requestJson(
       method: init.method ?? "GET",
       url,
       headers: redactHeaders(init.headers),
-      body: init.body && typeof init.body === "string" ? JSON.parse(init.body) : undefined
+      body: init.body && typeof init.body === "string" ? redactBody(JSON.parse(init.body)) : undefined
     },
     response: {
       status: response.status,
-      body
+      body: redactBody(body)
     }
   });
 
@@ -571,7 +588,8 @@ async function main() {
       body: JSON.stringify(webhookPayload)
     });
     assertStatus(accepted.response.status, 200, "payment-webhook accepted", accepted.body);
-    assert((accepted.body as { duplicate?: unknown }).duplicate === false, "First webhook should not be duplicate.");
+    const acceptedParsed = parseWithSchema("payment-webhook accepted", AsaasWebhookResponseSchema, accepted.body);
+    assert(acceptedParsed.duplicate === false, "First webhook should not be duplicate.");
 
     const polled = await pollForPaymentTerminalState(context, state.createdPaymentId);
 
@@ -584,7 +602,8 @@ async function main() {
       body: JSON.stringify(webhookPayload)
     });
     assertStatus(duplicate.response.status, 200, "payment-webhook duplicate", duplicate.body);
-    assert((duplicate.body as { duplicate?: unknown }).duplicate === true, "Second webhook should be duplicate.");
+    const duplicateParsed = parseWithSchema("payment-webhook duplicate", AsaasWebhookResponseSchema, duplicate.body);
+    assert(duplicateParsed.duplicate === true, "Second webhook should be duplicate.");
 
     const forbidden = await requestJson(context, "payment-webhook", `${context.apiBaseUrl}/webhooks/asaas`, {
       method: "POST",
