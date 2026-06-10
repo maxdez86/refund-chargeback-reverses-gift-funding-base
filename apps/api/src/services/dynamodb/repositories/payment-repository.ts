@@ -524,6 +524,14 @@ export class PaymentRepository {
 
     if (input.payload) {
       for (const [key, value] of Object.entries(input.payload)) {
+        // The DocumentClient is configured with removeUndefinedValues: true, so an
+        // undefined value would be stripped from ExpressionAttributeValues while its
+        // `:value` reference stayed in the UpdateExpression — DynamoDB then rejects the
+        // whole update ("expression attribute value ... is not defined"). Skip undefined
+        // entries entirely. (e.g. a PIX payment confirmed without payer email.)
+        if (value === undefined) {
+          continue;
+        }
         const valueKey = `:${key}`;
         updates.push(`${key} = ${valueKey}`);
         expressionAttributeValues[valueKey] = value;

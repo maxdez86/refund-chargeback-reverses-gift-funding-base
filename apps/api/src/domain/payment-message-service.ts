@@ -113,17 +113,8 @@ export class PaymentMessageService {
             }
           });
         } catch (error) {
-          // Email is best-effort: the message is already persisted, so a delivery
-          // failure must not fail the request. Mirror rsvp-service / guest-message-service.
-          // Release the lock so the PENDING marker does not linger as a fake "sent" record.
           await this.repository.releaseNotificationSend(paymentId, "COUPLE_MESSAGE");
-          console.error(
-            JSON.stringify({
-              event: "PAYMENT_MESSAGE_EMAIL_FAILED",
-              paymentId,
-              message: error instanceof Error ? error.message : "Unknown payment message email error"
-            })
-          );
+          throw error;
         }
       }
     }

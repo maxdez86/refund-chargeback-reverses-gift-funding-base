@@ -4,6 +4,5 @@ Planned end-to-end scenarios:
 
 - invitation lookup by code
 - RSVP create and update
-- Stripe webhook idempotency
-- WhatsApp webhook idempotency
+- Asaas webhook idempotency
 - admin export authorization

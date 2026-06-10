@@ -17,8 +17,8 @@ describe("DynamoDB key builders", () => {
   });
 
   it("creates webhook idempotency keys", () => {
-    expect(webhookKeys("stripe", "evt_123")).toEqual({
-      PK: "WEBHOOK#stripe",
+    expect(webhookKeys("asaas", "evt_123")).toEqual({
+      PK: "WEBHOOK#asaas",
       SK: "EVENT#evt_123"
     });
   });
