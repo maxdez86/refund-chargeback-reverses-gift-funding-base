@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - prod
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,6 +35,7 @@ jobs:
       - id: filter
         uses: dorny/paths-filter@v4
         with:
+          base: ${{ github.ref_name }}     # 'prod' — forces compare vs previous prod commit
           filters: |
             deploy_frontend:
               - 'apps/web/**'
