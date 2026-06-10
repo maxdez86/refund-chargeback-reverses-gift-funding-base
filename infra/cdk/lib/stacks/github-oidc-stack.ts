@@ -1,4 +1,4 @@
-// TESTMAX
+// TESTMAX2
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { APP_STAGES, type AppStage } from "@brimax/config";
