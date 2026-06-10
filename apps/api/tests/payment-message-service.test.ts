@@ -109,7 +109,7 @@ describe("PaymentMessageService", () => {
     ).rejects.toThrow("Message can only be sent after payment confirmation.");
   });
 
-  it("releases the notification lock if the couple email fails", async () => {
+  it("stores the message and releases the lock when the couple email fails (best-effort)", async () => {
     const repository = {
       getPayment: vi.fn().mockResolvedValue({
         paymentId: "payment-3",
@@ -143,11 +143,12 @@ describe("PaymentMessageService", () => {
 
     const service = new PaymentMessageService(repository as never, emailService as never);
 
-    await expect(
-      service.createMessage("payment-3", {
-        body: "Parabéns!"
-      })
-    ).rejects.toThrow("ses rejected");
+    const result = await service.createMessage("payment-3", {
+      body: "Parabéns!"
+    });
+
+    expect(result.message.body).toBe("Parabéns!");
+    expect(repository.putPaymentMessage).toHaveBeenCalled();
     expect(repository.releaseNotificationSend).toHaveBeenCalledWith("payment-3", "COUPLE_MESSAGE");
     expect(repository.markNotificationSent).not.toHaveBeenCalled();
   });
