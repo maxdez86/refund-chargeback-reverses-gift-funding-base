@@ -13,6 +13,10 @@ import {
   normalizeInvitationCode,
   submitRsvp,
 } from "@/lib/rsvp-api";
+import {
+  clearInvitationCodeFromUrl,
+  readInvitationCodeFromSearch,
+} from "@/lib/rsvp-deep-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -169,9 +173,8 @@ export function RSVP() {
     musicSuggestionMutation.reset();
   };
 
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const normalized = normalizeInvitationCode(codeInput);
+  const performLookup = async (rawCode: string) => {
+    const normalized = normalizeInvitationCode(rawCode);
     if (!normalized) return;
 
     clearSuccessTransitionLock();
@@ -206,6 +209,25 @@ export function RSVP() {
       turnstileRef.current?.reset();
     }
   };
+
+  const handleLookup = (e: React.FormEvent) => {
+    e.preventDefault();
+    void performLookup(codeInput);
+  };
+
+  // One-shot auto-lookup from a deep link (`?code=AB2345#confirmar-presenca`):
+  // pre-fill the code and run the lookup as if "Localizar convite" was clicked,
+  // then strip `?code=` from the address bar once the lookup settles.
+  const didAutoLookupRef = useRef(false);
+
+  useEffect(() => {
+    if (didAutoLookupRef.current) return;
+    const code = readInvitationCodeFromSearch(window.location.search);
+    if (!code) return;
+    didAutoLookupRef.current = true;
+    setCodeInput(code);
+    void performLookup(code).finally(() => clearInvitationCodeFromUrl());
+  }, []);
 
   const submitConfirmation = () => {
     if (lookup.kind !== "found") return;

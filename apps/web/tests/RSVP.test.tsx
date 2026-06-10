@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { forwardRef, useImperativeHandle } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const executeTurnstileMock = vi.fn();
 const fetchInvitationMock = vi.fn();
@@ -57,6 +57,12 @@ describe("RSVP section", () => {
       configurable: true,
       value: 0
     });
+  });
+
+  afterEach(() => {
+    // Reset the URL so the auto-lookup deep-link case never leaks `?code=`
+    // into the other tests (which expect no auto-lookup on mount).
+    window.history.replaceState({}, "", "/");
   });
 
   it("disables the lookup button when no code is entered", () => {
@@ -617,5 +623,40 @@ describe("RSVP section", () => {
     await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
 
     expect(executeTurnstileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-fills and runs the lookup from a ?code= deep link, then strips the param", async () => {
+    fetchInvitationMock.mockResolvedValueOnce({
+      invitation: {
+        invitationCode: "AB2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending"
+          }
+        ]
+      },
+      lookupProof: "proof-deep-link",
+      lookupProofExpiresAt: "2026-05-29T12:30:00.000Z"
+    });
+
+    window.history.replaceState({}, "", "/?code=ab2345#confirmar-presenca");
+
+    renderWithClient(<RSVP />);
+
+    await screen.findByText("Confirme quais convidados do seu convite irão comparecer:");
+
+    expect(fetchInvitationMock).toHaveBeenCalledWith("AB2345", null);
+    expect(
+      (screen.getByLabelText("Digite seu código de convite") as HTMLInputElement).value
+    ).toBe("AB2345");
+
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).has("code")).toBe(false)
+    );
+    expect(window.location.hash).toBe("#confirmar-presenca");
   });
 });
