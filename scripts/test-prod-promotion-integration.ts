@@ -544,33 +544,6 @@ async function main() {
     };
   });
 
-  await runPhase("payment-message", results, async () => {
-    assert(state.createdPaymentId, "Payment ID required before payment-message phase.");
-    const { body, response } = await requestJson(
-      context,
-      "payment-message",
-      `${context.apiBaseUrl}/payments/${encodeURIComponent(state.createdPaymentId)}/message`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `prod-promotion-payment-message-${context.runMarker}`
-        },
-        body: JSON.stringify({
-          body: `Mensagem de integração ${context.runMarker}`
-        })
-      }
-    );
-    assertStatus(response.status, 200, "payment-message", body);
-    const parsed = parseWithSchema("payment-message", CreatePaymentMessageResponseSchema, body);
-    assert(parsed.message.paymentId === state.createdPaymentId, "Payment message paymentId mismatch.");
-
-    return {
-      paymentId: parsed.message.paymentId,
-      submittedAt: parsed.message.submittedAt
-    };
-  });
-
   await runPhase("payment-webhook", results, async () => {
     assert(state.createdPaymentId, "Payment ID required before webhook phase.");
     const documentClient = createDocumentClient();
@@ -639,6 +612,33 @@ async function main() {
       terminalStatus: polled.payment.status,
       observedStatuses: polled.statuses,
       giftPartsFunded: selectedGift.partsFunded
+    };
+  });
+
+  await runPhase("payment-message", results, async () => {
+    assert(state.createdPaymentId, "Payment ID required before payment-message phase.");
+    const { body, response } = await requestJson(
+      context,
+      "payment-message",
+      `${context.apiBaseUrl}/payments/${encodeURIComponent(state.createdPaymentId)}/message`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `prod-promotion-payment-message-${context.runMarker}`
+        },
+        body: JSON.stringify({
+          body: `Mensagem de integração ${context.runMarker}`
+        })
+      }
+    );
+    assertStatus(response.status, 200, "payment-message", body);
+    const parsed = parseWithSchema("payment-message", CreatePaymentMessageResponseSchema, body);
+    assert(parsed.message.paymentId === state.createdPaymentId, "Payment message paymentId mismatch.");
+
+    return {
+      paymentId: parsed.message.paymentId,
+      submittedAt: parsed.message.submittedAt
     };
   });
 
