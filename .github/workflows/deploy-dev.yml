@@ -253,6 +253,8 @@ jobs:
       - detect-changes
       - apply-dev-sentry
     if: |
+      !cancelled() &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.deploy_backend == 'true' &&
       (needs.apply-dev-sentry.result == 'success' || needs.apply-dev-sentry.result == 'skipped')
     environment: dev
@@ -343,6 +345,8 @@ jobs:
       - detect-changes
       - deploy-frontend
     if: |
+      !cancelled() &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.apply_dev_landing_dns == 'true' &&
       (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
     environment: dev
@@ -421,6 +425,8 @@ jobs:
       - detect-changes
       - deploy-backend
     if: |
+      !cancelled() &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.apply_dev_api_dns == 'true' &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     environment: dev

@@ -275,7 +275,9 @@ jobs:
 
   deploy-backend:
     if: |
+      !cancelled() &&
       github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.deploy_backend == 'true' &&
       (needs.apply-prod-sentry.result == 'success' || needs.apply-prod-sentry.result == 'skipped')
     needs:
@@ -364,7 +366,9 @@ jobs:
 
   apply-prod-landing-dns:
     if: |
+      !cancelled() &&
       github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.apply_prod_landing_dns == 'true' &&
       (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped')
     needs:
@@ -446,7 +450,9 @@ jobs:
 
   apply-prod-api-dns:
     if: |
+      !cancelled() &&
       github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.apply_prod_api_dns == 'true' &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     needs:
@@ -528,7 +534,9 @@ jobs:
 
   apply-prod-ses-dns:
     if: |
+      !cancelled() &&
       github.ref == 'refs/heads/prod' &&
+      needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.apply_prod_ses_dns == 'true' &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     needs:
@@ -625,6 +633,7 @@ jobs:
       - apply-prod-api-dns
       - apply-prod-ses-dns
     if: |
+      !cancelled() &&
       github.ref == 'refs/heads/prod' &&
       needs.detect-changes.result == 'success' &&
       contains(fromJSON('["success","skipped"]'), needs.deploy-frontend.result) &&
