@@ -1,4 +1,4 @@
-// TESTMAX2
+// TESTMAX3
 import { resolveStage, stageAllowedOrigins, stageSiteUrl } from "@brimax/config";
 
 type Env = {
