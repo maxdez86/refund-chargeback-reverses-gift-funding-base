@@ -1,17 +1,21 @@
 import { mkdir, writeFile, appendFile } from "node:fs/promises";
 import path from "node:path";
+import { GetGiftsResponseSchema } from "../packages/contracts/src/gifts.ts";
+import { type GuestSummary } from "../packages/contracts/src/guest.ts";
 import {
   CreateGuestMessageResponseSchema,
+  DeleteGuestMessageResponseSchema,
+  ListGuestMessagesResponseSchema
+} from "../packages/contracts/src/messages.ts";
+import {
   CreatePaymentMessageResponseSchema,
   CreatePaymentResponseSchema,
-  DeleteGuestMessageResponseSchema,
-  GetGiftsResponseSchema,
-  GetPaymentResponseSchema,
+  GetPaymentResponseSchema
+} from "../packages/contracts/src/payments.ts";
+import {
   InvitationLookupResponseSchema,
-  ListGuestMessagesResponseSchema,
-  RsvpSubmissionResponseSchema,
-  type GuestSummary
-} from "../packages/contracts/src/index.ts";
+  RsvpSubmissionResponseSchema
+} from "../packages/contracts/src/rsvp.ts";
 import {
   createDocumentClient,
   fetchStoredPayment,
