@@ -1,6 +1,17 @@
 # GitHub OIDC Bootstrap Runbook
 
-Use this runbook to bootstrap GitHub Actions OIDC through one shared AWS stack, with stage-specific GitHub environment updates plus a shared refresh of the `dev` validation-role secret.
+Use this runbook to bootstrap GitHub Actions OIDC through one shared AWS stack, with stage-specific GitHub environment updates. The work is split into two commands:
+
+- `pnpm deploy:github-oidc:cdk` — deploys the shared `BrimaxGithubOidcStack` (both deploy roles).
+- `pnpm deploy:github-oidc:github` — pushes the `.env` vars/secrets and the stage role ARN to the GitHub Environment named after `STAGE`.
+
+> **Two commands, two cadences.** `pnpm deploy:github-oidc:cdk` is **run-once**: after the
+> role-unification change the shared stack covers all `dev-*`/`Brimax*` CloudFormation stacks and
+> `dev-*` DynamoDB tables via wildcards, so adding a table, stack, or Lambda never requires
+> re-running it (re-run only for rare events: a repo rename or a new OpenTofu state bucket / lock
+> table). `pnpm deploy:github-oidc:github` is the **re-runnable** half: run it whenever a secret or
+> `.env` variable changes, or to create a new GitHub Environment. It reads the stage deploy-role ARN
+> from the already-deployed stack, so it never mutates AWS.
 
 In this repository, `.env` currently sets:
 
@@ -8,7 +19,7 @@ In this repository, `.env` currently sets:
 STAGE=dev
 ```
 
-That means a local run against the default `.env` updates only the `dev` GitHub Environment in GitHub. On the AWS side it still deploys one shared OIDC stack that always contains both the `prod` and `dev` deploy roles, plus the dev-only validation role used by `prod-promotion-validation.yml`.
+That means a local `pnpm deploy:github-oidc:github` run against the default `.env` updates only the `dev` GitHub Environment in GitHub. `pnpm deploy:github-oidc:cdk` is stage-independent: it always deploys one shared OIDC stack containing both the `prod` and `dev` deploy roles. The `dev` deploy role doubles as the credential for `prod-promotion-validation.yml` (which runs under `environment: dev`).
 
 ## What This Creates
 
@@ -23,14 +34,15 @@ That means a local run against the default `.env` updates only the `dev` GitHub 
   - environment name = `STAGE`
 - one stage-specific environment secret:
   - `AWS_ROLE_TO_ASSUME_${STAGE_UPPER}`
-- one validation-only secret for the dev validation workflow:
-  - `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` in the `dev` GitHub Environment
 
 The role trust is restricted to:
 
 - repository: `maxdez86/brimax-life`
 - GitHub Environment: `STAGE`
-- branch: `STAGE`
+
+There is no longer a `ref`/branch condition on the trust: each role is trusted purely by its GitHub
+Environment (`sub`). That lets the single `dev` deploy role serve both push-to-dev deploys and the
+`prod-promotion-validation.yml` pull-request runs, since both present `environment:dev`.
 
 With the current `.env`, that means:
 
@@ -38,7 +50,6 @@ With the current `.env`, that means:
 - AWS stack deployed: `BrimaxGithubOidcStack`
 - GitHub secrets created or updated:
   - `AWS_ROLE_TO_ASSUME_DEV`
-  - `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
 
 ## Fresh Account Order
 
@@ -49,13 +60,16 @@ correct order is:
 1. `pnpm cdk:bootstrap`
 2. `pnpm deploy:platform` with `STAGE=prod`
 3. `BRIMAX_ENV_FILE=.env.dev pnpm deploy:platform`
-4. `pnpm deploy:github-oidc`
+4. `pnpm deploy:github-oidc:cdk`
+5. `pnpm deploy:github-oidc:github`
 
 Why both platform stacks must exist first:
 
 - the shared OIDC stack grants access to both stage backends
-- `scripts/bootstrap-github-oidc.sh` reads the OpenTofu backend bucket and lock-table outputs from
+- `scripts/bootstrap-github-oidc-cdk.sh` reads the OpenTofu backend bucket and lock-table outputs from
   both `BrimaxPlatformStack` and `dev-BrimaxPlatformStack`
+- `scripts/bootstrap-github-oidc-github.sh` then reads the stage deploy-role ARN from the deployed
+  `BrimaxGithubOidcStack` and pushes it into the `STAGE` GitHub Environment
 
 This is a current implementation dependency of the bootstrap script, not just an operational
 recommendation.
@@ -68,38 +82,57 @@ recommendation.
 4. Both platform stacks must already exist because the shared OIDC stack grants access for both stages:
    - `BrimaxPlatformStack`
    - `dev-BrimaxPlatformStack`
-5. `.env` must contain a valid `GITHUB_TOKEN` with permission to manage:
+5. For `pnpm deploy:github-oidc:github` only, `.env` must contain a valid `GITHUB_TOKEN` with permission to manage:
    - environments
    - environment secrets
    - environment variables
+
+   `pnpm deploy:github-oidc:cdk` does **not** need `GITHUB_TOKEN` — it only touches AWS.
 6. Dependencies must already be installed locally.
 
 The bootstrap uses values from `.env` through `scripts/landing-env.sh`, including `STAGE`, AWS settings, Cloudflare settings, application secrets, and `GITHUB_TOKEN`.
 
-## One Command
+## Two Commands
 
-From the repo root:
+From the repo root, in order:
 
 ```bash
-pnpm deploy:github-oidc
+pnpm deploy:github-oidc:cdk     # run-once: deploys the shared stack (both deploy roles)
+pnpm deploy:github-oidc:github  # re-run on secret/var change: pushes the STAGE GitHub Environment
 ```
 
-## What The Bootstrap Does
+- `pnpm deploy:github-oidc:cdk` deploys `BrimaxGithubOidcStack`. It is stage-independent (it always
+  builds both the `dev` and `prod` deploy roles), needs AWS credentials but **not** `GITHUB_TOKEN`,
+  and is run-once because the roles use wildcards.
+- `pnpm deploy:github-oidc:github` reads the stage deploy-role ARN from the deployed stack and pushes
+  every `.env` var/secret (including `AWS_ROLE_TO_ASSUME_<STAGE>`) into the GitHub Environment named
+  exactly `STAGE`. It needs `GITHUB_TOKEN` and re-runs whenever a secret or `.env` variable changes.
 
-The bootstrap script now performs the full AWS + GitHub setup in one run:
+## What The CDK Command Does
+
+`pnpm deploy:github-oidc:cdk` performs the AWS-only half:
 
 1. Confirms the active AWS account is `183286346090`.
-2. Uses the current `STAGE` from `.env` only to choose which GitHub Environment to update.
-3. Checks whether `arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com` already exists.
-4. Resolves the exact OpenTofu backend bucket and lock table for both `dev` and `prod`.
-5. Deletes the legacy `dev-BrimaxGithubOidcStack` first when it still exists from the old ownership model.
-6. Deploys the shared OIDC stack `BrimaxGithubOidcStack`.
-7. Verifies both deploy-role outputs exist in the shared stack:
-   - `GithubActionsDevDeployRoleArn`
-   - `GithubActionsProdDeployRoleArn`
-8. Uses `GITHUB_TOKEN` from `.env` to create or update the GitHub Environment named exactly `STAGE`.
-9. Writes that environment’s GitHub variables and stage-specific secrets required by the current repository workflows.
-10. Always refreshes the `dev` environment secret `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` from the shared stack output because `.github/workflows/prod-promotion-validation.yml` reads it from the `dev` environment.
+2. Checks whether `arn:aws:iam::183286346090:oidc-provider/token.actions.githubusercontent.com` already exists.
+3. Resolves the exact OpenTofu backend bucket and lock table for both `dev` and `prod`.
+4. Deletes the legacy `dev-BrimaxGithubOidcStack` first when it still exists from the old ownership model.
+5. Deploys the shared OIDC stack `BrimaxGithubOidcStack`, which always contains both the
+   `GithubActionsDevDeployRoleArn` and `GithubActionsProdDeployRoleArn` outputs.
+
+It never touches GitHub.
+
+## What The GitHub Command Does
+
+`pnpm deploy:github-oidc:github` performs the GitHub-only half:
+
+1. Confirms the active AWS account is `183286346090`.
+2. Resolves the stage deploy-role ARN from the already-deployed `BrimaxGithubOidcStack`
+   (`GithubActionsDevDeployRoleArn` when `STAGE=dev`, otherwise `GithubActionsProdDeployRoleArn`).
+3. Uses `GITHUB_TOKEN` from `.env` to create or update the GitHub Environment named exactly `STAGE`.
+4. Writes that environment’s GitHub variables, stage-specific secrets, and the
+   `AWS_ROLE_TO_ASSUME_<STAGE>` role secret required by the current repository workflows.
+
+It never mutates the AWS stack.
 
 ## AWS Outputs
 
@@ -123,23 +156,21 @@ Expected outputs from the shared stack:
 - `GithubActionsProdDeployRoleArn`
 - `GithubActionsProdDeployRoleSecretName`
 - `GithubActionsProdEnvironmentName`
-- `ProdPromotionValidationRoleArn`
-- `ProdPromotionValidationRoleSecretName`
 
 With `STAGE=dev`, the GitHub environment should contain:
 
 - `AWS_ROLE_TO_ASSUME_DEV`
-- `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
+
+`prod-promotion-validation.yml` reuses this same `AWS_ROLE_TO_ASSUME_DEV` secret (it runs under
+`environment: dev`), so there is no separate validation secret to manage.
 
 With `STAGE=prod`, the environment-specific secret name used in GitHub should be:
 
 - `AWS_ROLE_TO_ASSUME_PROD`
-- `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` should still be refreshed in the `dev` environment
 
 ## GitHub Setup Performed Automatically
 
-The bootstrap now creates or updates the GitHub Environment named `STAGE` and also refreshes the
-shared validation secret in the `dev` environment. Changing `.env` `STAGE` does not change which AWS OIDC stack is deployed.
+The bootstrap creates or updates the GitHub Environment named `STAGE`. Changing `.env` `STAGE` does not change which AWS OIDC stack is deployed.
 
 For the current `.env`, the GitHub environment is:
 
@@ -178,10 +209,6 @@ Environment secrets set by the script:
 - `SENTRY_AUTH_TOKEN`
 - `AWS_ROLE_TO_ASSUME_${STAGE_UPPER}`
 
-Additional environment secret always refreshed in the `dev` environment:
-
-- `AWS_ROLE_TO_ASSUME_DEV_VALIDATION`
-
 No manual GitHub Environment setup is required after the command succeeds.
 
 ## Backend Deploy Secret Requirement
@@ -207,13 +234,15 @@ refresh the `dev` GitHub environment from the current local env source instead o
 editing the GitHub secret manually:
 
 ```bash
-BRIMAX_ENV_FILE=.env.dev bash scripts/setup-github-environment.sh \
-  <GithubActionsDevDeployRoleArn> \
-  <ProdPromotionValidationRoleArn>
+BRIMAX_ENV_FILE=.env.dev pnpm deploy:github-oidc:github
 ```
 
-Resolve those two ARN values from the shared stack outputs in `BrimaxGithubOidcStack`,
-then re-run `deploy-dev`.
+This auto-resolves the stage deploy-role ARN from `BrimaxGithubOidcStack` and rewrites
+every var/secret in the `dev` environment. Then re-run `deploy-dev`.
+
+> If you need to push a specific ARN by hand, the underlying script still accepts it
+> directly: `BRIMAX_ENV_FILE=.env.dev bash scripts/setup-github-environment.sh <GithubActionsDevDeployRoleArn>`
+> (resolve that ARN from the shared stack outputs in `BrimaxGithubOidcStack`).
 
 ## Validation
 
@@ -236,15 +265,17 @@ Inspect the trust policy and confirm:
 - `token.actions.githubusercontent.com:aud = sts.amazonaws.com`
 - `token.actions.githubusercontent.com:repository = maxdez86/brimax-life`
 - `token.actions.githubusercontent.com:sub = repo:maxdez86/brimax-life:environment:prod`
-- `token.actions.githubusercontent.com:ref = refs/heads/prod`
+
+There should be **no** `token.actions.githubusercontent.com:ref` condition: trust is scoped purely by
+the GitHub Environment (`sub`).
 
 GitHub validation:
 
 1. Open the GitHub repository environment that matches `STAGE`.
 2. Confirm the environment now exists.
 3. Confirm the variables and secrets above are present.
-4. Confirm `AWS_ROLE_TO_ASSUME_DEV_VALIDATION` is present in the `dev` environment because `prod-promotion-validation.yml` depends on it.
-5. If `STAGE=prod`, confirm the prod environment was updated and the `dev` validation secret was refreshed.
+4. Confirm `AWS_ROLE_TO_ASSUME_DEV` is present in the `dev` environment because `prod-promotion-validation.yml` reuses it.
+5. If `STAGE=prod`, confirm the prod environment was updated.
 6. Trigger the stage-matching deploy workflow on the stage-matching branch:
    - `deploy-dev` on branch `dev`
    - `deploy-prod` on branch `prod`
@@ -259,7 +290,7 @@ Minimum success signals:
 
 ## Rollback / Safety
 
-- This flow always updates the GitHub Environment for the current stage from `.env` and also refreshes the `dev` validation secret.
+- This flow always updates the GitHub Environment for the current stage from `.env`.
 - This flow always deploys the shared AWS OIDC stack and requires both stage platform stacks to exist.
 - During migration from the old model, this flow deletes `dev-BrimaxGithubOidcStack` before creating the shared dev-owned OIDC resources.
 - If the GitHub cutover fails, revert the affected GitHub Environment secret values in the environment selected by `STAGE`.

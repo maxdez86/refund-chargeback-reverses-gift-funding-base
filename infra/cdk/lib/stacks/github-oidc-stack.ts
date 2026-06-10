@@ -1,3 +1,4 @@
+// TESTMAX
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { APP_STAGES, type AppStage } from "@brimax/config";
@@ -14,30 +15,20 @@ export interface GithubOidcStackProps extends cdk.StackProps {
 }
 
 interface DeployRoleProps {
-  branchName: string;
   bootstrapQualifier: string;
   githubEnvironment: AppStage;
   githubRepository: string;
   lockTableName: string;
   provider: iam.IOpenIdConnectProvider;
   roleName: string;
+  stackNameWildcard: string;
   stateBucketName: string;
-  stackNames: string[];
-}
-
-interface ValidationRoleProps {
-  githubEnvironment: AppStage;
-  githubRepository: string;
-  provider: iam.IOpenIdConnectProvider;
-  roleName: string;
-  stackName: string;
-  tableName: string;
+  dataTablePrefix?: string;
 }
 
 export class GithubOidcStack extends cdk.Stack {
   readonly githubProviderArn: string;
   readonly deployRoles: Record<AppStage, iam.Role>;
-  readonly prodPromotionValidationRole?: iam.Role;
 
   constructor(scope: Construct, id: string, props: GithubOidcStackProps) {
     super(scope, id, props);
@@ -51,28 +42,27 @@ export class GithubOidcStack extends cdk.Stack {
 
     this.deployRoles = {
       dev: this.createDeployRole("GithubActionsDevDeployRole", {
-        branchName: "dev",
         bootstrapQualifier: "hnb659fds",
         githubEnvironment: "dev",
         githubRepository: props.githubRepository,
         lockTableName: props.stageConfigs.dev.lockTableName,
         provider,
         roleName: "brimax-github-actions-dev-deploy",
+        stackNameWildcard: "dev-*",
         stateBucketName: props.stageConfigs.dev.stateBucketName,
-        stackNames: this.stackNamesFor("dev")
+        dataTablePrefix: "dev-"
       }),
       // Preserve the original logical ID so the existing prod role in
       // BrimaxGithubOidcStack is updated in-place instead of recreated.
       prod: this.createDeployRole("GithubActionsDeployRole", {
-        branchName: "prod",
         bootstrapQualifier: "hnb659fds",
         githubEnvironment: "prod",
         githubRepository: props.githubRepository,
         lockTableName: props.stageConfigs.prod.lockTableName,
         provider,
         roleName: "brimax-github-actions-prod-deploy",
-        stateBucketName: props.stageConfigs.prod.stateBucketName,
-        stackNames: this.stackNamesFor("prod")
+        stackNameWildcard: "Brimax*",
+        stateBucketName: props.stageConfigs.prod.stateBucketName
       })
     };
 
@@ -96,46 +86,6 @@ export class GithubOidcStack extends cdk.Stack {
         value: stage
       });
     }
-
-    this.prodPromotionValidationRole = this.createProdPromotionValidationRole(
-      "ProdPromotionValidationRole",
-      {
-        githubEnvironment: "dev",
-        githubRepository: props.githubRepository,
-        provider,
-        roleName: "brimax-github-actions-dev-prod-promotion-validation",
-        stackName: "dev-BrimaxAppStack",
-        tableName: "dev-brimax-wedding"
-      }
-    );
-
-    new cdk.CfnOutput(this, "ProdPromotionValidationRoleArn", {
-      value: this.prodPromotionValidationRole.roleArn
-    });
-
-    new cdk.CfnOutput(this, "ProdPromotionValidationRoleSecretName", {
-      value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
-    });
-  }
-
-  private stackNamesFor(stage: AppStage) {
-    if (stage === "dev") {
-      return [
-        "CDKToolkit",
-        "dev-BrimaxPlatformStack",
-        "dev-BrimaxCertificateStack",
-        "dev-BrimaxEdgeStack",
-        "dev-BrimaxAppStack"
-      ];
-    }
-
-    return [
-      "CDKToolkit",
-      "BrimaxPlatformStack",
-      "BrimaxCertificateStack",
-      "BrimaxEdgeStack",
-      "BrimaxAppStack"
-    ];
   }
 
   private createDeployRole(id: string, props: DeployRoleProps) {
@@ -147,8 +97,7 @@ export class GithubOidcStack extends cdk.Stack {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
             "token.actions.githubusercontent.com:repository": props.githubRepository,
-            "token.actions.githubusercontent.com:sub": `repo:${props.githubRepository}:environment:${props.githubEnvironment}`,
-            "token.actions.githubusercontent.com:ref": `refs/heads/${props.branchName}`
+            "token.actions.githubusercontent.com:sub": `repo:${props.githubRepository}:environment:${props.githubEnvironment}`
           }
         },
         "sts:AssumeRoleWithWebIdentity"
@@ -160,7 +109,13 @@ export class GithubOidcStack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: "ReadStageCloudFormation",
         actions: ["cloudformation:DescribeStacks", "cloudformation:GetTemplate"],
-        resources: props.stackNames.map((stackName) => this.stackArnFor(stackName))
+        // IAM `*` spans `/`, so `stack/dev-*` matches `stack/dev-BrimaxAppStack/<guid>`.
+        // The wildcard subsumes the old per-stack list so a new stack never needs a
+        // bootstrap re-run.
+        resources: [
+          `arn:aws:cloudformation:${this.region}:${this.account}:stack/${props.stackNameWildcard}`,
+          this.stackArnFor("CDKToolkit")
+        ]
       })
     );
 
@@ -216,6 +171,29 @@ export class GithubOidcStack extends cdk.Stack {
       })
     );
 
+    if (props.dataTablePrefix) {
+      // Direct DynamoDB data access for the prod-promotion integration suite,
+      // which runs under the dev deploy role. The `dev-*` wildcard means a future
+      // validation table needs no bootstrap re-run. Prod omits this entirely — it
+      // never runs the suite.
+      const dataTableArn = this.lockTableArnFor(`${props.dataTablePrefix}*`);
+
+      role.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          sid: "DevDataTableAccess",
+          actions: [
+            "dynamodb:DescribeTable",
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:DeleteItem",
+            "dynamodb:Query",
+            "dynamodb:Scan"
+          ],
+          resources: [dataTableArn, `${dataTableArn}/index/*`]
+        })
+      );
+    }
+
     role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         sid: "CdkBootstrapAssumeRoles",
@@ -252,58 +230,5 @@ export class GithubOidcStack extends cdk.Stack {
 
   private stackArnFor(stackName: string) {
     return `arn:aws:cloudformation:${this.region}:${this.account}:stack/${stackName}/*`;
-  }
-
-  private createProdPromotionValidationRole(id: string, props: ValidationRoleProps) {
-    const role = new iam.Role(this, id, {
-      roleName: props.roleName,
-      assumedBy: new iam.FederatedPrincipal(
-        props.provider.openIdConnectProviderArn,
-        {
-          StringEquals: {
-            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:repository": props.githubRepository,
-            "token.actions.githubusercontent.com:sub": `repo:${props.githubRepository}:environment:${props.githubEnvironment}`,
-            "token.actions.githubusercontent.com:event_name": "pull_request",
-            "token.actions.githubusercontent.com:base_ref": "prod"
-          }
-        },
-        "sts:AssumeRoleWithWebIdentity"
-      ),
-      description: "GitHub Actions validation role for prod-promotion integration tests against dev."
-    });
-
-    role.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        sid: "ReadDevAppStackOutputs",
-        actions: ["cloudformation:DescribeStacks"],
-        resources: [this.stackArnFor(props.stackName)]
-      })
-    );
-
-    role.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        sid: "ReadWriteIntegrationOwnedWeddingData",
-        actions: [
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Query",
-          "dynamodb:Scan"
-        ],
-        resources: [this.lockTableArnFor(props.tableName), `${this.lockTableArnFor(props.tableName)}/index/*`]
-      })
-    );
-
-    role.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        sid: "ReadCallerIdentity",
-        actions: ["sts:GetCallerIdentity"],
-        resources: ["*"]
-      })
-    );
-
-    return role;
   }
 }

@@ -56,6 +56,6 @@ done
 
 if (( ${#missing[@]} > 0 )); then
   printf 'Missing required GitHub environment vars/secrets for "%s": %s\n' "${ENVIRONMENT_NAME}" "${missing[*]}" >&2
-  printf 'Populate the "%s" GitHub environment with scripts/setup-github-environment.sh or add the missing values manually.\n' "${ENVIRONMENT_NAME}" >&2
+  printf 'Populate the "%s" GitHub environment with `pnpm deploy:github-oidc:github` (or scripts/setup-github-environment.sh) or add the missing values manually.\n' "${ENVIRONMENT_NAME}" >&2
   exit 1
 fi

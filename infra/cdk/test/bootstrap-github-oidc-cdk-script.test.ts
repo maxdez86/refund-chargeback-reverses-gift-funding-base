@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "../../..");
-const bootstrapScript = path.join(repoRoot, "scripts/bootstrap-github-oidc.sh");
+const bootstrapScript = path.join(repoRoot, "scripts/bootstrap-github-oidc-cdk.sh");
 
 const tempDirs: string[] = [];
 
@@ -19,7 +19,7 @@ function createHarness(
   existingStacks: string[] = ["BrimaxPlatformStack", "dev-BrimaxPlatformStack", "BrimaxGithubOidcStack"],
   providerExists = true
 ) {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "bootstrap-github-oidc-"));
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "bootstrap-github-oidc-cdk-"));
   tempDirs.push(tempDir);
 
   const binDir = path.join(tempDir, "bin");
@@ -27,15 +27,13 @@ function createHarness(
 
   const logFile = path.join(tempDir, "commands.log");
   const envFile = path.join(tempDir, ".env.test");
-  const setupScript = path.join(tempDir, "fake-setup-github-environment.sh");
 
   writeFileSync(
     envFile,
     [
       `STAGE=${stage}`,
       "AWS_REGION=us-east-1",
-      "AWS_PROFILE=test-profile",
-      "GITHUB_TOKEN=test-token"
+      "AWS_PROFILE=test-profile"
     ].join("\n")
   );
 
@@ -112,15 +110,6 @@ if [[ "$1" == "cloudformation" && "$2" == "describe-stacks" ]]; then
       ;;
     "dev-BrimaxPlatformStack|Stacks[0].Outputs[?OutputKey=='TofuLockTableName'].OutputValue | [0]")
       echo "dev-lock-table"
-      ;;
-    "BrimaxGithubOidcStack|Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0]")
-      echo "arn:aws:iam::183286346090:role/brimax-github-actions-prod-deploy"
-      ;;
-    "BrimaxGithubOidcStack|Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0]")
-      echo "arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy"
-      ;;
-    "BrimaxGithubOidcStack|Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0]")
-      echo "arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
       ;;
     *)
       echo "unexpected cloudformation lookup: \${stack_name} | \${query}" >&2
@@ -202,22 +191,13 @@ printf 'pnpm|stage=%s|stack=%s|root=%s|api=%s|www=%s|state=%s|lock=%s|args=%s\\n
 `
   );
 
-  writeExecutable(
-    setupScript,
-    `#!/usr/bin/env bash
-set -euo pipefail
-printf 'setup|stage=%s|role=%s|validation_role=%s\\n' "\${STAGE:-}" "$1" "\${2:-}" >> "${logFile}"
-`
-  );
-
   return {
     env: {
       ...process.env,
       AWS_BIN: path.join(binDir, "aws"),
       BRIMAX_ENV_FILE: envFile,
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
-      PNPM_BIN: path.join(binDir, "pnpm"),
-      SETUP_GITHUB_ENVIRONMENT_SCRIPT: setupScript
+      PNPM_BIN: path.join(binDir, "pnpm")
     },
     logFile,
     tempDir
@@ -262,33 +242,31 @@ afterEach(() => {
   }
 });
 
-describe("bootstrap-github-oidc.sh", () => {
-  it("deploys the shared stack and refreshes the dev GitHub environment secrets", () => {
+describe("bootstrap-github-oidc-cdk.sh", () => {
+  it("deploys the shared stack and never touches GitHub when STAGE=dev", () => {
     const result = runBootstrap("dev");
 
     expect(result.status).toBe(0);
 
-    const pnpmLines = logLines(result.log, "pnpm|");
-    expect(pnpmLines).toEqual([
+    expect(logLines(result.log, "pnpm|")).toEqual([
       expect.stringContaining("pnpm|stage=dev|stack=BrimaxGithubOidcStack")
     ]);
+
     expect(logLines(result.log, "aws|")).toEqual(
       expect.arrayContaining([
         expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0] --output text"
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name dev-BrimaxPlatformStack --query Stacks[0].Outputs[?OutputKey=='TofuStateBucketName'].OutputValue | [0] --output text"
         ),
         expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
-        ),
-        expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0] --output text"
+          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxPlatformStack --query Stacks[0].Outputs[?OutputKey=='TofuStateBucketName'].OutputValue | [0] --output text"
         )
       ])
     );
 
-    expect(logLines(result.log, "setup|")).toEqual([
-      "setup|stage=dev|role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-deploy|validation_role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
-    ]);
+    // The GitHub half moved out: no setup call and no role-ARN output lookups here.
+    expect(logLines(result.log, "setup|")).toEqual([]);
+    expect(result.log).not.toContain("GithubActionsDevDeployRoleArn");
+    expect(result.log).not.toContain("GithubActionsProdDeployRoleArn");
   });
 
   it("uses the same CDK deploy shape whether the provider already exists or not", () => {
@@ -296,7 +274,7 @@ describe("bootstrap-github-oidc.sh", () => {
 
     expect(result.status).toBe(0);
     expect(logLines(result.log, "pnpm|")).toEqual([
-      expect.stringContaining("pnpm|stage=dev|stack=BrimaxGithubOidcStack"),
+      expect.stringContaining("pnpm|stage=dev|stack=BrimaxGithubOidcStack")
     ]);
   });
 
@@ -320,32 +298,18 @@ describe("bootstrap-github-oidc.sh", () => {
     ]);
   });
 
-  it("deploys the shared stack, updates the prod GitHub environment, and refreshes the dev validation secret", () => {
+  it("deploys the shared stack and never touches GitHub when STAGE=prod", () => {
     const result = runBootstrap("prod");
 
     expect(result.status).toBe(0);
 
-    const pnpmLines = logLines(result.log, "pnpm|");
-    expect(pnpmLines).toEqual([
+    expect(logLines(result.log, "pnpm|")).toEqual([
       expect.stringContaining("pnpm|stage=prod|stack=BrimaxGithubOidcStack")
     ]);
-    expect(logLines(result.log, "aws|")).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsDevDeployRoleArn'].OutputValue | [0] --output text"
-        ),
-        expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='GithubActionsProdDeployRoleArn'].OutputValue | [0] --output text"
-        ),
-        expect.stringContaining(
-          "cloudformation describe-stacks --region us-east-1 --profile test-profile --stack-name BrimaxGithubOidcStack --query Stacks[0].Outputs[?OutputKey=='ProdPromotionValidationRoleArn'].OutputValue | [0] --output text"
-        )
-      ])
-    );
 
-    expect(logLines(result.log, "setup|")).toEqual([
-      "setup|stage=prod|role=arn:aws:iam::183286346090:role/brimax-github-actions-prod-deploy|validation_role=arn:aws:iam::183286346090:role/brimax-github-actions-dev-prod-promotion-validation"
-    ]);
+    expect(logLines(result.log, "setup|")).toEqual([]);
+    expect(result.log).not.toContain("GithubActionsDevDeployRoleArn");
+    expect(result.log).not.toContain("GithubActionsProdDeployRoleArn");
   });
 
   it("fails when the prod platform stack is missing because the shared stack needs both stages", () => {
@@ -356,7 +320,6 @@ describe("bootstrap-github-oidc.sh", () => {
       "Could not resolve required CloudFormation output TofuStateBucketName from BrimaxPlatformStack."
     );
     expect(logLines(result.log, "pnpm|")).toEqual([]);
-    expect(logLines(result.log, "setup|")).toEqual([]);
   });
 
   it("fails when the dev platform stack is missing because the shared stack needs both stages", () => {
@@ -367,6 +330,5 @@ describe("bootstrap-github-oidc.sh", () => {
       "Could not resolve required CloudFormation output TofuStateBucketName from dev-BrimaxPlatformStack."
     );
     expect(logLines(result.log, "pnpm|")).toEqual([]);
-    expect(logLines(result.log, "setup|")).toEqual([]);
   });
 });

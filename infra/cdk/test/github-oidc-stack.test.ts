@@ -36,7 +36,6 @@ describe("GithubOidcStack", () => {
               StringEquals: Match.objectLike({
                 "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                 "token.actions.githubusercontent.com:repository": "maxdez86/brimax-life",
-                "token.actions.githubusercontent.com:ref": "refs/heads/dev",
                 "token.actions.githubusercontent.com:sub":
                   "repo:maxdez86/brimax-life:environment:dev"
               })
@@ -56,7 +55,6 @@ describe("GithubOidcStack", () => {
               StringEquals: Match.objectLike({
                 "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                 "token.actions.githubusercontent.com:repository": "maxdez86/brimax-life",
-                "token.actions.githubusercontent.com:ref": "refs/heads/prod",
                 "token.actions.githubusercontent.com:sub":
                   "repo:maxdez86/brimax-life:environment:prod"
               })
@@ -90,25 +88,28 @@ describe("GithubOidcStack", () => {
     const prodBucketAccess = prodStatements.find((statement) => statement.Sid === "OpenTofuStateBucketAccess");
     const devLockAccess = devStatements.find((statement) => statement.Sid === "OpenTofuLockTableAccess");
     const prodLockAccess = prodStatements.find((statement) => statement.Sid === "OpenTofuLockTableAccess");
+    const devDataAccess = devStatements.find((statement) => statement.Sid === "DevDataTableAccess");
+    const prodDataAccess = prodStatements.find((statement) => statement.Sid === "DevDataTableAccess");
 
     expect(devReadStage?.Resource).toEqual(
       expect.arrayContaining([
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxPlatformStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxCertificateStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxEdgeStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-BrimaxAppStack/*"
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/dev-*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*"
       ])
     );
     expect(prodReadStage?.Resource).toEqual(
       expect.arrayContaining([
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxPlatformStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxCertificateStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxEdgeStack/*",
-        "arn:aws:cloudformation:us-east-1:183286346090:stack/BrimaxAppStack/*"
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/Brimax*",
+        "arn:aws:cloudformation:us-east-1:183286346090:stack/CDKToolkit/*"
       ])
     );
+    expect(devDataAccess?.Resource).toEqual(
+      expect.arrayContaining([
+        "arn:aws:dynamodb:us-east-1:183286346090:table/dev-*",
+        "arn:aws:dynamodb:us-east-1:183286346090:table/dev-*/index/*"
+      ])
+    );
+    expect(prodDataAccess).toBeUndefined();
     expect(devBucketAccess?.Resource).toBe("arn:aws:s3:::dev-state-bucket");
     expect(prodBucketAccess?.Resource).toBe("arn:aws:s3:::prod-state-bucket");
     expect(devLockAccess?.Resource).toBe("arn:aws:dynamodb:us-east-1:183286346090:table/dev-lock-table");
@@ -131,58 +132,8 @@ describe("GithubOidcStack", () => {
     template.hasOutput("GithubActionsProdEnvironmentName", {
       Value: "prod"
     });
-    template.hasOutput("ProdPromotionValidationRoleArn", {});
-    template.hasOutput("ProdPromotionValidationRoleSecretName", {
-      Value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
-    });
 
     expect(template.toJSON()).toBeDefined();
-  });
-
-  it("creates a prod-promotion validation role for pull requests targeting prod", () => {
-    const app = new cdk.App();
-    applyCostAllocationTags(app, "dev");
-    const stack = new GithubOidcStack(app, "DevGithubOidcStack", {
-      env: { account: "183286346090", region: "us-east-1" },
-      githubRepository: "maxdez86/brimax-life",
-      stageConfigs: {
-        dev: {
-          lockTableName: "dev-lock-table",
-          stateBucketName: "dev-state-bucket"
-        },
-        prod: {
-          lockTableName: "prod-lock-table",
-          stateBucketName: "prod-state-bucket"
-        }
-      }
-    });
-    const template = Template.fromStack(stack);
-
-    template.hasResourceProperties("AWS::IAM::Role", {
-      RoleName: "brimax-github-actions-dev-prod-promotion-validation",
-      AssumeRolePolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: "sts:AssumeRoleWithWebIdentity",
-            Condition: {
-              StringEquals: Match.objectLike({
-                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-                "token.actions.githubusercontent.com:repository": "maxdez86/brimax-life",
-                "token.actions.githubusercontent.com:sub":
-                  "repo:maxdez86/brimax-life:environment:dev",
-                "token.actions.githubusercontent.com:event_name": "pull_request",
-                "token.actions.githubusercontent.com:base_ref": "prod"
-              })
-            }
-          })
-        ])
-      }
-    });
-
-    template.hasOutput("ProdPromotionValidationRoleArn", {});
-    template.hasOutput("ProdPromotionValidationRoleSecretName", {
-      Value: "AWS_ROLE_TO_ASSUME_DEV_VALIDATION"
-    });
   });
 
   it("always manages the GitHub OIDC provider in the shared stack", () => {

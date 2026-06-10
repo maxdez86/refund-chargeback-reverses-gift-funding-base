@@ -81,11 +81,7 @@ printf 'gh|%s\\n' "$*" >> "${logFile}"
 
 function runSetup(stage: "dev" | "prod") {
   const harness = createHarness(stage);
-  const args = [
-    setupScript,
-    "arn:aws:iam::183286346090:role/stage-deploy-role",
-    "arn:aws:iam::183286346090:role/dev-validation-role"
-  ];
+  const args = [setupScript, "arn:aws:iam::183286346090:role/stage-deploy-role"];
 
   const result = spawnSync("bash", args, {
     cwd: repoRoot,
@@ -119,7 +115,7 @@ afterEach(() => {
 });
 
 describe("setup-github-environment.sh", () => {
-  it("writes the stage secret and the dev validation secret when STAGE=dev", () => {
+  it("writes the stage secret when STAGE=dev", () => {
     const result = runSetup("dev");
 
     expect(result.status).toBe(0);
@@ -128,9 +124,6 @@ describe("setup-github-environment.sh", () => {
         expect.stringContaining("api --method PUT --header Accept: application/vnd.github+json repos/maxdez86/brimax-life/environments/dev"),
         expect.stringContaining(
           "secret set AWS_ROLE_TO_ASSUME_DEV --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/stage-deploy-role"
-        ),
-        expect.stringContaining(
-          "secret set AWS_ROLE_TO_ASSUME_DEV_VALIDATION --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/dev-validation-role"
         )
       ])
     );
@@ -146,9 +139,6 @@ describe("setup-github-environment.sh", () => {
         expect.stringContaining("api --method PUT --header Accept: application/vnd.github+json repos/maxdez86/brimax-life/environments/dev"),
         expect.stringContaining(
           "secret set AWS_ROLE_TO_ASSUME_PROD --env prod --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/stage-deploy-role"
-        ),
-        expect.stringContaining(
-          "secret set AWS_ROLE_TO_ASSUME_DEV_VALIDATION --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/dev-validation-role"
         )
       ])
     );

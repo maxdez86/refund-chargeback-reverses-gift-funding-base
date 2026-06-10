@@ -8,7 +8,7 @@ For GitHub Actions IAM role bootstrap through OIDC, use [bootstrap-github-oidc.m
 
 Fresh-account note: the shared GitHub OIDC bootstrap depends on both `BrimaxPlatformStack` and
 `dev-BrimaxPlatformStack` already existing. Bring up prod platform first, then dev platform, and
-only then run `pnpm deploy:github-oidc`.
+only then run `pnpm deploy:github-oidc:cdk` followed by `pnpm deploy:github-oidc:github`.
 
 Use two terminals because the ACM certificate stack pauses while waiting for DNS validation, and the DNS validation records are created by OpenTofu in a separate step.
 
