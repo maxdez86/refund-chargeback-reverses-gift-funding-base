@@ -357,6 +357,9 @@ jobs:
       - name: Init Sentry OpenTofu
         run: pnpm opentofu:sentry:init
 
+      - name: Build landing bundle for CDK asset staging
+        run: pnpm build:web
+
       - name: Deploy backend stacks
         run: pnpm deploy:backend
 
