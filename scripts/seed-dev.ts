@@ -585,7 +585,7 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "Amanda Moura e Chris Kaneda",
     guests: [
       { guestName: "Amanda Moura", slot: 1 },
-      { guestName: "Chris Kaneda", slot: 2 }
+      { guestName: "Christian Kaneda", slot: 2 }
     ]
   },
   {
