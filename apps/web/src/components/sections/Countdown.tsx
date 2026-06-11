@@ -34,7 +34,7 @@ export function Countdown() {
   ];
 
   return (
-    <section id="contagem" className="countdown-v2 bg-[#f7f6f2] py-20 md:py-28">
+    <section id="contagem" className="countdown-v2 bg-[#fbf7f0] py-20 md:py-28">
       <div className="mx-auto max-w-5xl px-6 text-center">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -57,7 +57,7 @@ export function Countdown() {
             {items.map((item) => (
               <div
                 key={item.label}
-                className="countdown-v2-card rounded-2xl border border-[#ddd8cb] bg-[#fcfbf7]/60 p-6 md:p-8"
+                className="countdown-v2-card rounded-2xl border border-[#e4d9c8] bg-[#fbf7f0]/60 p-6 md:p-8"
               >
                 <div className="font-serif text-5xl tabular-nums text-[#30251f] md:text-6xl">
                   {String(item.value).padStart(2, "0")}

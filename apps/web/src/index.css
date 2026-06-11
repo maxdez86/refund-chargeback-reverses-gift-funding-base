@@ -58,38 +58,38 @@
   --elevate-2: rgba(0,0,0, .08);
 
   /* Ivory / warm paper */
-  --background: 45 20% 96%;
+  --background: 40 33% 98%;
   --foreground: 220 20% 15%;
 
-  --border: 43 16% 84%;
-  --card: 45 25% 98%;
+  --border: 40 10% 85%;
+  --card: 40 33% 98%;
   --card-foreground: 220 20% 15%;
-  --card-border: 43 16% 84%;
+  --card-border: 40 10% 85%;
 
-  --popover: 45 25% 98%;
+  --popover: 40 33% 98%;
   --popover-foreground: 220 20% 15%;
-  --popover-border: 43 16% 84%;
+  --popover-border: 40 10% 85%;
 
   /* Deep ink for primary actions */
   --primary: 220 20% 15%;
   --primary-foreground: 40 33% 98%;
 
   /* Soft terracotta */
-  --secondary: 42 16% 88%;
+  --secondary: 15 30% 85%;
   --secondary-foreground: 220 20% 15%;
 
   /* Muted neutral */
-  --muted: 43 18% 88%;
+  --muted: 40 15% 92%;
   --muted-foreground: 220 15% 45%;
 
   /* Muted rose/warm accent */
-  --accent: 42 14% 90%;
+  --accent: 350 20% 90%;
   --accent-foreground: 220 20% 15%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 43 16% 84%;
+  --input: 40 15% 85%;
   --ring: 220 20% 15%;
 
   --app-font-sans: 'Inter', sans-serif;

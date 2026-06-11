@@ -193,9 +193,9 @@ export function Padrinhos() {
                 >
                   <div
                     data-padrinhos-photo
-                    className={`relative mb-3 flex h-[21rem] items-center justify-center overflow-hidden rounded-2xl bg-[#e6e2d8] md:h-[23rem] lg:h-[25rem] xl:h-[27rem] ${
+                    className={`relative mb-3 flex h-[21rem] items-center justify-center overflow-hidden rounded-2xl bg-[#efe6d7] md:h-[23rem] lg:h-[25rem] xl:h-[27rem] ${
                       person.isFamily
-                        ? "ring-2 ring-[#d6ae64] ring-offset-2 ring-offset-[#f3f2ee]"
+                        ? "ring-2 ring-[#d6ae64] ring-offset-2 ring-offset-[#f5efe6]"
                         : ""
                     }`}
                   >

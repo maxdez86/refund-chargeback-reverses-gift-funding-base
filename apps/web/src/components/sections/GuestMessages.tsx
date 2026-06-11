@@ -92,7 +92,7 @@ function ComposeCard({
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#9f7a34]/25 bg-[#fcfbf7] p-4 md:p-5 shadow-[0_26px_70px_-34px_rgba(0,0,0,0.6)]`}>
+      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
         <div className="mb-2 border-b border-[#e6d9c4] pb-2">
           <p className="font-serif text-[1.45rem] text-foreground">Deixe seu recado</p>
         </div>
@@ -136,7 +136,7 @@ function ComposeCard({
           <div>
             <Button
               type="submit"
-              className="h-11 w-full rounded-full border border-[#9f7a34]/40 bg-[#5C1A18] px-7 text-[#F5EBDD] hover:bg-[#6E2220]"
+              className="h-11 w-full rounded-full px-7"
               disabled={
                 isSubmitting ||
                 isVerifying ||
@@ -194,10 +194,10 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
         transition={{ duration: 0.55, delay: Math.min(index, 3) * 0.08 }}
         data-recado-card
       >
-        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#9f7a34]/25 bg-[#fcfbf7] p-4 md:p-5 shadow-[0_26px_70px_-34px_rgba(0,0,0,0.6)]`}>
+        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
           <Quote
             aria-hidden="true"
-            className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/30 md:right-5 md:top-5 md:h-12 md:w-12"
+            className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/20 md:right-5 md:top-5 md:h-12 md:w-12"
           />
           <div className="mb-3 border-b border-[#e6d9c4] pb-2">
             <p className="font-serif text-[1.45rem] text-foreground">{message.authorName}</p>
@@ -215,7 +215,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
               <>
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#fcfbf7] to-transparent"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#fffaf3] to-transparent"
                 />
                 <button
                   type="button"
@@ -236,7 +236,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
       </motion.article>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#9f7a34]/25 bg-[#fcfbf7] p-0 sm:max-w-2xl">
+        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#d8c6ab]/60 bg-[#fffaf3] p-0 sm:max-w-2xl">
           <DialogHeader className="border-b border-[#e6d9c4] px-8 pb-5 pt-8">
             <DialogTitle className="font-serif text-3xl text-foreground">
               {message.authorName}
@@ -266,7 +266,7 @@ function FeedbackCard({ children }: { children: React.ReactNode }) {
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#9f7a34]/25 bg-[#fcfbf7] p-4 md:p-5 text-center shadow-[0_26px_70px_-34px_rgba(0,0,0,0.6)]`}>
+      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
         <div className="text-sm leading-6 text-muted-foreground">{children}</div>
       </div>
     </motion.article>
@@ -417,7 +417,7 @@ export function GuestMessages() {
   return (
     <section
       id="recados"
-      className="overflow-hidden border-t border-[#9f7a34]/25 bg-[radial-gradient(120%_120%_at_50%_0%,#6E2220_0%,#5C1A18_45%,#4A1513_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
+      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#f4eee5_0%,#efe4d4_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
     >
       <div className="container mx-auto px-6">
         <div className="relative mb-3 md:mb-4">
@@ -428,10 +428,7 @@ export function GuestMessages() {
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           >
-            <p className="text-xs uppercase tracking-[0.4em] text-[#9f7a34]">
-              Com carinho
-            </p>
-            <h2 className="font-serif mt-3 text-4xl text-[#F5EBDD] md:text-5xl">
+            <h2 className="font-serif text-4xl text-foreground md:text-5xl">
               Recados para os Noivos
             </h2>
           </motion.div>
@@ -441,7 +438,7 @@ export function GuestMessages() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-10 w-10 rounded-full border-[#9f7a34]/40 bg-[#F5EBDD]/10 text-[#F5EBDD] hover:bg-[#F5EBDD]/20"
+                className="h-10 w-10 rounded-full border-border/50 bg-white/70 text-foreground"
                 onClick={() => emblaApi?.scrollPrev()}
                 disabled={!prevEnabled}
                 aria-label="Recado anterior"
@@ -451,7 +448,7 @@ export function GuestMessages() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-10 w-10 rounded-full border-[#9f7a34]/40 bg-[#F5EBDD]/10 text-[#F5EBDD] hover:bg-[#F5EBDD]/20"
+                className="h-10 w-10 rounded-full border-border/50 bg-white/70 text-foreground"
                 onClick={() => emblaApi?.scrollNext()}
                 disabled={!nextEnabled}
                 aria-label="Próximo recado"
@@ -509,7 +506,7 @@ export function GuestMessages() {
             <Button
               type="button"
               variant="outline"
-              className="rounded-full border-[#9f7a34]/45 bg-[#F5EBDD]/10 px-7 text-[#F5EBDD] hover:bg-[#F5EBDD]/20"
+              className="rounded-full bg-white/70 px-7"
               disabled={messagesQuery.isFetchingNextPage}
               onClick={() => messagesQuery.fetchNextPage()}
             >
@@ -529,7 +526,7 @@ export function GuestMessages() {
           <Button
             variant="outline"
             size="icon"
-            className="h-10 w-10 animate-bounce rounded-full border-[#9f7a34]/40 bg-[#F5EBDD]/10 text-[#F5EBDD] hover:bg-[#F5EBDD]/20"
+            className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
             onClick={scrollToNext}
             aria-label="Rolar para a próxima seção"
           >
