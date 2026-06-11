@@ -695,6 +695,31 @@ async function main() {
     );
     assertStatus(invalidInvitation.response.status, 404, "negative-paths invalid invitation", invalidInvitation.body);
 
+    // The invitation lookup starts the DynamoDB read in parallel with the
+    // Turnstile verify but gates the response on verify: an unverified caller
+    // must get 403 for existing and missing codes alike — never the lookup's
+    // 404 — so a failed verification cannot enumerate invitation codes.
+    const unverifiedMissingInvitation = await requestJson(
+      context,
+      "negative-paths",
+      `${context.apiBaseUrl}/invitation/ZZ9999`
+    );
+    assertStatus(
+      unverifiedMissingInvitation.response.status,
+      403,
+      "negative-paths unverified missing invitation",
+      unverifiedMissingInvitation.body
+    );
+    assert(
+      !(
+        unverifiedMissingInvitation.body &&
+        typeof unverifiedMissingInvitation.body === "object" &&
+        ("invitation" in unverifiedMissingInvitation.body ||
+          "lookupProof" in unverifiedMissingInvitation.body)
+      ),
+      "Unverified invitation lookup must not leak invitation data."
+    );
+
     const missingLookupProof = await requestJson(context, "negative-paths", `${context.apiBaseUrl}/rsvp`, {
       method: "POST",
       headers: {
@@ -724,7 +749,7 @@ async function main() {
     assertStatus(missingPayment.response.status, 404, "negative-paths missing payment", missingPayment.body);
 
     return {
-      checks: 5
+      checks: 6
     };
   });
 

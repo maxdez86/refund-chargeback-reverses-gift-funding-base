@@ -4,6 +4,8 @@ import { PaymentService } from "../../domain/payment-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
+import { getAppSecret } from "../../services/secrets-manager/app-secrets";
 
 const service = new PaymentService();
 let isColdStart = true;
@@ -116,4 +118,6 @@ function safeJsonParseObject(text: string): Record<string, unknown> | undefined 
   return undefined;
 }
 
-export const handler = wrapLambdaHandler(onCreatePayment);
+export const handler = withWarmup(wrapLambdaHandler(onCreatePayment), () =>
+  getAppSecret("asaasApiKey")
+);

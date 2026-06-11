@@ -2,6 +2,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
 import { GuestMessageService } from "../../domain/guest-message-service";
 
 const service = new GuestMessageService();
@@ -31,4 +32,4 @@ async function onGetGuestMessages(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onGetGuestMessages);
+export const handler = withWarmup(wrapLambdaHandler(onGetGuestMessages));

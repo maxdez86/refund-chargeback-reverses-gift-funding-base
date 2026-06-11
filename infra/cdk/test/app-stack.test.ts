@@ -127,6 +127,29 @@ describe("AppStack", () => {
       }
     });
 
+    // Keep-warm: 8 guest-facing functions chunked into 2 rules (≤5 targets each).
+    template.resourceCountIs("AWS::Events::Rule", 2);
+    template.hasResourceProperties("AWS::Events::Rule", {
+      Name: "dev-brimax-keep-warm-0",
+      ScheduleExpression: "rate(4 minutes)",
+      Targets: Match.arrayWith([
+        Match.objectLike({
+          Input: "{\"warmer\":true}",
+          RetryPolicy: {
+            MaximumRetryAttempts: 0
+          }
+        })
+      ])
+    });
+    template.hasResourceProperties("AWS::Events::Rule", {
+      Name: "dev-brimax-keep-warm-1",
+      ScheduleExpression: "rate(4 minutes)"
+    });
+    template.hasResourceProperties("AWS::Lambda::Permission", {
+      Action: "lambda:InvokeFunction",
+      Principal: "events.amazonaws.com"
+    });
+
     template.hasResourceProperties("AWS::Logs::MetricFilter", {
       FilterPattern: '"PAYMENT_CREATE_FAILED"',
       MetricTransformations: Match.arrayWith([

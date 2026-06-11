@@ -4,6 +4,7 @@ import { PaymentMessageService } from "../../domain/payment-message-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
 
 const service = new PaymentMessageService();
 
@@ -59,4 +60,4 @@ async function onCreatePaymentMessage(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onCreatePaymentMessage);
+export const handler = withWarmup(wrapLambdaHandler(onCreatePaymentMessage));

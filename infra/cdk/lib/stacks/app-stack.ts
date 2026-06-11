@@ -5,6 +5,8 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
+import * as eventsTargets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
@@ -354,6 +356,23 @@ export class AppStack extends cdk.Stack {
       webhookProcessorFn
     ];
 
+    // Keep the 8 guest-facing functions warm (excludes the vendor webhook pair
+    // and the admin delete). Runs in every stage: dev pings also de-flake the
+    // prod-promotion suite, which hits live api.dev.brimax.life.
+    this.addKeepWarmSchedule(
+      [
+        invitationGetFn,
+        rsvpFn,
+        createGuestMessagesFn,
+        createPaymentFn,
+        getGiftsFn,
+        getGuestMessagesFn,
+        getPaymentFn,
+        paymentMessageFn
+      ],
+      props.stage
+    );
+
     webhookProcessorFn.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
         batchSize: 10
@@ -559,6 +578,29 @@ export class AppStack extends cdk.Stack {
       });
       new cdk.CfnOutput(this, "SesDkimDnsTokenValue3", {
         value: senderDomain.attrDkimDnsTokenValue3
+      });
+    }
+  }
+
+  private addKeepWarmSchedule(fns: lambda.IFunction[], stage: AppStage) {
+    // EventBridge allows at most 5 targets per rule, so chunk into rules.
+    const maxTargetsPerRule = 5;
+
+    for (let i = 0; i * maxTargetsPerRule < fns.length; i++) {
+      const chunk = fns.slice(i * maxTargetsPerRule, (i + 1) * maxTargetsPerRule);
+      new events.Rule(this, `KeepWarmRule${i}`, {
+        ruleName: resourceName(`brimax-keep-warm-${i}`, stage),
+        // 4 min stays under the 5-min secret-cache TTL so primed caches never lapse.
+        schedule: events.Schedule.rate(cdk.Duration.minutes(4)),
+        targets: chunk.map(
+          (fn) =>
+            new eventsTargets.LambdaFunction(fn, {
+              event: events.RuleTargetInput.fromObject({ warmer: true }),
+              // Fire-and-forget: a failing ping must not retry-storm (async
+              // invokes default to 2 retries with no DLQ here).
+              retryAttempts: 0
+            })
+        )
       });
     }
   }

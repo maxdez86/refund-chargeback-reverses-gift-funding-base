@@ -2,6 +2,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { GiftService } from "../../domain/gift-service";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
 
 const service = new GiftService();
 
@@ -25,4 +26,4 @@ async function onGetGifts(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onGetGifts);
+export const handler = withWarmup(wrapLambdaHandler(onGetGifts));

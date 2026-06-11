@@ -5,6 +5,8 @@ import { GuestMessageService } from "../../domain/guest-message-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
+import { getAppSecret } from "../../services/secrets-manager/app-secrets";
 import { verifyTurnstile } from "../../lib/turnstile";
 
 const service = new GuestMessageService();
@@ -62,4 +64,6 @@ async function onCreateGuestMessage(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onCreateGuestMessage);
+export const handler = withWarmup(wrapLambdaHandler(onCreateGuestMessage), () =>
+  getAppSecret("turnstileSecretKey")
+);

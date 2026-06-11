@@ -3,6 +3,7 @@ import { PaymentService } from "../../domain/payment-service";
 import { AppError } from "../../lib/errors";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
 
 const service = new PaymentService();
 
@@ -44,4 +45,4 @@ async function onGetPayment(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onGetPayment);
+export const handler = withWarmup(wrapLambdaHandler(onGetPayment));

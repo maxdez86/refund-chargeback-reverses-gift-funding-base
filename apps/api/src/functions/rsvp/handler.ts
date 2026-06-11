@@ -6,6 +6,8 @@ import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
 import { verifyLookupProof } from "../../lib/lookup-proof";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
+import { withWarmup } from "../../lib/warmup";
+import { getAppSecret } from "../../services/secrets-manager/app-secrets";
 
 const service = new RsvpService();
 
@@ -70,4 +72,6 @@ async function onSubmitRsvp(event: APIGatewayProxyEventV2) {
   }
 }
 
-export const handler = wrapLambdaHandler(onSubmitRsvp);
+export const handler = withWarmup(wrapLambdaHandler(onSubmitRsvp), () =>
+  getAppSecret("lookupProofSecret")
+);
