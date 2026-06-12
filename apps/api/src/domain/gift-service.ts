@@ -11,6 +11,22 @@ export class GiftService {
 
     const gifts: Gift[] = giftMetadata.map((gift) => {
       const state = statesByGiftId.get(gift.id);
+      const partsFunded = state?.partsFunded ?? 0;
+      const partsReserved = state?.partsReserved ?? 0;
+      const confirmedAmountCents =
+        state?.confirmedAmountCents ??
+        (gift.fractional
+          ? partsFunded * (gift.partValueCents ?? 0)
+          : partsFunded
+            ? gift.totalValueCents
+            : 0);
+      const reservedAmountCents =
+        state?.reservedAmountCents ??
+        (gift.fractional
+          ? partsReserved * (gift.partValueCents ?? 0)
+          : partsReserved
+            ? gift.totalValueCents
+            : 0);
 
       return {
         id: gift.id,
@@ -20,25 +36,17 @@ export class GiftService {
         totalValueCents: gift.totalValueCents,
         partValueCents: gift.partValueCents,
         totalParts: gift.totalParts,
-        finalPartValueCents: gift.finalPartValueCents,
-        fundingModelVersion: gift.fundingModelVersion,
-        partsFunded: state?.partsFunded ?? 0,
-        partsReserved: state?.partsReserved ?? 0,
-        confirmedAmountCents:
-          state?.confirmedAmountCents ??
-          (gift.fractional
-            ? (state?.partsFunded ?? 0) * (gift.partValueCents ?? 0)
-            : state?.partsFunded
-              ? gift.totalValueCents
-              : 0),
-        reservedAmountCents:
-          state?.reservedAmountCents ??
-          (state?.partsReserved ?? 0) * (gift.partValueCents ?? 0),
+        finalPartValueCents: gift.finalPartValueCents ?? null,
+        fundingModelVersion: gift.fundingModelVersion ?? "LEGACY_FIXED_50",
+        partsFunded,
+        partsReserved,
+        confirmedAmountCents,
+        reservedAmountCents,
         availableAmountCents: Math.max(
           0,
-          gift.totalValueCents - ((state?.confirmedAmountCents ?? 0) + (state?.reservedAmountCents ?? 0))
+          gift.totalValueCents - confirmedAmountCents - reservedAmountCents
         ),
-        availableParts: Math.max(0, (gift.totalParts ?? 1) - ((state?.partsFunded ?? 0) + (state?.partsReserved ?? 0))),
+        availableParts: Math.max(0, (gift.totalParts ?? 1) - partsFunded - partsReserved),
         fullyFunded: state?.fullyFunded ?? false,
         updatedAt: state?.updatedAt ?? null
       };
