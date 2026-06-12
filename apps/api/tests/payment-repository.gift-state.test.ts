@@ -1,4 +1,10 @@
-import { GetCommand, PutCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  TransactWriteCommand,
+  UpdateCommand
+} from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 import { PaymentRepository } from "../src/services/dynamodb/repositories/payment-repository";
 
@@ -115,6 +121,57 @@ describe("PaymentRepository gift state", () => {
         image: "armario-cozinha"
       })
     ]);
+  });
+
+  it("reserves against a legacy versionless gift state row", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          PK: "GIFT#g-pratos",
+          SK: "STATE",
+          giftId: "g-pratos",
+          partsFunded: 0,
+          fullyFunded: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    const selection = await repository.reserveGiftSelection({
+      gift: {
+        id: "g-pratos",
+        name: "Jogo de Pratos 12 Peças",
+        image: "jogo-pratos",
+        totalValueCents: 33_100,
+        fractional: true,
+        partValueCents: 5_000,
+        totalParts: 7,
+        finalPartValueCents: null,
+        fundingModelVersion: "LEGACY_FIXED_50"
+      },
+      paymentId: "payment-legacy-state",
+      quantity: 1,
+      expiresAt: "2026-06-12T20:00:00.000Z"
+    });
+
+    expect(selection).toEqual(
+      expect.objectContaining({
+        amountCents: 5_000,
+        quantity: 1
+      })
+    );
+    const transaction = send.mock.calls[1][0] as TransactWriteCommand;
+    const stateUpdate = transaction.input.TransactItems?.[0]?.Update;
+
+    expect(stateUpdate?.ConditionExpression).toContain("attribute_not_exists(version)");
+    expect(stateUpdate?.ExpressionAttributeValues).toEqual(
+      expect.objectContaining({
+        ":expectedVersion": 0,
+        ":versionIncrement": 1
+      })
+    );
   });
 
   it("increments a single gift and marks it fully funded", async () => {
