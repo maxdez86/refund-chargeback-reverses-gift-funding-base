@@ -125,3 +125,29 @@ export function mapAsaasWebhookToPaymentStatus(payload: AsaasWebhookPayload): Pa
 export function shouldApplyStatusTransition(currentStatus: PaymentStatus, nextStatus: PaymentStatus) {
   return ALLOWED_STATUS_TRANSITIONS[currentStatus].includes(nextStatus);
 }
+
+// Grace beyond the checkout's own expiry before the platform expires a pending
+// payment on its own. Asaas blocks new payment attempts at expiresAt, so the
+// grace only shields in-flight confirmations from racing the release.
+export const CHECKOUT_EXPIRY_GRACE_MS = 5 * 60_000;
+
+export function isStalePendingCheckout(
+  status: PaymentStatus,
+  expiresAt: string | undefined,
+  nowMs: number
+): boolean {
+  if (status !== "CREATED" && status !== "AWAITING_PAYMENT") {
+    return false;
+  }
+
+  if (!expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(expiresAt);
+  if (Number.isNaN(expiresAtMs)) {
+    return false;
+  }
+
+  return nowMs > expiresAtMs + CHECKOUT_EXPIRY_GRACE_MS;
+}
