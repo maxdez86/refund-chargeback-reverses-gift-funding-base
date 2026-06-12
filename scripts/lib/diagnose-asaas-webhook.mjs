@@ -49,7 +49,7 @@ function parseWebhookPayload(payload) {
   }
 }
 
-function extractReferences({ asaasPaymentId, event, webhookEvent }) {
+function extractReferences({ asaasPaymentId, webhookEvent }) {
   const payload = webhookEvent ? parseWebhookPayload(webhookEvent.payload) : {};
 
   return {
@@ -250,7 +250,6 @@ export async function diagnoseAsaasWebhook({
   const storedWebhookEvent = webhookEvent ?? (eventId ? await repository.getWebhookEvent(eventId) : null);
   const identifiers = extractReferences({
     asaasPaymentId,
-    event: storedWebhookEvent ? parseWebhookPayload(storedWebhookEvent.payload) : undefined,
     webhookEvent: storedWebhookEvent
   });
 

@@ -63,6 +63,12 @@ type WebhookPaymentResolution = {
   payment: Awaited<ReturnType<PaymentRepository["getPayment"]>>;
 };
 
+type WebhookPaymentLookupResult = {
+  matches: WebhookPaymentResolutionDiagnostics["localLookupMatches"];
+  payment: Awaited<ReturnType<PaymentRepository["getPayment"]>>;
+  source: WebhookPaymentResolutionSource;
+};
+
 function getFirstName(fullName: string | undefined) {
   if (!fullName) {
     return undefined;
@@ -254,7 +260,10 @@ export class WebhookProcessor {
     };
   }
 
-  private async lookupPayment(reference: WebhookPaymentReference, mode: "initial" | "fallback") {
+  private async lookupPayment(
+    reference: WebhookPaymentReference,
+    mode: "initial" | "fallback"
+  ): Promise<WebhookPaymentLookupResult> {
     const paymentByAsaasPaymentId = reference.asaasPaymentId
       ? await this.repository.getPaymentByAsaasPaymentId(reference.asaasPaymentId)
       : null;
