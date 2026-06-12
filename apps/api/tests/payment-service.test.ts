@@ -345,6 +345,121 @@ describe("PaymentService", () => {
     expect(payment.checkout?.expiresAt).toBe("2027-05-10T23:59:59.000Z");
   });
 
+  it("expires a stale pending checkout on read and returns the expired summary without re-reading", async () => {
+    const stalePayment = {
+      paymentId: "payment-stale-1",
+      paymentMethod: "PIX" as const,
+      status: "CREATED" as const,
+      amountCents: 500,
+      currency: "BRL" as const,
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500
+      },
+      checkout: {
+        sessionId: "checkout-1",
+        url: "https://www.asaas.com/c/checkout-1",
+        expiresAt: "2026-01-01T00:00:00.000Z"
+      },
+      createdAt: "2025-12-31T23:00:00.000Z",
+      updatedAt: "2025-12-31T23:00:00.000Z",
+      customerProfileStatus: "PENDING" as const
+    };
+    const repository = {
+      getPayment: vi.fn().mockResolvedValue(stalePayment),
+      tryExpireStalePayment: vi.fn().mockResolvedValue(true)
+    };
+
+    const service = new PaymentService(repository as never, {} as never);
+    const payment = await service.getPayment("payment-stale-1");
+
+    expect(payment.status).toBe("EXPIRED");
+    expect(repository.tryExpireStalePayment).toHaveBeenCalledWith({
+      paymentId: "payment-stale-1",
+      expectedCurrentStatus: "CREATED"
+    });
+    expect(repository.getPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads the payment when the lazy expiry loses the race", async () => {
+    const stalePayment = {
+      paymentId: "payment-stale-2",
+      paymentMethod: "PIX" as const,
+      status: "AWAITING_PAYMENT" as const,
+      amountCents: 500,
+      currency: "BRL" as const,
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500
+      },
+      checkout: {
+        sessionId: "checkout-2",
+        url: "https://www.asaas.com/c/checkout-2",
+        expiresAt: "2026-01-01T00:00:00.000Z"
+      },
+      createdAt: "2025-12-31T23:00:00.000Z",
+      updatedAt: "2025-12-31T23:00:00.000Z",
+      customerProfileStatus: "PENDING" as const
+    };
+    const repository = {
+      getPayment: vi
+        .fn()
+        .mockResolvedValueOnce(stalePayment)
+        .mockResolvedValueOnce({ ...stalePayment, status: "CONFIRMED" as const }),
+      tryExpireStalePayment: vi.fn().mockResolvedValue(false)
+    };
+
+    const service = new PaymentService(repository as never, {} as never);
+    const payment = await service.getPayment("payment-stale-2");
+
+    expect(payment.status).toBe("CONFIRMED");
+    expect(repository.getPayment).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves a pending payment untouched while its checkout is still fresh", async () => {
+    const freshExpiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const repository = {
+      getPayment: vi.fn().mockResolvedValue({
+        paymentId: "payment-fresh-1",
+        paymentMethod: "PIX" as const,
+        status: "CREATED" as const,
+        amountCents: 500,
+        currency: "BRL" as const,
+        gift: {
+          id: "g-test-pix",
+          name: "PIX Teste",
+          fractional: false,
+          quantity: 1,
+          unitAmountCents: null,
+          amountCents: 500
+        },
+        checkout: {
+          sessionId: "checkout-3",
+          url: "https://www.asaas.com/c/checkout-3",
+          expiresAt: freshExpiresAt
+        },
+        createdAt: "2026-06-12T11:00:00.000Z",
+        updatedAt: "2026-06-12T11:00:00.000Z",
+        customerProfileStatus: "PENDING" as const
+      }),
+      tryExpireStalePayment: vi.fn()
+    };
+
+    const service = new PaymentService(repository as never, {} as never);
+    const payment = await service.getPayment("payment-fresh-1");
+
+    expect(payment.status).toBe("CREATED");
+    expect(repository.tryExpireStalePayment).not.toHaveBeenCalled();
+  });
+
   it("recovers the completed payment snapshot when the projection row is missing", async () => {
     const paymentSnapshot = {
       paymentId: "payment-recovered-1",

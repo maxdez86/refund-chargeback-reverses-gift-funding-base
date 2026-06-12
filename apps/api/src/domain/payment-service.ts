@@ -11,7 +11,12 @@ import { resolveSiteBaseUrl } from "../lib/env";
 import { stableJsonHash } from "../lib/security";
 import { AsaasClient } from "../services/asaas/client";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
-import { initialPaymentStatus, resolveGiftSelection, type ResolvedGiftSelection } from "./payment-state";
+import {
+  initialPaymentStatus,
+  isStalePendingCheckout,
+  resolveGiftSelection,
+  type ResolvedGiftSelection
+} from "./payment-state";
 import type { CreateCheckoutInput } from "../services/asaas/client";
 
 function toBrlDecimal(valueInCents: number) {
@@ -267,6 +272,27 @@ export class PaymentService {
 
     if (!payment) {
       throw new AppError("Payment not found.", 404);
+    }
+
+    if (isStalePendingCheckout(payment.status, payment.checkout?.expiresAt, Date.now())) {
+      const expired = await this.repository.tryExpireStalePayment({
+        paymentId: payment.paymentId,
+        expectedCurrentStatus: payment.status
+      });
+
+      if (expired) {
+        return PaymentSummarySchema.parse({
+          ...payment,
+          status: "EXPIRED",
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // Lost the race — the true state may now be CONFIRMED, so re-read once.
+      const refreshed = await this.repository.getPayment(paymentId);
+      if (refreshed) {
+        return PaymentSummarySchema.parse(refreshed);
+      }
     }
 
     return PaymentSummarySchema.parse(payment);

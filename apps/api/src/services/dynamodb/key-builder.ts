@@ -110,6 +110,15 @@ export function asaasCheckoutLookupIndex(asaasCheckoutId: string) {
   };
 }
 
+// Sparse GSI entry kept on a reservation only while it is open; ISO timestamps
+// sort chronologically, so a range query on GSI1SK finds the stale ones.
+export function reservationOpenIndex(expiresAt: string) {
+  return {
+    GSI1PK: "RESERVATION#OPEN",
+    GSI1SK: expiresAt
+  };
+}
+
 export function conversationKeys(phoneNumber: string) {
   return {
     PK: `PHONE#${phoneNumber}`,
