@@ -28,6 +28,17 @@ type AsaasCheckout = {
   url?: string;
 };
 
+type AsaasCheckoutSession = {
+  id: string;
+  status?: string;
+  externalReference?: string;
+  callback?: {
+    successUrl?: string;
+    cancelUrl?: string;
+    expiredUrl?: string;
+  };
+};
+
 type AsaasListResponse<T> = {
   data?: T[];
 };
@@ -147,6 +158,12 @@ export class AsaasClient {
     });
   }
 
+  async getCheckoutById(checkoutId: string) {
+    return this.request<AsaasCheckoutSession>({
+      path: `/checkouts/${checkoutId}`
+    });
+  }
+
   async listPaymentsByCheckoutSession(checkoutSession: string) {
     const response = await this.request<AsaasListResponse<AsaasPayment>>({
       path: "/payments",
@@ -219,4 +236,4 @@ export class AsaasClient {
 }
 
 export { extractAsaasErrorMessage };
-export type { AsaasCheckout, AsaasPayment, CreateCheckoutInput };
+export type { AsaasCheckout, AsaasCheckoutSession, AsaasPayment, CreateCheckoutInput };
