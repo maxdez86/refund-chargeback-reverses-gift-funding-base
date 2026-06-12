@@ -243,6 +243,50 @@ async function pollForPaymentTerminalState(context: Context, paymentId: string) 
   throw new Error(`Timed out waiting for payment ${paymentId} to reach CONFIRMED or RECEIVED.`);
 }
 
+async function fetchGiftPartsFunded(context: Context, phase: string, giftId: string) {
+  const { body, response } = await requestJson(context, phase, `${context.apiBaseUrl}/gifts`);
+  assertStatus(response.status, 200, `${phase} gifts`, body);
+  const parsed = parseWithSchema(`${phase} gifts`, GetGiftsResponseSchema, body);
+  const selectedGift = parsed.gifts.find((gift) => gift.id === giftId);
+  assert(selectedGift, `Gift ${giftId} missing for phase ${phase}.`);
+  return selectedGift.partsFunded;
+}
+
+async function createWebhookScenarioPayment(
+  context: Context,
+  phase: string,
+  idempotencyKey: string
+) {
+  const requestBody = {
+    giftId: context.giftId,
+    quantity: context.giftQuantity,
+    paymentMethod: PROD_PROMOTION_PAYMENT_METHOD
+  };
+  const { body, response } = await requestJson(context, phase, `${context.apiBaseUrl}/payments`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": idempotencyKey
+    },
+    body: JSON.stringify(requestBody)
+  });
+  assertStatus(response.status, 201, `${phase} create`, body);
+  const created = parseWithSchema(`${phase} create`, CreatePaymentResponseSchema, body);
+  assert(created.payment.status === "CREATED", `Expected ${phase} payment status to be CREATED.`);
+
+  const fetchedResult = await requestJson(
+    context,
+    phase,
+    `${context.apiBaseUrl}/payments/${encodeURIComponent(created.payment.paymentId)}`
+  );
+  assertStatus(fetchedResult.response.status, 200, `${phase} get`, fetchedResult.body);
+  const fetched = parseWithSchema(`${phase} get`, GetPaymentResponseSchema, fetchedResult.body);
+  assert(fetched.payment.paymentId === created.payment.paymentId, `${phase} payment ID mismatch between create and get.`);
+  assert(fetched.payment.gift.id === context.giftId, `${phase} gift mismatch in fetched payment.`);
+
+  return created.payment.paymentId;
+}
+
 async function main() {
   const startedAt = nowIso();
   const stage = resolveStage();
@@ -470,42 +514,15 @@ async function main() {
   });
 
   await runPhase("payment-create-fetch", results, async () => {
-    const requestBody = {
-      giftId: context.giftId,
-      quantity: context.giftQuantity,
-      paymentMethod: PROD_PROMOTION_PAYMENT_METHOD
-    };
-    const idempotencyKey = `prod-promotion-payment-${context.runMarker}`;
-    const { body, response } = await requestJson(context, "payment-create-fetch", `${context.apiBaseUrl}/payments`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "idempotency-key": idempotencyKey
-      },
-      body: JSON.stringify(requestBody)
-    });
-    assertStatus(response.status, 201, "payment-create-fetch create", body);
-    const created = parseWithSchema("payment-create-fetch create", CreatePaymentResponseSchema, body);
-    assert(created.payment.status === "CREATED", "Expected new payment status to be CREATED.");
-    state.createdPaymentId = created.payment.paymentId;
-
-    const fetchedResult = await requestJson(
+    state.createdPaymentId = await createWebhookScenarioPayment(
       context,
       "payment-create-fetch",
-      `${context.apiBaseUrl}/payments/${encodeURIComponent(created.payment.paymentId)}`
+      `prod-promotion-payment-${context.runMarker}`
     );
-    assertStatus(fetchedResult.response.status, 200, "payment-create-fetch get", fetchedResult.body);
-    const fetched = parseWithSchema(
-      "payment-create-fetch get",
-      GetPaymentResponseSchema,
-      fetchedResult.body
-    );
-    assert(fetched.payment.paymentId === created.payment.paymentId, "Payment ID mismatch between create and get.");
-    assert(fetched.payment.gift.id === context.giftId, "Gift mismatch in fetched payment.");
 
     return {
-      paymentId: created.payment.paymentId,
-      status: created.payment.status
+      paymentId: state.createdPaymentId,
+      status: "CREATED"
     };
   });
 
@@ -631,6 +648,90 @@ async function main() {
       terminalStatus: polled.payment.status,
       observedStatuses: polled.statuses,
       giftPartsFunded: selectedGift.partsFunded
+    };
+  });
+
+  await runPhase("payment-webhook-payment-id-fallback", results, async () => {
+    const baselineGiftPartsFunded = await fetchGiftPartsFunded(
+      context,
+      "payment-webhook-payment-id-fallback",
+      context.giftId
+    );
+    const fallbackPaymentId = await createWebhookScenarioPayment(
+      context,
+      "payment-webhook-payment-id-fallback",
+      `prod-promotion-payment-fallback-${context.runMarker}`
+    );
+    const documentClient = createDocumentClient();
+    const tableName = await resolveWeddingTableName();
+    const stored = await fetchStoredPayment(documentClient, tableName, fallbackPaymentId);
+    assert(stored.asaasPaymentId, "Fallback webhook scenario requires stored asaasPaymentId.");
+    const today = nowIso().slice(0, 10);
+    const webhookPayload = {
+      event: "PAYMENT_RECEIVED",
+      payment: {
+        id: stored.asaasPaymentId,
+        status: "RECEIVED",
+        confirmedDate: today,
+        clientPaymentDate: today
+      }
+    };
+
+    const accepted = await requestJson(
+      context,
+      "payment-webhook-payment-id-fallback",
+      `${context.apiBaseUrl}/webhooks/asaas`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "asaas-access-token": context.asaasWebhookToken
+        },
+        body: JSON.stringify(webhookPayload)
+      }
+    );
+    assertStatus(
+      accepted.response.status,
+      200,
+      "payment-webhook-payment-id-fallback accepted",
+      accepted.body
+    );
+    const acceptedParsed = parseWithSchema(
+      "payment-webhook-payment-id-fallback accepted",
+      AsaasWebhookResponseSchema,
+      accepted.body
+    );
+    assert(acceptedParsed.duplicate === false, "Fallback webhook should not be duplicate.");
+
+    const polled = await pollForPaymentTerminalState(context, fallbackPaymentId);
+    const giftPartsFundedAfter = await fetchGiftPartsFunded(
+      context,
+      "payment-webhook-payment-id-fallback",
+      context.giftId
+    );
+    const storedAfter = await fetchStoredPayment(documentClient, tableName, fallbackPaymentId);
+
+    assert(
+      polled.payment.paymentId === fallbackPaymentId,
+      "Fallback webhook polled payment does not match the dedicated fallback payment."
+    );
+    assert(
+      polled.payment.status === "CONFIRMED" || polled.payment.status === "RECEIVED",
+      "Fallback webhook payment did not reach a terminal paid status."
+    );
+    assert(
+      giftPartsFundedAfter >= baselineGiftPartsFunded + context.giftQuantity,
+      "Gift funding did not increase after fallback webhook processing."
+    );
+    assert(storedAfter.asaasPaymentId, "Stored fallback payment should retain asaasPaymentId after processing.");
+
+    return {
+      baselineGiftPartsFunded,
+      giftPartsFundedAfter,
+      observedStatuses: polled.statuses,
+      paymentId: fallbackPaymentId,
+      storedAsaasPaymentId: storedAfter.asaasPaymentId,
+      terminalStatus: polled.payment.status
     };
   });
 

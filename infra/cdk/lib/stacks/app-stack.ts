@@ -680,6 +680,13 @@ export class AppStack extends cdk.Stack {
       filterPattern: logs.FilterPattern.literal('"PAYMENT_STATE_TRANSITION"'),
       metricValue: "1"
     });
+    new logs.MetricFilter(this, `${metricNamespaceSuffix}WebhookPaymentNotFoundMetric`, {
+      logGroup,
+      metricNamespace: "Brimax/Payments",
+      metricName: `${metricNamespaceSuffix}-webhook-payment-not-found`,
+      filterPattern: logs.FilterPattern.literal('"WEBHOOK_PAYMENT_NOT_FOUND"'),
+      metricValue: "1"
+    });
   }
 }
 

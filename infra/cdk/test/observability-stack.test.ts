@@ -56,7 +56,7 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 14);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 15);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -72,6 +72,10 @@ describe("ObservabilityStack", () => {
       AlarmDescription: "Alerts when the webhook queue begins backing up.",
       Threshold: 5
     });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when webhook events cannot be matched to local payments.",
+      Threshold: 1
+    });
 
     template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
       DashboardName: "brimax-observability"
@@ -86,6 +90,8 @@ describe("ObservabilityStack", () => {
     expect(dashboardBody).toContain('\\"query\\":\\"SOURCE \'');
     expect(dashboardBody).toContain("filter @message like /\\\\\\\\t(WARN|ERROR)\\\\\\\\t/");
     expect(dashboardBody).toContain("limit 50");
+    expect(dashboardBody).toContain("Webhook Unmatched / Processor Errors");
+    expect(dashboardBody).toContain("asaas-webhook-processor-webhook-payment-not-found");
     expect(dashboardBody).not.toContain("cloudwatch/home");
     expect(dashboardBody).not.toContain("#xray:traces/service-map");
     expect(dashboardBody).not.toContain("ApiAccessLogs");

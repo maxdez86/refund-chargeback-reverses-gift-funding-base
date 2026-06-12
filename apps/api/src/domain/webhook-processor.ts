@@ -5,6 +5,7 @@ import { resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
+import { annotateTrace } from "../lib/xray";
 import {
   escapeHtml,
   renderDetailLine,
@@ -29,6 +30,37 @@ type AsaasWebhookPayload = {
   id?: string;
   status?: string;
   externalReference?: string;
+};
+
+type WebhookPaymentReference = {
+  asaasPaymentId?: string;
+  asaasCheckoutId?: string;
+  externalReference?: string;
+};
+
+type WebhookPaymentResolutionSource =
+  | "asaas_payment_id"
+  | "asaas_checkout_id"
+  | "external_reference"
+  | "asaas_fallback_external_reference"
+  | "asaas_fallback_checkout_session"
+  | "unresolved";
+
+type WebhookPaymentResolutionDiagnostics = {
+  asaasFallbackAttempted: boolean;
+  localLookupMatches: {
+    asaasPaymentId: boolean;
+    asaasCheckoutId: boolean;
+    externalReference: boolean;
+  };
+  recoveredAsaasCheckoutId?: string;
+  recoveredExternalReference?: string;
+  resolutionSource: WebhookPaymentResolutionSource;
+};
+
+type WebhookPaymentResolution = {
+  diagnostics: WebhookPaymentResolutionDiagnostics;
+  payment: Awaited<ReturnType<PaymentRepository["getPayment"]>>;
 };
 
 function getFirstName(fullName: string | undefined) {
@@ -94,12 +126,36 @@ export class WebhookProcessor {
       throw new AppError("Webhook payload does not contain a payment reference.", 400);
     }
 
-    const payment =
-      (asaasPaymentId ? await this.repository.getPaymentByAsaasPaymentId(asaasPaymentId) : null) ??
-      (asaasCheckoutId ? await this.repository.getPaymentByAsaasCheckoutId(asaasCheckoutId) : null) ??
-      (externalReference ? await this.repository.getPayment(externalReference) : null);
+    const resolution = await this.resolvePaymentForWebhook({
+      asaasPaymentId,
+      asaasCheckoutId,
+      externalReference
+    });
+    const payment = resolution.payment;
+
+    annotateResolutionTrace({
+      ...resolution.diagnostics,
+      asaasCheckoutId,
+      asaasPaymentId,
+      eventId,
+      externalReference
+    });
 
     if (!payment) {
+      console.error(
+        JSON.stringify({
+          metric: "WEBHOOK_PAYMENT_NOT_FOUND",
+          eventId,
+          asaasPaymentId,
+          asaasCheckoutId,
+          externalReference,
+          resolutionSource: resolution.diagnostics.resolutionSource,
+          asaasFallbackAttempted: resolution.diagnostics.asaasFallbackAttempted,
+          localLookupMatches: resolution.diagnostics.localLookupMatches,
+          recoveredExternalReference: resolution.diagnostics.recoveredExternalReference,
+          recoveredAsaasCheckoutId: resolution.diagnostics.recoveredAsaasCheckoutId
+        })
+      );
       throw new AppError("Payment not found for webhook event.", 404);
     }
 
@@ -147,6 +203,112 @@ export class WebhookProcessor {
     await this.repository.markWebhookProcessed(eventId, applied ? "updated" : "ignored_stale");
 
     return { duplicate: false, updated: applied };
+  }
+
+  private async resolvePaymentForWebhook(reference: WebhookPaymentReference): Promise<WebhookPaymentResolution> {
+    const initialLookup = await this.lookupPayment(reference, "initial");
+
+    if (initialLookup.payment) {
+      return {
+        payment: initialLookup.payment,
+        diagnostics: {
+          asaasFallbackAttempted: false,
+          localLookupMatches: initialLookup.matches,
+          resolutionSource: initialLookup.source
+        }
+      };
+    }
+
+    if (!reference.asaasPaymentId) {
+      return {
+        payment: null,
+        diagnostics: {
+          asaasFallbackAttempted: false,
+          localLookupMatches: initialLookup.matches,
+          resolutionSource: "unresolved"
+        }
+      };
+    }
+
+    const asaasPayment = await this.asaasClient.getPaymentById(reference.asaasPaymentId);
+    const recoveredExternalReference = reference.externalReference ?? asaasPayment.externalReference;
+    const recoveredAsaasCheckoutId = reference.asaasCheckoutId ?? asaasPayment.checkoutSession;
+    const fallbackLookup = await this.lookupPayment(
+      {
+        asaasPaymentId: reference.asaasPaymentId,
+        asaasCheckoutId: recoveredAsaasCheckoutId,
+        externalReference: recoveredExternalReference
+      },
+      "fallback"
+    );
+
+    return {
+      payment: fallbackLookup.payment,
+      diagnostics: {
+        asaasFallbackAttempted: true,
+        localLookupMatches: fallbackLookup.matches,
+        recoveredAsaasCheckoutId,
+        recoveredExternalReference,
+        resolutionSource: fallbackLookup.source
+      }
+    };
+  }
+
+  private async lookupPayment(reference: WebhookPaymentReference, mode: "initial" | "fallback") {
+    const paymentByAsaasPaymentId = reference.asaasPaymentId
+      ? await this.repository.getPaymentByAsaasPaymentId(reference.asaasPaymentId)
+      : null;
+    if (paymentByAsaasPaymentId) {
+      return {
+        payment: paymentByAsaasPaymentId,
+        matches: {
+          asaasPaymentId: true,
+          asaasCheckoutId: false,
+          externalReference: false
+        },
+        source: "asaas_payment_id" as const
+      };
+    }
+
+    const paymentByAsaasCheckoutId = reference.asaasCheckoutId
+      ? await this.repository.getPaymentByAsaasCheckoutId(reference.asaasCheckoutId)
+      : null;
+    if (paymentByAsaasCheckoutId) {
+      return {
+        payment: paymentByAsaasCheckoutId,
+        matches: {
+          asaasPaymentId: false,
+          asaasCheckoutId: true,
+          externalReference: false
+        },
+        source: mode === "fallback" ? "asaas_fallback_checkout_session" : "asaas_checkout_id"
+      };
+    }
+
+    const paymentByExternalReference = reference.externalReference
+      ? await this.repository.getPayment(reference.externalReference)
+      : null;
+    if (paymentByExternalReference) {
+      return {
+        payment: paymentByExternalReference,
+        matches: {
+          asaasPaymentId: false,
+          asaasCheckoutId: false,
+          externalReference: true
+        },
+        source: mode === "fallback" ? "asaas_fallback_external_reference" : "external_reference"
+      };
+    }
+
+    return {
+      payment: null,
+      matches: {
+        asaasPaymentId: false,
+        asaasCheckoutId: false,
+        externalReference: false
+      },
+      source: "unresolved" as const
+    };
   }
 
   private async enrichCustomerProfile(input: {
@@ -261,6 +423,27 @@ export class WebhookProcessor {
       throw error;
     }
   }
+}
+
+function annotateResolutionTrace(
+  input: WebhookPaymentResolutionDiagnostics &
+    WebhookPaymentReference & {
+      eventId: string;
+    }
+) {
+  annotateTrace({
+    entity_id: input.eventId,
+    webhook_asaas_fallback_attempted: input.asaasFallbackAttempted,
+    webhook_has_asaas_checkout_id: Boolean(input.asaasCheckoutId),
+    webhook_has_asaas_payment_id: Boolean(input.asaasPaymentId),
+    webhook_has_external_reference: Boolean(input.externalReference),
+    webhook_lookup_match_asaas_checkout_id: input.localLookupMatches.asaasCheckoutId,
+    webhook_lookup_match_asaas_payment_id: input.localLookupMatches.asaasPaymentId,
+    webhook_lookup_match_external_reference: input.localLookupMatches.externalReference,
+    webhook_recovered_asaas_checkout_id: Boolean(input.recoveredAsaasCheckoutId),
+    webhook_recovered_external_reference: Boolean(input.recoveredExternalReference),
+    webhook_resolution_source: input.resolutionSource
+  });
 }
 
 function buildPayerConfirmationHtml(input: {
