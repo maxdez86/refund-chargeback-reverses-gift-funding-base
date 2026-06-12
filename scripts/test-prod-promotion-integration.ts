@@ -20,10 +20,13 @@ import { AsaasWebhookResponseSchema } from "../packages/contracts/src/webhooks.t
 import {
   createDocumentClient,
   fetchStoredPayment,
+  pollForAsaasPaymentId,
   PROD_PROMOTION_PAYMENT_METHOD,
   PROD_PROMOTION_TURNSTILE_DUMMY_TOKEN,
   requiredEnv,
   resolveApiBaseUrl,
+  resolveAsaasApiBaseUrl,
+  resolveAsaasApiKey,
   resolveIntegrationGift,
   resolveIntegrationGiftQuantity,
   resolveIntegrationInvitationCode,
@@ -665,12 +668,20 @@ async function main() {
     const documentClient = createDocumentClient();
     const tableName = await resolveWeddingTableName();
     const stored = await fetchStoredPayment(documentClient, tableName, fallbackPaymentId);
-    assert(stored.asaasPaymentId, "Fallback webhook scenario requires stored asaasPaymentId.");
+    const resolvedAsaasPayment = await pollForAsaasPaymentId({
+      apiBaseUrl: resolveAsaasApiBaseUrl(),
+      apiKey: await resolveAsaasApiKey(),
+      externalReference: fallbackPaymentId,
+      knownAsaasCheckoutId: stored.asaasCheckoutId,
+      paymentId: fallbackPaymentId,
+      pollIntervalMs: context.webhookPollIntervalMs,
+      timeoutMs: context.webhookTimeoutMs
+    });
     const today = nowIso().slice(0, 10);
     const webhookPayload = {
       event: "PAYMENT_RECEIVED",
       payment: {
-        id: stored.asaasPaymentId,
+        id: resolvedAsaasPayment.asaasPaymentId,
         status: "RECEIVED",
         confirmedDate: today,
         clientPaymentDate: today
@@ -728,8 +739,12 @@ async function main() {
     return {
       baselineGiftPartsFunded,
       giftPartsFundedAfter,
+      lookupAttempts: resolvedAsaasPayment.attempts,
+      lookupSource: resolvedAsaasPayment.lookupSource,
       observedStatuses: polled.statuses,
       paymentId: fallbackPaymentId,
+      resolvedAsaasPaymentId: resolvedAsaasPayment.asaasPaymentId,
+      storedAsaasCheckoutId: stored.asaasCheckoutId,
       storedAsaasPaymentId: storedAfter.asaasPaymentId,
       terminalStatus: polled.payment.status
     };
