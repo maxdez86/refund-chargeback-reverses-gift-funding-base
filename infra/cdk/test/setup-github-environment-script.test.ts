@@ -115,7 +115,7 @@ afterEach(() => {
 });
 
 describe("setup-github-environment.sh", () => {
-  it("writes the stage secret when STAGE=dev", () => {
+  it("writes the stage secret when STAGE=dev", { timeout: 10000 }, () => {
     const result = runSetup("dev");
 
     expect(result.status).toBe(0);

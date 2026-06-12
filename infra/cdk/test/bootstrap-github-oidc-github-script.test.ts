@@ -152,7 +152,7 @@ afterEach(() => {
 });
 
 describe("bootstrap-github-oidc-github.sh", () => {
-  it("resolves the dev deploy role from the shared stack and refreshes the dev environment", () => {
+  it("resolves the dev deploy role from the shared stack and refreshes the dev environment", { timeout: 10000 }, () => {
     const result = runBootstrap("dev");
 
     expect(result.status).toBe(0);

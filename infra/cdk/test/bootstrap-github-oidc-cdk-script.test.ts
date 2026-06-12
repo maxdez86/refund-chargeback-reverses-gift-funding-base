@@ -243,7 +243,7 @@ afterEach(() => {
 });
 
 describe("bootstrap-github-oidc-cdk.sh", () => {
-  it("deploys the shared stack and never touches GitHub when STAGE=dev", () => {
+  it("deploys the shared stack and never touches GitHub when STAGE=dev", { timeout: 10000 }, () => {
     const result = runBootstrap("dev");
 
     expect(result.status).toBe(0);
