@@ -326,7 +326,6 @@ describe("Presentes", () => {
       expect(screen.getByRole("button", { name: "Reservado no momento" })).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Reservado no momento" })).toBeDisabled();
-    expect(screen.getByText("Aguardando confirmação de pagamento")).toBeInTheDocument();
     expect(screen.queryByText("Presente já garantido")).not.toBeInTheDocument();
   });
 
@@ -347,7 +346,7 @@ describe("Presentes", () => {
       expect(screen.getByRole("button", { name: "Presente já garantido" })).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Presente já garantido" })).toBeDisabled();
-    expect(screen.queryByText("Aguardando confirmação de pagamento")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reservado no momento")).not.toBeInTheDocument();
   });
 
   it("auto-removes the recovery surface on mount when the stored payment is canceled", async () => {

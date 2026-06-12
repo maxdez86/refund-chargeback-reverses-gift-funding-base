@@ -229,19 +229,14 @@ function GiftCard({ gift, onOpen }: { gift: GiftView; onOpen: (g: GiftView) => v
               Presente já garantido
             </Button>
           ) : reservedPending ? (
-            <>
-              <Button
-                variant="outline"
-                className="h-10 w-full cursor-not-allowed rounded-full"
-                disabled
-                aria-disabled="true"
-              >
-                Reservado no momento
-              </Button>
-              <p className="mt-1.5 text-center text-xs text-muted-foreground">
-                Aguardando confirmação de pagamento
-              </p>
-            </>
+            <Button
+              variant="outline"
+              className="h-10 w-full cursor-not-allowed rounded-full"
+              disabled
+              aria-disabled="true"
+            >
+              Reservado no momento
+            </Button>
           ) : (
             <Button
               className="h-10 w-full rounded-full"
