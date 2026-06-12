@@ -1,12 +1,8 @@
 import { DescribeStacksCommand, CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { PAYMENT_GIFTS_BY_ID, type PaymentGift } from "../../packages/config/src/gifts.ts";
 import { PRODUCTION_INVITATIONS } from "../seed-dev.ts";
-
-const execFileAsync = promisify(execFile);
 
 export const PROD_PROMOTION_TURNSTILE_DUMMY_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 export const PROD_PROMOTION_INVITATION_CODE = "AB2345";
@@ -81,15 +77,6 @@ export async function resolveWeddingTableName() {
   return resolvePaymentsStackOutput("WeddingTableName");
 }
 
-export async function resolveAppSecretArn() {
-  const explicit = process.env.APP_SECRET_ARN?.trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  return resolvePaymentsStackOutput("AppSecretArn");
-}
-
 export function createDocumentClient() {
   return DynamoDBDocumentClient.from(
     new DynamoDBClient({
@@ -138,42 +125,8 @@ export function resolveIntegrationGiftQuantity() {
   return quantity;
 }
 
-export async function fetchPaymentsAppSecretValue(key: "asaasApiKey" | "asaasWebhookToken") {
-  const secretArn = await resolveAppSecretArn();
-  const { stdout } = await execFileAsync("aws", [
-    "secretsmanager",
-    "get-secret-value",
-    "--secret-id",
-    secretArn,
-    "--region",
-    requiredEnv("AWS_REGION"),
-    "--query",
-    "SecretString",
-    "--output",
-    "text"
-  ]);
-
-  if (!stdout.trim()) {
-    throw new Error(`Resolved app secret ${secretArn} has no SecretString payload.`);
-  }
-
-  const parsed = JSON.parse(stdout) as Partial<Record<"asaasApiKey" | "asaasWebhookToken", string>>;
-  const value = parsed[key]?.trim();
-
-  if (!value) {
-    throw new Error(`Resolved app secret ${secretArn} does not contain ${key}.`);
-  }
-
-  return value;
-}
-
-export async function resolveAsaasApiKey() {
-  const explicit = process.env.ASAAS_API_KEY?.trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  return fetchPaymentsAppSecretValue("asaasApiKey");
+export function resolveAsaasApiKey() {
+  return requiredEnv("ASAAS_API_KEY");
 }
 
 export function resolveAsaasApiBaseUrl() {
