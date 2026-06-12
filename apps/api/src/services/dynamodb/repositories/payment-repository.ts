@@ -384,7 +384,7 @@ export class PaymentRepository {
                 TableName: this.tableName,
                 Key: giftStateKeys(input.gift.id),
                 ConditionExpression:
-                  "(attribute_not_exists(PK) AND :expectedVersion = :zero) OR version = :expectedVersion",
+                  "((attribute_not_exists(PK) OR attribute_not_exists(version)) AND :expectedVersion = :zero) OR version = :expectedVersion",
                 UpdateExpression:
                   "SET entityType = if_not_exists(entityType, :entityType), giftId = if_not_exists(giftId, :giftId), " +
                   "partsFunded = if_not_exists(partsFunded, :zero), confirmedAmountCents = if_not_exists(confirmedAmountCents, :zero), " +
