@@ -93,11 +93,11 @@ function TextCard({ chapter, index }: { chapter: Chapter; index: number }) {
       aria-roledescription="capítulo"
       aria-label={chapter.title}
     >
-      <div className="flex min-h-[24rem] flex-col rounded-2xl bg-[#efe6d7] p-5 md:min-h-[24.5rem] md:p-5 lg:min-h-[26rem] lg:p-5 xl:min-h-[30rem] xl:p-6">
-        <h3 className="mb-2 font-serif text-[1.65rem] text-foreground md:text-[1.85rem] lg:text-[1.95rem] xl:mb-3 xl:text-[2rem]">
+      <div className="flex min-h-[24rem] flex-col rounded-2xl border border-white/55 bg-[#f3e5d1] p-5 shadow-[0_22px_70px_-46px_rgba(92,58,24,0.42)] md:min-h-[24.5rem] md:p-5 lg:min-h-[26rem] lg:p-5 xl:min-h-[30rem] xl:p-6">
+        <h3 className="mb-2 font-serif text-[1.65rem] text-[#2c211a] md:text-[1.85rem] lg:text-[1.95rem] xl:mb-3 xl:text-[2rem]">
           {chapter.title}
         </h3>
-        <p className="text-sm leading-[1.72] text-muted-foreground md:text-[0.9rem] lg:text-[0.92rem] xl:text-[0.95rem] xl:leading-relaxed">
+        <p className="text-sm leading-[1.72] text-[#5f4d40] md:text-[0.9rem] lg:text-[0.92rem] xl:text-[0.95rem] xl:leading-relaxed">
           {chapter.text}
         </p>
       </div>
@@ -154,7 +154,7 @@ function MediaCard({
       viewport={{ once: true }}
       transition={{ duration: 0.6, delay: Math.min(index, 3) * 0.08 }}
     >
-      <div className="relative h-[24rem] rounded-2xl overflow-hidden bg-muted md:h-[24.5rem] lg:h-[26rem] xl:h-[30rem]">
+      <div className="relative h-[24rem] overflow-hidden rounded-2xl border border-white/50 bg-[#ead8c1] shadow-[0_22px_70px_-46px_rgba(92,58,24,0.34)] md:h-[24.5rem] lg:h-[26rem] xl:h-[30rem]">
         {media.kind === "image" ? (
           <ResponsivePhoto
             section="story"
@@ -180,10 +180,10 @@ function MediaCard({
               playsInline
               className="absolute inset-0 h-full w-full object-cover pointer-events-none transition-transform duration-700 group-hover:scale-[1.03]"
             />
-            <span aria-hidden="true" className="absolute inset-0 bg-black/15 transition-colors group-hover:bg-black/25" />
+            <span aria-hidden="true" className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/30" />
             <span
               aria-hidden="true"
-              className="absolute left-1/2 top-1/2 grid h-20 w-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-[#d6ae64] shadow-xl transition-transform duration-300 group-hover:scale-105 md:h-24 md:w-24"
+              className="absolute left-1/2 top-1/2 grid h-20 w-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-[linear-gradient(135deg,#e3bc74_0%,#b8844c_100%)] shadow-[0_18px_45px_-18px_rgba(92,58,24,0.65)] transition-transform duration-300 group-hover:scale-105 md:h-24 md:w-24"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-9 w-9 translate-x-[2px] text-white md:h-10 md:w-10">
                 <path d="M8 5v14l11-7z" />
@@ -263,7 +263,23 @@ export function Story() {
   }, [emblaApi]);
 
   return (
-    <section id="historia" className="overflow-hidden bg-[#f4eee5] py-3 md:py-4">
+    <section
+      id="historia"
+      className="relative isolate overflow-hidden bg-[linear-gradient(180deg,#eee1cf_0%,#e7d4bc_42%,#f4ebe0_100%)] py-3 md:py-4"
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(circle_at_top,rgba(242,217,183,0.42),transparent_72%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -left-14 top-24 h-56 w-56 rounded-full bg-[#d6ae64]/14 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -right-12 bottom-14 h-64 w-64 rounded-full bg-[#c98d63]/12 blur-3xl"
+      />
+
       <div className="container relative mx-auto mb-2 flex flex-col gap-6 px-6 md:mb-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-end lg:gap-4 xl:gap-6">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -272,7 +288,7 @@ export function Story() {
           transition={{ duration: 0.8 }}
           className="w-full min-w-0 max-w-[17ch] md:max-w-none"
         >
-          <h2 className="mb-2 font-serif text-4xl text-foreground md:whitespace-nowrap md:text-[3.4rem] lg:text-[4.3rem] xl:text-6xl">
+          <h2 className="mb-2 font-serif text-4xl text-[#2c211a] md:whitespace-nowrap md:text-[3.4rem] lg:text-[4.3rem] xl:text-6xl">
             A história do ponto de vista dela
           </h2>
         </motion.div>
@@ -281,7 +297,7 @@ export function Story() {
           <Button
             variant="outline"
             size="icon"
-            className="h-10 w-10 rounded-full border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-[#d5b88d] bg-white/65 text-[#8f6630] shadow-sm transition-colors hover:bg-white/85 hover:text-[#734f1f]"
             onClick={scrollPrev}
             disabled={!prevEnabled}
             aria-label="Capítulo anterior"
@@ -291,7 +307,7 @@ export function Story() {
           <Button
             variant="outline"
             size="icon"
-            className="h-10 w-10 rounded-full border-border/50 text-foreground"
+            className="h-10 w-10 rounded-full border-[#d5b88d] bg-white/65 text-[#8f6630] shadow-sm transition-colors hover:bg-white/85 hover:text-[#734f1f]"
             onClick={scrollNext}
             disabled={!nextEnabled}
             aria-label="Próximo capítulo"
@@ -301,9 +317,13 @@ export function Story() {
         </div>
       </div>
 
-      <div className="pl-6 md:pl-12 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
+      <div className="relative pl-6 md:pl-12 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
         <div
-          className="overflow-hidden cursor-grab active:cursor-grabbing focus:outline-none"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-6 top-0 bottom-8 rounded-[2rem] border border-white/35 bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] md:inset-x-10 lg:inset-x-[max(1.5rem,calc((100vw-1280px)/2))]"
+        />
+        <div
+          className="relative overflow-hidden cursor-grab focus:outline-none active:cursor-grabbing"
           ref={emblaRef}
           tabIndex={0}
           role="region"
@@ -329,7 +349,7 @@ export function Story() {
         <Button
           variant="outline"
           size="icon"
-          className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
+          className="h-10 w-10 animate-bounce rounded-full border-[#d5b88d] bg-white/65 text-[#8f6630] hover:bg-white/85 hover:text-[#734f1f]"
           onClick={scrollToNext}
           aria-label="Rolar para a próxima seção"
         >

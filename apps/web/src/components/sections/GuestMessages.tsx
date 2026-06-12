@@ -92,8 +92,8 @@ function ComposeCard({
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
-        <div className="mb-2 border-b border-[#e6d9c4] pb-2">
+      <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-white/60 bg-[#fffaf3]/88 p-4 shadow-[0_24px_80px_-48px_rgba(115,73,27,0.45)] backdrop-blur-[2px] md:p-5`}>
+        <div className="mb-2 border-b border-[#eadbca] pb-2">
           <p className="font-serif text-[1.45rem] text-foreground">Deixe seu recado</p>
         </div>
 
@@ -109,7 +109,7 @@ function ComposeCard({
               onChange={(e) => onChange("authorName", e.target.value)}
               maxLength={60}
               autoComplete="name"
-              className="h-11 rounded-xl bg-background"
+              className="h-11 rounded-xl border-[#dfcfbd] bg-white/80"
               placeholder="Seu nome"
             />
           </div>
@@ -128,7 +128,7 @@ function ComposeCard({
               value={form.message}
               onChange={(e) => onChange("message", e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
               maxLength={MESSAGE_MAX_LENGTH}
-              className="min-h-[6rem] flex-1 rounded-2xl bg-background px-4 py-3 text-sm leading-6"
+              className="min-h-[6rem] flex-1 rounded-2xl border-[#dfcfbd] bg-white/80 px-4 py-3 text-sm leading-6"
               placeholder="Escreva uma mensagem carinhosa para os noivos."
             />
           </div>
@@ -136,7 +136,7 @@ function ComposeCard({
           <div>
             <Button
               type="submit"
-              className="h-11 w-full rounded-full px-7"
+              className="h-11 w-full rounded-full border border-[#cda274]/40 bg-[#a46d49] px-7 text-[#fbf7f0] hover:bg-[#935f3e]"
               disabled={
                 isSubmitting ||
                 isVerifying ||
@@ -194,12 +194,12 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
         transition={{ duration: 0.55, delay: Math.min(index, 3) * 0.08 }}
         data-recado-card
       >
-        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+        <div className={`relative flex ${CARD_HEIGHT_CLASS} flex-col overflow-hidden rounded-[1.75rem] border border-white/60 bg-[#fffaf3]/88 p-4 shadow-[0_24px_80px_-48px_rgba(115,73,27,0.45)] backdrop-blur-[2px] md:p-5`}>
           <Quote
             aria-hidden="true"
-            className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/20 md:right-5 md:top-5 md:h-12 md:w-12"
+            className="absolute right-4 top-4 h-10 w-10 text-[#d6ae64]/28 md:right-5 md:top-5 md:h-12 md:w-12"
           />
-          <div className="mb-3 border-b border-[#e6d9c4] pb-2">
+          <div className="mb-3 border-b border-[#eadbca] pb-2">
             <p className="font-serif text-[1.45rem] text-foreground">{message.authorName}</p>
           </div>
 
@@ -219,7 +219,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
                 />
                 <button
                   type="button"
-                  className="absolute bottom-0 left-0 text-sm font-medium text-[#9f7a34] underline underline-offset-4 transition-colors hover:text-[#d6ae64]"
+                  className="absolute bottom-0 left-0 text-sm font-medium text-[#a46d49] underline decoration-[#d6ae64]/65 underline-offset-4 transition-colors hover:text-[#8f5d3e]"
                   onClick={() => setIsDialogOpen(true)}
                 >
                   ... mais
@@ -228,7 +228,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-4 border-t border-[#e6d9c4] pt-2 text-xs uppercase tracking-[0.18em] text-[#8e7553]">
+          <div className="mt-3 flex items-center justify-between gap-4 border-t border-[#eadbca] pt-2 text-xs uppercase tracking-[0.18em] text-[#8a735c]">
             <span>{dateLabel}</span>
             <span>{timeLabel}</span>
           </div>
@@ -236,12 +236,12 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
       </motion.article>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#d8c6ab]/60 bg-[#fffaf3] p-0 sm:max-w-2xl">
-          <DialogHeader className="border-b border-[#e6d9c4] px-8 pb-5 pt-8">
+        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-[1.75rem] border-[#dccab5] bg-[#fff9f2] p-0 shadow-[0_32px_100px_-52px_rgba(115,73,27,0.55)] sm:max-w-2xl">
+          <DialogHeader className="border-b border-[#eadbca] px-8 pb-5 pt-8">
             <DialogTitle className="font-serif text-3xl text-foreground">
               {message.authorName}
             </DialogTitle>
-            <DialogDescription className="pt-1 text-xs uppercase tracking-[0.18em] text-[#8e7553]">
+            <DialogDescription className="pt-1 text-xs uppercase tracking-[0.18em] text-[#8a735c]">
               {dateLabel} • {timeLabel}
             </DialogDescription>
           </DialogHeader>
@@ -266,7 +266,7 @@ function FeedbackCard({ children }: { children: React.ReactNode }) {
       transition={{ duration: 0.55 }}
       data-recado-card
     >
-      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-[#d8c6ab]/60 bg-[#fffaf3] p-4 md:p-5 text-center shadow-[0_20px_60px_-42px_rgba(115,73,27,0.5)]`}>
+      <div className={`flex ${CARD_HEIGHT_CLASS} items-center justify-center rounded-[1.75rem] border border-white/60 bg-[#fffaf3]/88 p-4 text-center shadow-[0_24px_80px_-48px_rgba(115,73,27,0.45)] backdrop-blur-[2px] md:p-5`}>
         <div className="text-sm leading-6 text-muted-foreground">{children}</div>
       </div>
     </motion.article>
@@ -417,18 +417,34 @@ export function GuestMessages() {
   return (
     <section
       id="recados"
-      className="overflow-hidden border-t border-border/30 bg-[linear-gradient(180deg,#f4eee5_0%,#efe4d4_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
+      className="relative isolate overflow-hidden border-t border-[#ead7c4]/70 bg-[linear-gradient(180deg,#f5ede7_0%,#efdfd2_45%,#f8f2ea_100%)] pt-12 pb-10 md:pt-14 md:pb-12"
     >
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-52 bg-[radial-gradient(circle_at_top,rgba(246,216,204,0.48),transparent_72%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -left-12 top-24 h-56 w-56 rounded-full bg-[#d6ae64]/10 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -right-16 bottom-12 h-72 w-72 rounded-full bg-[#c98d7a]/12 blur-3xl"
+      />
+
       <div className="container mx-auto px-6">
-        <div className="relative mb-3 md:mb-4">
+        <div className="relative mb-6 md:mb-8">
           <motion.div
-            className="mx-auto text-center"
+            className="mx-auto max-w-3xl text-center"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           >
-            <h2 className="font-serif text-4xl text-foreground md:text-5xl">
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.24em] text-[#9a6a45]">
+              Palavras com carinho
+            </p>
+            <h2 className="font-serif text-4xl text-[#2f251e] md:text-5xl">
               Recados para os Noivos
             </h2>
           </motion.div>
@@ -438,7 +454,7 @@ export function GuestMessages() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-10 w-10 rounded-full border-border/50 bg-white/70 text-foreground"
+                className="h-10 w-10 rounded-full border-[#dcc7b3] bg-white/75 text-[#6f5648] shadow-sm transition-colors hover:bg-white hover:text-[#a46d49]"
                 onClick={() => emblaApi?.scrollPrev()}
                 disabled={!prevEnabled}
                 aria-label="Recado anterior"
@@ -448,7 +464,7 @@ export function GuestMessages() {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-10 w-10 rounded-full border-border/50 bg-white/70 text-foreground"
+                className="h-10 w-10 rounded-full border-[#dcc7b3] bg-white/75 text-[#6f5648] shadow-sm transition-colors hover:bg-white hover:text-[#a46d49]"
                 onClick={() => emblaApi?.scrollNext()}
                 disabled={!nextEnabled}
                 aria-label="Próximo recado"
@@ -459,7 +475,12 @@ export function GuestMessages() {
           )}
         </div>
 
-        <div className="pl-0 md:pl-6 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
+        <div className="relative rounded-[2rem] border border-white/55 bg-white/30 px-4 py-5 shadow-[0_30px_90px_-54px_rgba(115,73,27,0.35)] backdrop-blur-sm md:px-5 md:py-6">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/90 to-transparent"
+          />
+          <div className="pl-0 md:pl-6 lg:pl-[max(1.5rem,calc((100vw-1280px)/2))]">
           <div
             className="cursor-grab overflow-hidden focus:outline-none active:cursor-grabbing"
             ref={emblaRef}
@@ -500,13 +521,14 @@ export function GuestMessages() {
             </div>
           </div>
         </div>
+        </div>
 
         {messagesQuery.hasNextPage && (
           <div className="mt-5 flex justify-center md:mt-6">
             <Button
               type="button"
               variant="outline"
-              className="rounded-full bg-white/70 px-7"
+              className="rounded-full border-[#dcc7b3] bg-white/80 px-7 text-[#6f5648] hover:bg-white hover:text-[#a46d49]"
               disabled={messagesQuery.isFetchingNextPage}
               onClick={() => messagesQuery.fetchNextPage()}
             >
@@ -526,7 +548,7 @@ export function GuestMessages() {
           <Button
             variant="outline"
             size="icon"
-            className="h-10 w-10 animate-bounce rounded-full border-border/50 text-foreground"
+            className="h-10 w-10 animate-bounce rounded-full border-[#dcc7b3] bg-white/65 text-[#6f5648] hover:bg-white hover:text-[#a46d49]"
             onClick={scrollToNext}
             aria-label="Rolar para a próxima seção"
           >
