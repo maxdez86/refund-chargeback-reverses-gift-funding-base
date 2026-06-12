@@ -601,6 +601,83 @@ describe("WebhookProcessor", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it("acknowledges the event when Asaas says the referenced payment no longer exists", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const repository = {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: "PAYMENT_CONFIRMED",
+          payment: {
+            id: "pay_asaas_purged",
+            status: "CONFIRMED"
+          }
+        }),
+        asaasPaymentId: "pay_asaas_purged"
+      }),
+      getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue(null),
+      getPaymentByAsaasCheckoutId: vi.fn().mockResolvedValue(null),
+      getPayment: vi.fn().mockResolvedValue(null),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const asaasClient = {
+      // The sandbox purged this payment: the client maps Asaas 404 to null.
+      getPaymentById: vi.fn().mockResolvedValue(null)
+    };
+
+    const processor = new WebhookProcessor(repository as never, asaasClient as never, {} as never);
+    const result = await processor.processEvent("event-purged");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-purged", "ignored_unresolvable");
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"metric\":\"WEBHOOK_PAYMENT_UNRESOLVABLE\"")
+    );
+    expect(annotateTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhook_unresolvable_remotely: true
+      })
+    );
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("acknowledges the event when both the payment and its checkout session are gone from Asaas", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const repository = {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: "PAYMENT_CONFIRMED",
+          payment: {
+            id: "pay_asaas_purged_2",
+            checkoutSession: "checkout-purged",
+            status: "CONFIRMED"
+          }
+        }),
+        asaasPaymentId: "pay_asaas_purged_2",
+        asaasCheckoutId: "checkout-purged"
+      }),
+      getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue(null),
+      getPaymentByAsaasCheckoutId: vi.fn().mockResolvedValue(null),
+      getPayment: vi.fn().mockResolvedValue(null),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const asaasClient = {
+      getPaymentById: vi.fn().mockResolvedValue(null),
+      getCheckoutById: vi.fn().mockResolvedValue(null)
+    };
+
+    const processor = new WebhookProcessor(repository as never, asaasClient as never, {} as never);
+    const result = await processor.processEvent("event-purged-2");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(asaasClient.getCheckoutById).toHaveBeenCalledWith("checkout-purged");
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-purged-2", "ignored_unresolvable");
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
   it("skips re-enrichment when the payment already has a ready customer profile", async () => {
     const repository = {
       getWebhookEvent: vi.fn().mockResolvedValue({

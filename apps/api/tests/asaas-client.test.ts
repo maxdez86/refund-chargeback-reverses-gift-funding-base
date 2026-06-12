@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as secretCache from "../src/services/secrets-manager/secret-cache";
-import { AsaasClient, extractAsaasErrorMessage } from "../src/services/asaas/client";
+import { AsaasApiError, AsaasClient, extractAsaasErrorMessage } from "../src/services/asaas/client";
 
 process.env.WEDDING_TABLE_NAME = process.env.WEDDING_TABLE_NAME ?? "payments-test-table";
 
@@ -78,6 +78,46 @@ describe("AsaasClient checkout timing", () => {
     expect(infoSpy).toHaveBeenCalledWith(
       expect.stringContaining("\"secretCacheHit\":true")
     );
+  });
+});
+
+describe("AsaasClient not-found handling", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(secretCache, "getSecretValueWithMetadata").mockResolvedValue({
+      cacheHit: true,
+      value: JSON.stringify({ asaasApiKey: "secret-token" })
+    });
+  });
+
+  it("returns null when Asaas answers 404 for a payment lookup", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ errors: [{ code: "invalid_object", description: "Pagamento inexistente." }] }), {
+        status: 404,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new AsaasClient();
+
+    await expect(client.getPaymentById("pay_gone")).resolves.toBeNull();
+    await expect(client.getCheckoutById("checkout_gone")).resolves.toBeNull();
+  });
+
+  it("keeps throwing for non-404 failures and preserves the upstream status", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ message: "Internal error." }), {
+        status: 500,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new AsaasClient();
+    const failure = await client.getPaymentById("pay_1").catch((error) => error);
+
+    expect(failure).toBeInstanceOf(AsaasApiError);
+    expect(failure.statusCode).toBe(502);
+    expect(failure.upstreamStatus).toBe(500);
   });
 });
 
