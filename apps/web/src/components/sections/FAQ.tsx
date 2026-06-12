@@ -99,7 +99,7 @@ function FaqItem({
       <button
         type="button"
         onClick={onClick}
-        className="font-serif flex w-full items-center justify-between py-4 text-left text-lg text-foreground md:text-xl"
+        className="font-sans flex w-full items-center justify-between py-4 text-left text-base font-medium text-foreground md:text-lg"
       >
         <span>{question}</span>
         <ChevronDown
