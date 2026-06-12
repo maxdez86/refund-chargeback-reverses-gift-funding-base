@@ -21,7 +21,14 @@ describe("gifts-api", () => {
               totalValueCents: 17_600,
               partValueCents: null,
               totalParts: null,
+              finalPartValueCents: null,
+              fundingModelVersion: "LEGACY_FIXED_50",
               partsFunded: 1,
+              partsReserved: 0,
+              confirmedAmountCents: 17_600,
+              reservedAmountCents: 0,
+              availableAmountCents: 0,
+              availableParts: 0,
               fullyFunded: true,
               updatedAt: "2026-05-13T00:00:00.000Z"
             }

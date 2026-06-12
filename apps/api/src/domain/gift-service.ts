@@ -20,7 +20,25 @@ export class GiftService {
         totalValueCents: gift.totalValueCents,
         partValueCents: gift.partValueCents,
         totalParts: gift.totalParts,
+        finalPartValueCents: gift.finalPartValueCents,
+        fundingModelVersion: gift.fundingModelVersion,
         partsFunded: state?.partsFunded ?? 0,
+        partsReserved: state?.partsReserved ?? 0,
+        confirmedAmountCents:
+          state?.confirmedAmountCents ??
+          (gift.fractional
+            ? (state?.partsFunded ?? 0) * (gift.partValueCents ?? 0)
+            : state?.partsFunded
+              ? gift.totalValueCents
+              : 0),
+        reservedAmountCents:
+          state?.reservedAmountCents ??
+          (state?.partsReserved ?? 0) * (gift.partValueCents ?? 0),
+        availableAmountCents: Math.max(
+          0,
+          gift.totalValueCents - ((state?.confirmedAmountCents ?? 0) + (state?.reservedAmountCents ?? 0))
+        ),
+        availableParts: Math.max(0, (gift.totalParts ?? 1) - ((state?.partsFunded ?? 0) + (state?.partsReserved ?? 0))),
         fullyFunded: state?.fullyFunded ?? false,
         updatedAt: state?.updatedAt ?? null
       };

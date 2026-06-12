@@ -34,7 +34,8 @@ export const PaymentGiftSummarySchema = z.object({
   fractional: z.boolean(),
   quantity: z.number().int().positive(),
   unitAmountCents: z.number().int().positive().nullable(),
-  amountCents: z.number().int().positive()
+  amountCents: z.number().int().positive(),
+  quotaValuesCents: z.array(z.number().int().positive()).optional()
 });
 
 export const PaymentCheckoutSchema = z.object({

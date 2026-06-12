@@ -86,6 +86,7 @@ describe("WebhookProcessor", () => {
 
     expect(result).toEqual({ duplicate: false, updated: true });
     expect(repository.applyWebhookUpdate).toHaveBeenCalledWith({
+      eventId: "event-1",
       paymentId: "payment-1",
       expectedCurrentStatus: "AWAITING_PAYMENT",
       nextStatus: "RECEIVED",
@@ -93,11 +94,6 @@ describe("WebhookProcessor", () => {
       receivedOn: "2026-05-10",
       asaasPaymentId: "pay_asaas_1",
       asaasCheckoutId: "checkout_1"
-    });
-    expect(repository.incrementGiftFunding).toHaveBeenCalledWith({
-      giftId: "g-batedeira",
-      paymentId: "payment-1",
-      quantity: 1
     });
     expect(asaasClient.getCustomerById).toHaveBeenCalledWith("cus_1");
     expect(repository.updatePaymentCustomerProfile).toHaveBeenCalledWith({
@@ -148,7 +144,7 @@ describe("WebhookProcessor", () => {
         payerEmail: "maria@example.com"
       }
     });
-    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-1", "updated");
+    expect(repository.markWebhookProcessed).not.toHaveBeenCalled();
   });
 
   it("falls back to payment lookup when the webhook payload does not include customer id", async () => {
@@ -309,6 +305,7 @@ describe("WebhookProcessor", () => {
       })
     );
     expect(repository.applyWebhookUpdate).toHaveBeenCalledWith({
+      eventId: "event-external",
       paymentId: "payment-123",
       expectedCurrentStatus: "PROCESSING",
       nextStatus: "CONFIRMED",
@@ -391,6 +388,7 @@ describe("WebhookProcessor", () => {
     expect(asaasClient.getPaymentById).toHaveBeenCalledWith("pay_asaas_checkout_only");
     expect(repository.getPaymentByAsaasCheckoutId).toHaveBeenCalledWith("checkout-recovered");
     expect(repository.applyWebhookUpdate).toHaveBeenCalledWith({
+      eventId: "event-checkout",
       paymentId: "payment-checkout",
       expectedCurrentStatus: "PROCESSING",
       nextStatus: "CONFIRMED",
@@ -512,11 +510,7 @@ describe("WebhookProcessor", () => {
     await processor.processEvent("event-3");
 
     expect(repository.updatePaymentCustomerProfile).not.toHaveBeenCalled();
-    expect(repository.incrementGiftFunding).toHaveBeenCalledWith({
-      giftId: "g-test-pix",
-      paymentId: "payment-3",
-      quantity: 1
-    });
+    expect(repository.incrementGiftFunding).not.toHaveBeenCalled();
     expect(asaasClient.getPaymentById).not.toHaveBeenCalled();
     expect(asaasClient.getCustomerById).not.toHaveBeenCalled();
     expect(emailService.sendEmail).not.toHaveBeenCalled();

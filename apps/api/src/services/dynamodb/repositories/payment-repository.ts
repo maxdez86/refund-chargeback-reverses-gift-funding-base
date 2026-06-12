@@ -5,6 +5,7 @@ import {
   PutCommand,
   QueryCommand,
   ScanCommand,
+  TransactWriteCommand,
   UpdateCommand,
   type DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
@@ -23,6 +24,8 @@ import {
   paymentMessageKeys,
   paymentNotificationKeys,
   paymentKeys,
+  paymentReservationKeys,
+  paymentShellKeys,
   webhookKeys
 } from "../key-builder";
 import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
@@ -37,6 +40,48 @@ type StoredPayment = PaymentSummary & {
   externalReference?: string;
   payerEmail?: string;
   customerProfileUpdatedAt?: string;
+};
+
+export type StoredPaymentReservationStatus =
+  | "PENDING_CHECKOUT"
+  | "ACTIVE"
+  | "CONSUMED"
+  | "RELEASED"
+  | "RECOVERY_HOLD";
+
+export type StoredPaymentReservation = {
+  paymentId: string;
+  giftId: string;
+  quantity: number;
+  quotaValuesCents: number[];
+  amountCents: number;
+  status: StoredPaymentReservationStatus;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  asaasCheckoutId?: string;
+};
+
+export type StoredPaymentShellStatus =
+  | "CHECKOUT_CREATING"
+  | "CHECKOUT_REMOTE_AMBIGUOUS"
+  | "CHECKOUT_READY"
+  | "CHECKOUT_RELEASED"
+  | "CHECKOUT_CONSUMED";
+
+export type StoredPaymentShell = {
+  paymentId: string;
+  giftId: string;
+  amountCents: number;
+  quotaValuesCents: number[];
+  paymentMethod: PaymentSummary["paymentMethod"];
+  externalReference: string;
+  shellStatus: StoredPaymentShellStatus;
+  createdAt: string;
+  updatedAt: string;
+  asaasCheckoutId?: string;
+  checkoutUrl?: string;
+  checkoutExpiresAt?: string;
 };
 
 type StoredPaymentMessage = {
@@ -64,7 +109,11 @@ type StoredWebhookEvent = {
 export type StoredGiftState = {
   giftId: string;
   partsFunded: number;
+  partsReserved: number;
+  confirmedAmountCents: number;
+  reservedAmountCents: number;
   fullyFunded: boolean;
+  version: number;
   updatedAt: string;
   lastConfirmedPaymentId?: string;
 };
@@ -74,9 +123,102 @@ export type StoredGiftMetadata = PaymentGift;
 type IdempotencyReservation = {
   fingerprint: string;
   paymentId: string;
-  status: "IN_PROGRESS" | "COMPLETED";
+  status: "IN_PROGRESS" | "COMPLETED" | "FAILED";
   paymentSnapshot?: PaymentSummary;
 };
+
+type ReservedQuotaSelection = {
+  quantity: number;
+  quotaValuesCents: number[];
+  amountCents: number;
+  unitAmountCents: number | null;
+  mixedValues: boolean;
+};
+
+function defaultGiftState(giftId: string): StoredGiftState {
+  return {
+    giftId,
+    partsFunded: 0,
+    partsReserved: 0,
+    confirmedAmountCents: 0,
+    reservedAmountCents: 0,
+    fullyFunded: false,
+    version: 0,
+    updatedAt: new Date(0).toISOString()
+  };
+}
+
+function sumQuotaValues(quotaValuesCents: number[]) {
+  return quotaValuesCents.reduce((sum, value) => sum + value, 0);
+}
+
+function getAvailableParts(gift: PaymentGift, state: StoredGiftState) {
+  if (gift.fractional) {
+    return Math.max(0, (gift.totalParts ?? 0) - state.partsFunded - state.partsReserved);
+  }
+
+  return Math.max(0, 1 - state.partsFunded - state.partsReserved);
+}
+
+function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity: number): ReservedQuotaSelection {
+  if (!gift.fractional) {
+    if (quantity !== 1) {
+      throw new AppError("This gift does not allow fractional contributions.", 400);
+    }
+
+    return {
+      quantity: 1,
+      quotaValuesCents: [gift.totalValueCents],
+      amountCents: gift.totalValueCents,
+      unitAmountCents: null,
+      mixedValues: false
+    };
+  }
+
+  const availableParts = getAvailableParts(gift, state);
+  if (quantity > availableParts) {
+    throw new AppError("Requested quantity exceeds the available gift parts.", 409);
+  }
+
+  if (!gift.partValueCents || !gift.totalParts) {
+    throw new AppError("Gift configuration is invalid.", 500);
+  }
+
+  if (gift.fundingModelVersion !== "EXACT_FINAL_QUOTA" || !gift.finalPartValueCents) {
+    const quotaValuesCents = Array.from({ length: quantity }, () => gift.partValueCents as number);
+    return {
+      quantity,
+      quotaValuesCents,
+      amountCents: sumQuotaValues(quotaValuesCents),
+      unitAmountCents: gift.partValueCents,
+      mixedValues: false
+    };
+  }
+
+  const regularPartsTotal = Math.max(0, gift.totalParts - 1);
+  const soldParts = state.partsFunded + state.partsReserved;
+  const regularPartsRemaining = Math.max(0, regularPartsTotal - soldParts);
+  const regularPartsToTake = Math.min(quantity, regularPartsRemaining);
+  const finalPartsToTake = quantity - regularPartsToTake;
+
+  if (finalPartsToTake > 1) {
+    throw new AppError("Requested quantity exceeds the available exact-value quota composition.", 409);
+  }
+
+  const quotaValuesCents = [
+    ...Array.from({ length: regularPartsToTake }, () => gift.partValueCents as number),
+    ...Array.from({ length: finalPartsToTake }, () => gift.finalPartValueCents as number)
+  ];
+  const uniqueValues = new Set(quotaValuesCents);
+
+  return {
+    quantity,
+    quotaValuesCents,
+    amountCents: sumQuotaValues(quotaValuesCents),
+    unitAmountCents: uniqueValues.size === 1 ? quotaValuesCents[0] ?? null : null,
+    mixedValues: uniqueValues.size > 1
+  };
+}
 
 export class PaymentRepository {
   private readonly documentClient: DynamoDBDocumentClient;
@@ -201,6 +343,115 @@ export class PaymentRepository {
     }
   }
 
+  async getPaymentReservation(paymentId: string): Promise<StoredPaymentReservation | null> {
+    const response = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: paymentReservationKeys(paymentId)
+      })
+    );
+
+    return (response.Item as StoredPaymentReservation | undefined) ?? null;
+  }
+
+  async getPaymentShell(paymentId: string): Promise<StoredPaymentShell | null> {
+    const response = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: paymentShellKeys(paymentId)
+      })
+    );
+
+    return (response.Item as StoredPaymentShell | undefined) ?? null;
+  }
+
+  async reserveGiftSelection(input: {
+    gift: PaymentGift;
+    paymentId: string;
+    quantity: number;
+    expiresAt: string;
+  }) {
+    const state = (await this.getGiftState(input.gift.id)) ?? defaultGiftState(input.gift.id);
+    const selection = buildQuotaSelection(input.gift, state, input.quantity);
+    const now = new Date().toISOString();
+
+    try {
+      await this.documentClient.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: giftStateKeys(input.gift.id),
+                ConditionExpression:
+                  "(attribute_not_exists(PK) AND :expectedVersion = :zero) OR version = :expectedVersion",
+                UpdateExpression:
+                  "SET entityType = if_not_exists(entityType, :entityType), giftId = if_not_exists(giftId, :giftId), " +
+                  "partsFunded = if_not_exists(partsFunded, :zero), confirmedAmountCents = if_not_exists(confirmedAmountCents, :zero), " +
+                  "partsReserved = if_not_exists(partsReserved, :zero) + :partsReservedIncrement, " +
+                  "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) + :amountIncrement, " +
+                  "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, " +
+                  "fullyFunded = :fullyFunded",
+                ExpressionAttributeValues: {
+                  ":amountIncrement": selection.amountCents,
+                  ":entityType": "GiftState",
+                  ":expectedVersion": state.version ?? 0,
+                  ":fullyFunded": getAvailableParts(input.gift, state) - selection.quantity <= 0,
+                  ":giftId": input.gift.id,
+                  ":partsReservedIncrement": selection.quantity,
+                  ":updatedAt": now,
+                  ":versionIncrement": 1,
+                  ":zero": 0
+                }
+              }
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: {
+                  ...paymentReservationKeys(input.paymentId),
+                  entityType: "PaymentReservation",
+                  paymentId: input.paymentId,
+                  giftId: input.gift.id,
+                  quantity: selection.quantity,
+                  quotaValuesCents: selection.quotaValuesCents,
+                  amountCents: selection.amountCents,
+                  status: "PENDING_CHECKOUT",
+                  expiresAt: input.expiresAt,
+                  createdAt: now,
+                  updatedAt: now
+                },
+                ConditionExpression: "attribute_not_exists(PK)"
+              }
+            }
+          ]
+        })
+      );
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        throw new AppError("Requested quantity exceeds the available gift parts.", 409);
+      }
+
+      throw error;
+    }
+
+    return selection;
+  }
+
+  async putPaymentShell(shell: StoredPaymentShell) {
+    await this.documentClient.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          ...paymentShellKeys(shell.paymentId),
+          entityType: "PaymentShell",
+          ...shell
+        },
+        ConditionExpression: "attribute_not_exists(PK)"
+      })
+    );
+  }
+
   async putGiftCatalogItems(gifts: PaymentGift[] = Array.from(PAYMENT_GIFTS_BY_ID.values())) {
     await Promise.all(
       gifts.map((gift) =>
@@ -231,7 +482,11 @@ export class PaymentRepository {
               entityType: "GiftState",
               giftId: gift.id,
               partsFunded: 0,
+              partsReserved: 0,
+              confirmedAmountCents: 0,
+              reservedAmountCents: 0,
               fullyFunded: false,
+              version: 0,
               updatedAt
             }
           })
@@ -299,6 +554,17 @@ export class PaymentRepository {
     return (response.Item as StoredGiftMetadata | undefined) ?? null;
   }
 
+  async getGiftState(giftId: string): Promise<StoredGiftState | null> {
+    const response = await this.documentClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: giftStateKeys(giftId)
+      })
+    );
+
+    return (response.Item as StoredGiftState | undefined) ?? null;
+  }
+
   async incrementGiftFunding(input: {
     giftId: string;
     paymentId: string;
@@ -346,6 +612,256 @@ export class PaymentRepository {
         })
       );
     }
+  }
+
+  async finalizeCreatePayment(input: {
+    idempotencyKey: string;
+    payment: StoredPayment;
+    asaasCheckoutId: string;
+  }) {
+    const now = new Date().toISOString();
+
+    await this.documentClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentShellKeys(input.payment.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET shellStatus = :shellStatus, asaasCheckoutId = :asaasCheckoutId, checkoutUrl = :checkoutUrl, checkoutExpiresAt = :checkoutExpiresAt, updatedAt = :updatedAt",
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":checkoutExpiresAt": input.payment.checkout?.expiresAt,
+                ":checkoutUrl": input.payment.checkout?.url,
+                ":shellStatus": "CHECKOUT_READY",
+                ":updatedAt": now
+              }
+            }
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: {
+                ...paymentKeys(input.payment.paymentId),
+                ...asaasCheckoutLookupIndex(input.asaasCheckoutId),
+                entityType: "Payment",
+                ...input.payment,
+                asaasCheckoutId: input.asaasCheckoutId
+              },
+              ConditionExpression: "attribute_not_exists(PK)"
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentReservationKeys(input.payment.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET #status = :status, asaasCheckoutId = :asaasCheckoutId, updatedAt = :updatedAt",
+              ExpressionAttributeNames: {
+                "#status": "status"
+              },
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":status": "ACTIVE",
+                ":updatedAt": now
+              }
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: idempotencyKeys(input.idempotencyKey),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET #status = :status, completedAt = :completedAt, paymentSnapshot = :paymentSnapshot",
+              ExpressionAttributeNames: {
+                "#status": "status"
+              },
+              ExpressionAttributeValues: {
+                ":completedAt": now,
+                ":paymentSnapshot": input.payment,
+                ":status": "COMPLETED"
+              }
+            }
+          }
+        ]
+      })
+    );
+  }
+
+  async repairFinalizedPayment(input: {
+    payment: StoredPayment;
+    asaasCheckoutId: string;
+  }) {
+    const now = new Date().toISOString();
+
+    await this.documentClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentShellKeys(input.payment.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET shellStatus = :shellStatus, asaasCheckoutId = :asaasCheckoutId, checkoutUrl = :checkoutUrl, checkoutExpiresAt = :checkoutExpiresAt, updatedAt = :updatedAt",
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":checkoutExpiresAt": input.payment.checkout?.expiresAt,
+                ":checkoutUrl": input.payment.checkout?.url,
+                ":shellStatus": "CHECKOUT_READY",
+                ":updatedAt": now
+              }
+            }
+          },
+          {
+            Put: {
+              TableName: this.tableName,
+              Item: {
+                ...paymentKeys(input.payment.paymentId),
+                ...asaasCheckoutLookupIndex(input.asaasCheckoutId),
+                entityType: "Payment",
+                ...input.payment,
+                asaasCheckoutId: input.asaasCheckoutId
+              },
+              ConditionExpression: "attribute_not_exists(PK)"
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentReservationKeys(input.payment.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET #status = :status, asaasCheckoutId = :asaasCheckoutId, updatedAt = :updatedAt",
+              ExpressionAttributeNames: {
+                "#status": "status"
+              },
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":status": "ACTIVE",
+                ":updatedAt": now
+              }
+            }
+          }
+        ]
+      })
+    );
+  }
+
+  async markCheckoutAmbiguous(input: { paymentId: string; asaasCheckoutId?: string }) {
+    const now = new Date().toISOString();
+
+    await this.documentClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentShellKeys(input.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET shellStatus = :shellStatus, updatedAt = :updatedAt" +
+                (input.asaasCheckoutId ? ", asaasCheckoutId = if_not_exists(asaasCheckoutId, :asaasCheckoutId)" : ""),
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":shellStatus": "CHECKOUT_REMOTE_AMBIGUOUS",
+                ":updatedAt": now
+              }
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentReservationKeys(input.paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET #status = :status, updatedAt = :updatedAt" +
+                (input.asaasCheckoutId ? ", asaasCheckoutId = if_not_exists(asaasCheckoutId, :asaasCheckoutId)" : ""),
+              ExpressionAttributeNames: {
+                "#status": "status"
+              },
+              ExpressionAttributeValues: {
+                ":asaasCheckoutId": input.asaasCheckoutId,
+                ":status": "RECOVERY_HOLD",
+                ":updatedAt": now
+              }
+            }
+          }
+        ]
+      })
+    );
+  }
+
+  async releaseReservationAfterCheckoutFailure(paymentId: string) {
+    const reservation = await this.getPaymentReservation(paymentId);
+    if (!reservation) {
+      return;
+    }
+
+    const gift = await this.getGift(reservation.giftId);
+    const state = gift ? (await this.getGiftState(reservation.giftId)) ?? defaultGiftState(reservation.giftId) : null;
+    const now = new Date().toISOString();
+
+    if (!gift || !state) {
+      return;
+    }
+
+    await this.documentClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: giftStateKeys(reservation.giftId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression:
+                "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsReservedDecrement, " +
+                "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDecrement, " +
+                "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
+              ExpressionAttributeValues: {
+                ":amountDecrement": reservation.amountCents,
+                ":fullyFunded": false,
+                ":partsReservedDecrement": reservation.quantity,
+                ":updatedAt": now,
+                ":versionIncrement": 1,
+                ":zero": 0
+              }
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentReservationKeys(paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression: "SET #status = :status, updatedAt = :updatedAt",
+              ExpressionAttributeNames: {
+                "#status": "status"
+              },
+              ExpressionAttributeValues: {
+                ":status": "RELEASED",
+                ":updatedAt": now
+              }
+            }
+          },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: paymentShellKeys(paymentId),
+              ConditionExpression: "attribute_exists(PK)",
+              UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
+              ExpressionAttributeValues: {
+                ":shellStatus": "CHECKOUT_RELEASED",
+                ":updatedAt": now
+              }
+            }
+          }
+        ]
+      })
+    );
   }
 
   async updatePaymentCustomerProfile(input: {
@@ -682,6 +1198,7 @@ export class PaymentRepository {
   }
 
   async applyWebhookUpdate(input: {
+    eventId?: string;
     paymentId: string;
     expectedCurrentStatus: PaymentStatus;
     nextStatus: PaymentStatus;
@@ -689,6 +1206,8 @@ export class PaymentRepository {
     receivedOn?: string;
     asaasPaymentId?: string;
     asaasCheckoutId?: string;
+    giftId?: string;
+    quantity?: number;
   }) {
     const updateParts = [
       "#status = :status",
@@ -724,9 +1243,70 @@ export class PaymentRepository {
       expressionAttributeValues[":receivedOn"] = input.receivedOn;
     }
 
-    try {
-      await this.documentClient.send(
-        new UpdateCommand({
+    const reservation = await this.getPaymentReservation(input.paymentId);
+    const shouldConsumeReservation =
+      reservation &&
+      (input.nextStatus === "CONFIRMED" || input.nextStatus === "RECEIVED") &&
+      input.expectedCurrentStatus !== "CONFIRMED" &&
+      input.expectedCurrentStatus !== "RECEIVED";
+    const shouldReleaseReservation =
+      reservation &&
+      (input.nextStatus === "EXPIRED" || input.nextStatus === "CANCELED" || input.nextStatus === "FAILED") &&
+      reservation.status !== "RELEASED" &&
+      reservation.status !== "CONSUMED";
+
+    if (!shouldConsumeReservation && !shouldReleaseReservation) {
+      try {
+        await this.documentClient.send(
+          new UpdateCommand({
+            TableName: this.tableName,
+            Key: paymentKeys(input.paymentId),
+            ConditionExpression: "attribute_not_exists(#status) OR #status = :expectedCurrentStatus",
+            UpdateExpression: `SET ${updateParts.join(", ")}`,
+            ExpressionAttributeNames: {
+              "#status": "status"
+            },
+            ExpressionAttributeValues: expressionAttributeValues
+          })
+        );
+
+        if (input.eventId) {
+          await this.markWebhookProcessed(input.eventId, "updated");
+        }
+
+        return true;
+      } catch (error) {
+        if (error instanceof ConditionalCheckFailedException) {
+          return false;
+        }
+
+        throw error;
+      }
+    }
+
+    const giftId = reservation?.giftId ?? input.giftId;
+    const quantity = reservation?.quantity ?? input.quantity;
+    if (!giftId || !quantity || !reservation) {
+      throw new AppError("Webhook update is missing reservation context.", 500);
+    }
+
+    const gift = await this.getGift(giftId);
+    const state = (await this.getGiftState(giftId)) ?? defaultGiftState(giftId);
+    if (!gift) {
+      throw new AppError("Unknown gift id for funding update.", 400);
+    }
+
+    const now = new Date().toISOString();
+    const nextConfirmedAmount = shouldConsumeReservation
+      ? state.confirmedAmountCents + reservation.amountCents
+      : state.confirmedAmountCents;
+    const nextFullyFunded =
+      nextConfirmedAmount >= gift.totalValueCents ||
+      state.partsFunded + (shouldConsumeReservation ? quantity : 0) >= (gift.fractional ? (gift.totalParts ?? 0) : 1);
+
+    const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
+      {
+        Update: {
           TableName: this.tableName,
           Key: paymentKeys(input.paymentId),
           ConditionExpression: "attribute_not_exists(#status) OR #status = :expectedCurrentStatus",
@@ -734,9 +1314,138 @@ export class PaymentRepository {
           ExpressionAttributeNames: {
             "#status": "status"
           },
-          ExpressionAttributeValues: expressionAttributeValues
-        })
+          ExpressionAttributeValues: {
+            ...expressionAttributeValues,
+            ":expectedCurrentStatus": input.expectedCurrentStatus,
+            ":updatedAt": now
+          }
+        }
+      }
+    ];
+
+    if (shouldConsumeReservation) {
+      transactItems.push(
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: paymentReservationKeys(input.paymentId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#status": "status"
+            },
+            ExpressionAttributeValues: {
+              ":reservationStatus": "CONSUMED",
+              ":updatedAt": now
+            }
+          }
+        },
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: giftStateKeys(giftId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression:
+              "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsDelta, " +
+              "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDelta, " +
+              "partsFunded = if_not_exists(partsFunded, :zero) + :partsDelta, " +
+              "confirmedAmountCents = if_not_exists(confirmedAmountCents, :zero) + :amountDelta, " +
+              "updatedAt = :updatedAt, lastConfirmedPaymentId = :paymentId, " +
+              "version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
+            ExpressionAttributeValues: {
+              ":amountDelta": reservation.amountCents,
+              ":fullyFunded": nextFullyFunded,
+              ":partsDelta": quantity,
+              ":paymentId": input.paymentId,
+              ":updatedAt": now,
+              ":versionIncrement": 1,
+              ":zero": 0
+            }
+          }
+        },
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: paymentShellKeys(input.paymentId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
+            ExpressionAttributeValues: {
+              ":shellStatus": "CHECKOUT_CONSUMED",
+              ":updatedAt": now
+            }
+          }
+        }
       );
+    }
+
+    if (shouldReleaseReservation) {
+      transactItems.push(
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: paymentReservationKeys(input.paymentId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#status": "status"
+            },
+            ExpressionAttributeValues: {
+              ":reservationStatus": "RELEASED",
+              ":updatedAt": now
+            }
+          }
+        },
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: giftStateKeys(giftId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression:
+              "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsDelta, " +
+              "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDelta, " +
+              "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
+            ExpressionAttributeValues: {
+              ":amountDelta": reservation.amountCents,
+              ":fullyFunded": state.confirmedAmountCents >= gift.totalValueCents,
+              ":partsDelta": quantity,
+              ":updatedAt": now,
+              ":versionIncrement": 1,
+              ":zero": 0
+            }
+          }
+        },
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: paymentShellKeys(input.paymentId),
+            ConditionExpression: "attribute_exists(PK)",
+            UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
+            ExpressionAttributeValues: {
+              ":shellStatus": "CHECKOUT_RELEASED",
+              ":updatedAt": now
+            }
+          }
+        }
+      );
+    }
+
+    if (input.eventId) {
+      transactItems.push({
+        Update: {
+          TableName: this.tableName,
+          Key: webhookKeys("asaas", input.eventId),
+          ConditionExpression: "attribute_exists(PK)",
+          UpdateExpression: "SET processedAt = :processedAt, processingResult = :processingResult",
+          ExpressionAttributeValues: {
+            ":processedAt": now,
+            ":processingResult": "updated"
+          }
+        }
+      });
+    }
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
       return true;
     } catch (error) {
