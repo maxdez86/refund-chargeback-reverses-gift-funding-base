@@ -1,4 +1,7 @@
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import {
+  ConditionalCheckFailedException,
+  TransactionCanceledException
+} from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
   GetCommand,
@@ -804,6 +807,10 @@ export class PaymentRepository {
       return;
     }
 
+    if (reservation.status === "RELEASED" || reservation.status === "CONSUMED") {
+      return;
+    }
+
     const gift = await this.getGift(reservation.giftId);
     const state = gift ? (await this.getGiftState(reservation.giftId)) ?? defaultGiftState(reservation.giftId) : null;
     const now = new Date().toISOString();
@@ -812,9 +819,10 @@ export class PaymentRepository {
       return;
     }
 
-    await this.documentClient.send(
-      new TransactWriteCommand({
-        TransactItems: [
+    try {
+      await this.documentClient.send(
+        new TransactWriteCommand({
+          TransactItems: [
           {
             Update: {
               TableName: this.tableName,
@@ -838,12 +846,18 @@ export class PaymentRepository {
             Update: {
               TableName: this.tableName,
               Key: paymentReservationKeys(paymentId),
-              ConditionExpression: "attribute_exists(PK)",
+              // Guard against a concurrent release/consume double-decrementing
+              // the gift counters: the whole transaction cancels if another
+              // writer already moved the reservation out of its held state.
+              ConditionExpression:
+                "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
               UpdateExpression: "SET #status = :status, updatedAt = :updatedAt",
               ExpressionAttributeNames: {
                 "#status": "status"
               },
               ExpressionAttributeValues: {
+                ":consumed": "CONSUMED",
+                ":released": "RELEASED",
                 ":status": "RELEASED",
                 ":updatedAt": now
               }
@@ -861,9 +875,16 @@ export class PaymentRepository {
               }
             }
           }
-        ]
-      })
-    );
+          ]
+        })
+      );
+    } catch (error) {
+      if (error instanceof TransactionCanceledException) {
+        return;
+      }
+
+      throw error;
+    }
   }
 
   async updatePaymentCustomerProfile(input: {
@@ -1326,6 +1347,11 @@ export class PaymentRepository {
     ];
 
     if (shouldConsumeReservation) {
+      // A payment can confirm after its reservation was already released (late
+      // webhook after an expiry release). The released parts were returned to
+      // the pool, so only the funded counters may move in that case.
+      const reservationStillHeld = reservation.status !== "RELEASED";
+
       transactItems.push(
         {
           Update: {
@@ -1348,8 +1374,11 @@ export class PaymentRepository {
             Key: giftStateKeys(giftId),
             ConditionExpression: "attribute_exists(PK)",
             UpdateExpression:
-              "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsDelta, " +
-              "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDelta, " +
+              "SET " +
+              (reservationStillHeld
+                ? "partsReserved = if_not_exists(partsReserved, :zero) - :partsDelta, " +
+                  "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDelta, "
+                : "") +
               "partsFunded = if_not_exists(partsFunded, :zero) + :partsDelta, " +
               "confirmedAmountCents = if_not_exists(confirmedAmountCents, :zero) + :amountDelta, " +
               "updatedAt = :updatedAt, lastConfirmedPaymentId = :paymentId, " +
