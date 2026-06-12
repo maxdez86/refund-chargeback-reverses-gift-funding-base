@@ -65,6 +65,9 @@ type WebhookPaymentResolutionDiagnostics = {
   recoveredAsaasCheckoutId?: string;
   recoveredExternalReference?: string;
   resolutionSource: WebhookPaymentResolutionSource;
+  // True when every Asaas lookup we attempted answered 404 — the referenced
+  // objects don't exist in this Asaas environment, so no retry can resolve them.
+  unresolvableRemotely: boolean;
 };
 
 type WebhookPaymentResolution = {
@@ -203,6 +206,24 @@ export class WebhookProcessor {
           recoveredAsaasCheckoutId: resolution.diagnostics.recoveredAsaasCheckoutId
         })
       );
+
+      // Asaas itself says the referenced objects don't exist (purged sandbox
+      // data or ids from another environment). Retrying can never succeed, so
+      // acknowledge the event instead of poisoning the queue into the DLQ.
+      if (resolution.diagnostics.unresolvableRemotely) {
+        console.warn(
+          JSON.stringify({
+            metric: "WEBHOOK_PAYMENT_UNRESOLVABLE",
+            eventId,
+            asaasPaymentId,
+            asaasCheckoutId,
+            externalReference
+          })
+        );
+        await this.repository.markWebhookProcessed(eventId, "ignored_unresolvable");
+        return { duplicate: false, updated: false };
+      }
+
       throw new AppError("Payment not found for webhook event.", 404);
     }
 
@@ -384,7 +405,8 @@ export class WebhookProcessor {
         diagnostics: {
           asaasFallbackAttempted: false,
           localLookupMatches: initialLookup.matches,
-          resolutionSource: initialLookup.source
+          resolutionSource: initialLookup.source,
+          unresolvableRemotely: false
         }
       };
     }
@@ -414,7 +436,8 @@ export class WebhookProcessor {
           diagnostics: {
             asaasFallbackAttempted: false,
             localLookupMatches: initialLookup.matches,
-            resolutionSource: "external_reference"
+            resolutionSource: "external_reference",
+            unresolvableRemotely: false
           }
         };
       }
@@ -426,14 +449,23 @@ export class WebhookProcessor {
         diagnostics: {
           asaasFallbackAttempted: false,
           localLookupMatches: initialLookup.matches,
-          resolutionSource: "unresolved"
+          resolutionSource: "unresolved",
+          unresolvableRemotely: false
         }
       };
     }
 
-    const asaasPayment = reference.asaasPaymentId
-      ? await this.asaasClient.getPaymentById(reference.asaasPaymentId)
-      : null;
+    let remoteLookupsAttempted = 0;
+    let remoteLookupsMissing = 0;
+
+    let asaasPayment: Awaited<ReturnType<AsaasClient["getPaymentById"]>> = null;
+    if (reference.asaasPaymentId) {
+      remoteLookupsAttempted += 1;
+      asaasPayment = await this.asaasClient.getPaymentById(reference.asaasPaymentId);
+      if (!asaasPayment) {
+        remoteLookupsMissing += 1;
+      }
+    }
     let recoveredExternalReference = reference.externalReference ?? asaasPayment?.externalReference;
     const recoveredAsaasCheckoutId = reference.asaasCheckoutId ?? asaasPayment?.checkoutSession;
 
@@ -451,12 +483,17 @@ export class WebhookProcessor {
       // externalReference, so both the webhook payload and GET /payments can
       // come back without our paymentId. The checkout session still carries it
       // (externalReference + callback URLs), so fetch it to recover the local key.
+      remoteLookupsAttempted += 1;
       const asaasCheckout = await this.asaasClient.getCheckoutById(recoveredAsaasCheckoutId);
-      recoveredExternalReference =
-        asaasCheckout.externalReference ??
-        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.successUrl) ??
-        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.cancelUrl) ??
-        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.expiredUrl);
+      if (!asaasCheckout) {
+        remoteLookupsMissing += 1;
+      }
+      recoveredExternalReference = asaasCheckout
+        ? asaasCheckout.externalReference ??
+          parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.successUrl) ??
+          parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.cancelUrl) ??
+          parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.expiredUrl)
+        : undefined;
 
       if (recoveredExternalReference) {
         fallbackLookup = await this.lookupPayment(
@@ -497,7 +534,8 @@ export class WebhookProcessor {
             localLookupMatches: fallbackLookup.matches,
             recoveredAsaasCheckoutId,
             recoveredExternalReference,
-            resolutionSource: "asaas_fallback_external_reference"
+            resolutionSource: "asaas_fallback_external_reference",
+            unresolvableRemotely: false
           }
         };
       }
@@ -510,7 +548,11 @@ export class WebhookProcessor {
         localLookupMatches: fallbackLookup.matches,
         recoveredAsaasCheckoutId,
         recoveredExternalReference,
-        resolutionSource: fallbackLookup.source
+        resolutionSource: fallbackLookup.source,
+        unresolvableRemotely:
+          !fallbackLookup.payment &&
+          remoteLookupsAttempted > 0 &&
+          remoteLookupsMissing === remoteLookupsAttempted
       }
     };
   }
@@ -599,7 +641,7 @@ export class WebhookProcessor {
 
     if (!asaasCustomerId && input.asaasPaymentId) {
       const asaasPayment = await this.asaasClient.getPaymentById(input.asaasPaymentId);
-      asaasCustomerId = asaasPayment.customer;
+      asaasCustomerId = asaasPayment?.customer;
     }
 
     if (!asaasCustomerId) {
@@ -706,7 +748,8 @@ function annotateResolutionTrace(
     webhook_lookup_match_external_reference: input.localLookupMatches.externalReference,
     webhook_recovered_asaas_checkout_id: Boolean(input.recoveredAsaasCheckoutId),
     webhook_recovered_external_reference: Boolean(input.recoveredExternalReference),
-    webhook_resolution_source: input.resolutionSource
+    webhook_resolution_source: input.resolutionSource,
+    webhook_unresolvable_remotely: input.unresolvableRemotely
   });
 }
 

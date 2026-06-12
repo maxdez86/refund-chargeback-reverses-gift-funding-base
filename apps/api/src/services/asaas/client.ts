@@ -82,6 +82,19 @@ type CreateCheckoutInput = {
   minutesToExpire: number;
 };
 
+// Callers surface this as a 502 (Asaas is our upstream), but keep the original
+// Asaas response status so "this id does not exist" (404) can be told apart
+// from a real outage.
+export class AsaasApiError extends AppError {
+  constructor(
+    message: string,
+    readonly upstreamStatus: number
+  ) {
+    super(message, 502);
+    this.name = "AsaasApiError";
+  }
+}
+
 function extractAsaasErrorMessage(parsed: Record<string, unknown>, responseStatus: number) {
   const errors = Array.isArray(parsed.errors) ? (parsed.errors as AsaasErrorItem[]) : [];
   const descriptions = errors
@@ -147,7 +160,7 @@ export class AsaasClient {
   }
 
   async getPaymentById(paymentId: string) {
-    return this.request<AsaasPayment>({
+    return this.requestNullableOn404<AsaasPayment>({
       path: `/payments/${paymentId}`
     });
   }
@@ -159,7 +172,7 @@ export class AsaasClient {
   }
 
   async getCheckoutById(checkoutId: string) {
-    return this.request<AsaasCheckoutSession>({
+    return this.requestNullableOn404<AsaasCheckoutSession>({
       path: `/checkouts/${checkoutId}`
     });
   }
@@ -179,6 +192,21 @@ export class AsaasClient {
     }
 
     return `${this.checkoutBaseUrl.replace(/\/+$/, "")}/${checkout.id}`;
+  }
+
+  // Asaas answers 404 for ids that don't exist in this environment (purged
+  // sandbox data, ids from another environment). For lookups where absence is
+  // a legitimate answer, surface null instead of an error.
+  private async requestNullableOn404<T>(options: RequestOptions): Promise<T | null> {
+    try {
+      return await this.request<T>(options);
+    } catch (error) {
+      if (error instanceof AsaasApiError && error.upstreamStatus === 404) {
+        return null;
+      }
+
+      throw error;
+    }
   }
 
   private async request<T>({ method = "GET", path, body, query }: RequestOptions): Promise<T> {
@@ -215,7 +243,7 @@ export class AsaasClient {
 
       if (!response.ok) {
         const message = extractAsaasErrorMessage(parsed, response.status);
-        throw new AppError(message, 502);
+        throw new AsaasApiError(message, response.status);
       }
 
       return parsed as T;
