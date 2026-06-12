@@ -19,6 +19,7 @@ export type ResolvedGiftSelection = {
   amountCents: number;
   quantity: number;
   unitAmountCents: number | null;
+  quotaValuesCents?: number[];
 };
 
 type AsaasWebhookPayload = {
@@ -45,7 +46,8 @@ export function resolveGiftSelection(gift: PaymentGift, quantity: number | undef
     return {
       amountCents: gift.totalValueCents,
       quantity: 1,
-      unitAmountCents: null
+      unitAmountCents: null,
+      quotaValuesCents: undefined
     };
   }
 
@@ -60,9 +62,10 @@ export function resolveGiftSelection(gift: PaymentGift, quantity: number | undef
   }
 
   return {
-    amountCents: normalizedQuantity * gift.partValueCents,
     quantity: normalizedQuantity,
-    unitAmountCents: gift.partValueCents
+    amountCents: normalizedQuantity * gift.partValueCents,
+    unitAmountCents: gift.partValueCents,
+    quotaValuesCents: undefined
   };
 }
 

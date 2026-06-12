@@ -36,7 +36,11 @@ async function main() {
           entityType: "GiftState",
           giftId: gift.id,
           partsFunded: 0,
+          partsReserved: 0,
+          confirmedAmountCents: 0,
+          reservedAmountCents: 0,
           fullyFunded: false,
+          version: 0,
           updatedAt
         }
       })

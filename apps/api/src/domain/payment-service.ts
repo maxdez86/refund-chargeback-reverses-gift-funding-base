@@ -18,8 +18,20 @@ function toBrlDecimal(valueInCents: number) {
   return valueInCents / 100;
 }
 
-function resolveCheckoutItemValue(giftSelection: ResolvedGiftSelection) {
-  return toBrlDecimal(giftSelection.unitAmountCents ?? giftSelection.amountCents);
+function groupQuotaValues(quotaValuesCents: number[]) {
+  const groups: Array<{ quantity: number; valueCents: number }> = [];
+
+  for (const valueCents of quotaValuesCents) {
+    const last = groups[groups.length - 1];
+    if (last && last.valueCents === valueCents) {
+      last.quantity += 1;
+      continue;
+    }
+
+    groups.push({ quantity: 1, valueCents });
+  }
+
+  return groups;
 }
 
 const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
@@ -91,6 +103,8 @@ export class PaymentService {
     const timings: CreatePaymentTimings = {};
     const totalStartedAt = Date.now();
     let paymentId: string | undefined;
+    let reservationReleased = false;
+    let checkoutMayExist = false;
 
     try {
       const normalizeStartedAt = Date.now();
@@ -146,6 +160,25 @@ export class PaymentService {
       paymentId = reservation.reservation?.paymentId ?? reservedPaymentId;
       requestContext.paymentId = paymentId;
       const checkoutExpirationMinutes = getCheckoutExpirationMinutes();
+      const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
+      const reservedGiftSelection = await this.repository.reserveGiftSelection({
+        gift,
+        paymentId,
+        quantity: giftSelection.quantity,
+        expiresAt: checkoutExpiresAt
+      });
+      const now = new Date().toISOString();
+      await this.repository.putPaymentShell({
+        paymentId,
+        giftId: gift.id,
+        amountCents: reservedGiftSelection.amountCents,
+        quotaValuesCents: reservedGiftSelection.quotaValuesCents,
+        paymentMethod: parsed.paymentMethod,
+        externalReference: paymentId,
+        shellStatus: "CHECKOUT_CREATING",
+        createdAt: now,
+        updatedAt: now
+      });
       const billingTypes: ("PIX" | "CREDIT_CARD")[] =
         parsed.paymentMethod === "HOSTED"
           ? ["PIX", "CREDIT_CARD"]
@@ -155,28 +188,30 @@ export class PaymentService {
         billingTypes,
         checkoutExpirationMinutes,
         giftName: gift.name,
-        giftSelection,
+        giftSelection: reservedGiftSelection,
         paymentId
       });
       timings.asaasCheckoutMs = Date.now() - checkoutStartedAt;
+      checkoutMayExist = true;
       const checkoutUrl = this.asaasClient.buildCheckoutUrl(asaasCheckout);
-      const checkoutExpiresAt = buildCheckoutExpiresAt(checkoutExpirationMinutes);
-
-      const now = new Date().toISOString();
       const payment: PaymentSummary = {
         paymentId,
         paymentMethod: parsed.paymentMethod,
         status: initialPaymentStatus(),
-        amountCents: giftSelection.amountCents,
+        amountCents: reservedGiftSelection.amountCents,
         currency: "BRL",
         gift: {
           id: gift.id,
           name: gift.name,
           image: gift.image,
           fractional: gift.fractional,
-          quantity: giftSelection.quantity,
-          unitAmountCents: giftSelection.unitAmountCents,
-          amountCents: giftSelection.amountCents
+          quantity: reservedGiftSelection.quantity,
+          unitAmountCents: reservedGiftSelection.unitAmountCents,
+          amountCents: reservedGiftSelection.amountCents,
+          quotaValuesCents:
+            reservedGiftSelection.unitAmountCents === null
+              ? reservedGiftSelection.quotaValuesCents
+              : undefined
         },
         checkout: {
           sessionId: asaasCheckout.id,
@@ -188,16 +223,26 @@ export class PaymentService {
         customerProfileStatus: "PENDING"
       };
 
-      const persistStartedAt = Date.now();
-      await this.repository.putPayment({
-        ...payment,
-        asaasCheckoutId: asaasCheckout.id
-      });
-      timings.persistPaymentMs = Date.now() - persistStartedAt;
-
-      const idempotencyCompleteStartedAt = Date.now();
-      await this.repository.completeCreatePayment(idempotencyKey, payment);
-      timings.idempotencyCompleteMs = Date.now() - idempotencyCompleteStartedAt;
+      try {
+        const persistStartedAt = Date.now();
+        await this.repository.finalizeCreatePayment({
+          idempotencyKey,
+          payment: {
+            ...payment,
+            asaasCheckoutId: asaasCheckout.id
+          },
+          asaasCheckoutId: asaasCheckout.id
+        });
+        timings.persistPaymentMs = Date.now() - persistStartedAt;
+        timings.idempotencyCompleteMs = timings.persistPaymentMs;
+      } catch (finalizeError) {
+        await this.repository.markCheckoutAmbiguous({
+          paymentId,
+          asaasCheckoutId: asaasCheckout.id
+        });
+        reservationReleased = true;
+        throw finalizeError;
+      }
 
       timings.totalDurationMs = Date.now() - totalStartedAt;
       this.logCreatePaymentTiming("success", requestContext, timings);
@@ -207,6 +252,9 @@ export class PaymentService {
         payment
       });
     } catch (error) {
+      if (paymentId && !reservationReleased && !checkoutMayExist) {
+        await this.repository.releaseReservationAfterCheckoutFailure(paymentId).catch(() => undefined);
+      }
       requestContext.paymentId = requestContext.paymentId ?? paymentId;
       timings.totalDurationMs = Date.now() - totalStartedAt;
       this.logCreatePaymentTiming("failure", requestContext, timings, error);
@@ -242,14 +290,12 @@ export class PaymentService {
         ? ["DETACHED", "INSTALLMENT"]
         : ["DETACHED"],
       externalReference: input.paymentId,
-      items: [
-        {
-          name: input.giftName,
-          description: `Brimax payment ${input.paymentId}`,
-          quantity: input.giftSelection.quantity,
-          value: resolveCheckoutItemValue(input.giftSelection)
-        }
-      ],
+      items: groupQuotaValues(input.giftSelection.quotaValuesCents ?? [input.giftSelection.amountCents]).map((group) => ({
+        name: input.giftName,
+        description: `Brimax payment ${input.paymentId}`,
+        quantity: group.quantity,
+        value: toBrlDecimal(group.valueCents)
+      })),
       minutesToExpire: input.checkoutExpirationMinutes
     };
 
@@ -272,46 +318,14 @@ export class PaymentService {
     if (paymentSnapshot) {
       return PaymentSummarySchema.parse(paymentSnapshot);
     }
+    const shell = await this.repository.getPaymentShell(paymentId);
+    const reservation = await this.repository.getPaymentReservation(paymentId);
 
-    const existingAsaasPayments = await this.asaasClient.listPaymentsByExternalReference(paymentId);
-    const existingAsaas = existingAsaasPayments[0];
-
-    if (!existingAsaas) {
+    if (shell || reservation) {
       return null;
     }
 
-    const amountCents = Math.round(existingAsaas.value * 100);
-
-    if (amountCents <= 0) {
-      return null;
-    }
-
-    const now = new Date().toISOString();
-    const recovered: PaymentSummary = {
-      paymentId,
-      paymentMethod: existingAsaas.billingType,
-      status: initialPaymentStatus(),
-      amountCents,
-      currency: "BRL",
-      gift: {
-        id: "recovered",
-        name: existingAsaas.description ?? "Recovered payment",
-        fractional: false,
-        quantity: 1,
-        unitAmountCents: null,
-        amountCents
-      },
-      checkout: existingAsaas.checkoutSession
-        ? {
-            sessionId: existingAsaas.checkoutSession,
-            url: this.asaasClient.buildCheckoutUrl({ id: existingAsaas.checkoutSession })
-          }
-        : undefined,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    return PaymentSummarySchema.parse(recovered);
+    return null;
   }
 
   private extractRequestContext(

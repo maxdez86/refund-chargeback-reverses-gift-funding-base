@@ -6,6 +6,8 @@ export type PaymentGift = {
   fractional: boolean;
   partValueCents: number | null;
   totalParts: number | null;
+  finalPartValueCents: number | null;
+  fundingModelVersion: "LEGACY_FIXED_50" | "EXACT_FINAL_QUOTA";
 };
 
 function single(id: string, name: string, priceInBrl: number, image: string): PaymentGift {
@@ -16,21 +18,37 @@ function single(id: string, name: string, priceInBrl: number, image: string): Pa
     totalValueCents: priceInBrl * 100,
     fractional: false,
     partValueCents: null,
-    totalParts: null
+    totalParts: null,
+    finalPartValueCents: null,
+    fundingModelVersion: "LEGACY_FIXED_50"
   };
 }
 
-function fractional(id: string, name: string, priceInBrl: number, image: string): PaymentGift {
+function fractional(
+  id: string,
+  name: string,
+  priceInBrl: number,
+  image: string,
+  fundingModelVersion: "LEGACY_FIXED_50" | "EXACT_FINAL_QUOTA" = "LEGACY_FIXED_50"
+): PaymentGift {
   const partValueCents = 5_000;
+  const totalValueCents = priceInBrl * 100;
+  const totalParts = Math.ceil(totalValueCents / partValueCents);
+  const finalPartValueCents =
+    fundingModelVersion === "EXACT_FINAL_QUOTA" && totalParts > 0
+      ? totalValueCents - partValueCents * (totalParts - 1)
+      : null;
 
   return {
     id,
     name,
     image,
-    totalValueCents: priceInBrl * 100,
+    totalValueCents,
     fractional: true,
     partValueCents,
-    totalParts: Math.ceil((priceInBrl * 100) / partValueCents)
+    totalParts,
+    finalPartValueCents,
+    fundingModelVersion
   };
 }
 
@@ -47,7 +65,7 @@ export const PAYMENT_GIFTS: PaymentGift[] = [
   fractional("g-fogao", "Fogão", 1000, "fogao"),
   fractional("g-guarda-roupa", "Guarda-roupa", 3000, "guarda-roupa"),
   single("g-ferramentas", "Jogo de Ferramentas", 99, "jogo-ferramentas"),
-  fractional("g-pratos", "Jogo de Pratos 12 Peças", 331, "jogo-pratos"),
+  fractional("g-pratos", "Jogo de Pratos 12 Peças", 331, "jogo-pratos", "EXACT_FINAL_QUOTA"),
   single("g-talheres", "Jogo de Talheres", 178, "jogo-talheres"),
   single("g-xicaras", "Jogo de Xícaras", 188, "jogo-xicaras"),
   single("g-toalhas-rosto", "Kit 4 Toalhas de Rosto", 65, "kit-toalhas-rosto"),

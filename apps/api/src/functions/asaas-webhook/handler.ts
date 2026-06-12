@@ -18,9 +18,33 @@ type AsaasWebhookPayload = {
     checkoutSession?: string;
     externalReference?: string;
   };
+  checkout?: {
+    id?: string;
+    callback?: {
+      successUrl?: string;
+      cancelUrl?: string;
+      expiredUrl?: string;
+    };
+    externalReference?: string;
+  };
   id?: string;
   externalReference?: string;
 };
+
+function parsePaymentIdFromCallbackUrl(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+    const params = new URLSearchParams(hash);
+    return params.get("paymentId") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
   if (event.requestContext.http.method === "OPTIONS") {
@@ -54,8 +78,14 @@ async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
     eventType: String(payload.event ?? "UNKNOWN"),
     payload: rawBody,
     asaasPaymentId: payload.payment?.id ?? payload.id,
-    asaasCheckoutId: payload.payment?.checkoutSession,
-    externalReference: payload.payment?.externalReference ?? payload.externalReference
+    asaasCheckoutId: payload.payment?.checkoutSession ?? payload.checkout?.id,
+    externalReference:
+      payload.payment?.externalReference ??
+      payload.checkout?.externalReference ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.successUrl) ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.cancelUrl) ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.expiredUrl) ??
+      payload.externalReference
   });
 
   annotateTrace({

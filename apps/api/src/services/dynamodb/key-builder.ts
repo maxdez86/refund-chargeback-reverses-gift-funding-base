@@ -47,6 +47,20 @@ export function paymentKeys(paymentId: string) {
   };
 }
 
+export function paymentReservationKeys(paymentId: string) {
+  return {
+    PK: `PAYMENT#${paymentId}`,
+    SK: "RESERVATION"
+  };
+}
+
+export function paymentShellKeys(paymentId: string) {
+  return {
+    PK: `PAYMENT#${paymentId}`,
+    SK: "SHELL"
+  };
+}
+
 export function giftStateKeys(giftId: string) {
   return {
     PK: `GIFT#${giftId}`,

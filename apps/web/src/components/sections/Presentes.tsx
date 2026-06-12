@@ -58,7 +58,14 @@ type Gift = {
   fractional: boolean;
   partValue: number | null;
   totalParts: number | null;
+  finalPartValue: number | null;
+  fundingModelVersion: "LEGACY_FIXED_50" | "EXACT_FINAL_QUOTA";
   partsFunded: number | null;
+  partsReserved: number | null;
+  confirmedAmount: number;
+  reservedAmount: number;
+  availableAmount: number;
+  availableParts: number;
   fullyFunded: boolean;
 };
 
@@ -71,7 +78,14 @@ function toGiftView(gift: GiftResource): Gift {
     fractional: gift.fractional,
     partValue: gift.partValueCents ? gift.partValueCents / 100 : null,
     totalParts: gift.totalParts,
+    finalPartValue: gift.finalPartValueCents ? gift.finalPartValueCents / 100 : null,
+    fundingModelVersion: gift.fundingModelVersion,
     partsFunded: gift.partsFunded,
+    partsReserved: gift.partsReserved,
+    confirmedAmount: gift.confirmedAmountCents / 100,
+    reservedAmount: gift.reservedAmountCents / 100,
+    availableAmount: gift.availableAmountCents / 100,
+    availableParts: gift.availableParts,
     fullyFunded: gift.fullyFunded
   };
 }
@@ -134,6 +148,10 @@ function isPendingPaymentStatus(status: PaymentStatus) {
 }
 
 function isFullyFunded(g: Gift): boolean {
+  if (g.fundingModelVersion === "EXACT_FINAL_QUOTA") {
+    return g.availableAmount <= 0 || g.availableParts <= 0;
+  }
+
   if (g.fractional && g.totalParts != null && g.partsFunded != null) {
     return g.partsFunded >= g.totalParts;
   }
@@ -141,8 +159,53 @@ function isFullyFunded(g: Gift): boolean {
 }
 
 function fundedPercent(g: Gift): number {
+  if (g.fundingModelVersion === "EXACT_FINAL_QUOTA") {
+    if (g.totalValue <= 0) return 0;
+    return Math.min(100, Math.round((g.confirmedAmount / g.totalValue) * 100));
+  }
+
   if (!g.fractional || !g.totalParts || g.partsFunded == null) return 0;
   return Math.min(100, Math.round((g.partsFunded / g.totalParts) * 100));
+}
+
+function getRemainingParts(gift: Gift) {
+  if (gift.fundingModelVersion === "EXACT_FINAL_QUOTA") {
+    return gift.availableParts;
+  }
+
+  return gift.fractional && gift.totalParts != null && gift.partsFunded != null
+    ? gift.totalParts - gift.partsFunded - (gift.partsReserved ?? 0)
+    : 0;
+}
+
+function getFundedAmount(gift: Gift) {
+  if (gift.fundingModelVersion === "EXACT_FINAL_QUOTA") {
+    return gift.confirmedAmount;
+  }
+
+  return gift.fractional && gift.partValue != null && gift.partsFunded != null
+    ? gift.partValue * gift.partsFunded
+    : 0;
+}
+
+function getContributionAmount(gift: Gift, quantity: number) {
+  if (!gift.fractional) {
+    return gift.totalValue;
+  }
+
+  if (gift.fundingModelVersion !== "EXACT_FINAL_QUOTA") {
+    return quantity * (gift.partValue ?? 0);
+  }
+
+  const partValue = gift.partValue ?? 0;
+  const finalPartValue = gift.finalPartValue ?? partValue;
+  const regularPartsTotal = Math.max(0, (gift.totalParts ?? 0) - 1);
+  const soldParts = Math.max(0, (gift.totalParts ?? 0) - gift.availableParts);
+  const regularPartsRemaining = Math.max(0, regularPartsTotal - soldParts);
+  const regularPartsToTake = Math.min(quantity, regularPartsRemaining);
+  const finalPartsToTake = Math.max(0, quantity - regularPartsToTake);
+
+  return regularPartsToTake * partValue + finalPartsToTake * finalPartValue;
 }
 
 function sortGifts(gifts: Gift[]): Gift[] {
@@ -166,14 +229,8 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
   const fullFunded = isFullyFunded(gift);
   const percent = gift.fractional ? fundedPercent(gift) : fullFunded ? 100 : 0;
   const imagePresentation = GIFT_CARD_IMAGE_PRESENTATION[gift.id];
-  const remainingParts =
-    gift.fractional && gift.totalParts != null && gift.partsFunded != null
-      ? gift.totalParts - gift.partsFunded
-      : 0;
-  const fundedAmount =
-    gift.fractional && gift.partValue != null && gift.partsFunded != null
-      ? gift.partValue * gift.partsFunded
-      : 0;
+  const remainingParts = getRemainingParts(gift);
+  const fundedAmount = getFundedAmount(gift);
 
   return (
     <article
@@ -401,12 +458,9 @@ function GiftDialog({
 
   if (!gift) return null;
 
-  const remainingParts =
-    gift.fractional && gift.totalParts != null && gift.partsFunded != null
-      ? gift.totalParts - gift.partsFunded
-      : 0;
+  const remainingParts = getRemainingParts(gift);
   const partValue = gift.partValue ?? 0;
-  const contribution = gift.fractional ? quantity * partValue : gift.totalValue;
+  const contribution = getContributionAmount(gift, quantity);
 
   const dec = () => setQuantity((q) => Math.max(1, q - 1));
   const inc = () =>

@@ -17,6 +17,15 @@ import {
 
 type AsaasWebhookPayload = {
   event?: string;
+  checkout?: {
+    id?: string;
+    externalReference?: string;
+    callback?: {
+      successUrl?: string;
+      cancelUrl?: string;
+      expiredUrl?: string;
+    };
+  };
   payment?: {
     id?: string;
     customer?: string;
@@ -104,6 +113,21 @@ function getGiftImageUrl(imageSlug: string | undefined) {
   return `${getSiteOrigin()}/media/presentes/${encodeURIComponent(imageSlug)}/480.jpeg`;
 }
 
+function parsePaymentIdFromCallbackUrl(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+    const params = new URLSearchParams(hash);
+    return params.get("paymentId") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class WebhookProcessor {
   constructor(
     private readonly repository = new PaymentRepository(),
@@ -123,10 +147,27 @@ export class WebhookProcessor {
     }
 
     const payload = JSON.parse(storedEvent.payload) as AsaasWebhookPayload;
+    const eventType = String(payload.event ?? storedEvent.eventType ?? "UNKNOWN").toUpperCase();
     const asaasPaymentId = payload.payment?.id ?? storedEvent.asaasPaymentId;
-    const asaasCheckoutId = payload.payment?.checkoutSession ?? storedEvent.asaasCheckoutId;
-    const externalReference = payload.payment?.externalReference ?? storedEvent.externalReference;
+    const asaasCheckoutId = payload.payment?.checkoutSession ?? payload.checkout?.id ?? storedEvent.asaasCheckoutId;
+    const externalReference =
+      payload.payment?.externalReference ??
+      payload.checkout?.externalReference ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.successUrl) ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.cancelUrl) ??
+      parsePaymentIdFromCallbackUrl(payload.checkout?.callback?.expiredUrl) ??
+      storedEvent.externalReference;
     const asaasCustomerIdFromPayload = payload.payment?.customer;
+
+    if (eventType.startsWith("CHECKOUT_")) {
+      const result = await this.processCheckoutEvent({
+        asaasCheckoutId,
+        eventId,
+        eventType,
+        externalReference
+      });
+      return result;
+    }
 
     if (!asaasPaymentId && !asaasCheckoutId && !externalReference) {
       throw new AppError("Webhook payload does not contain a payment reference.", 400);
@@ -172,6 +213,7 @@ export class WebhookProcessor {
     }
 
     const applied = await this.repository.applyWebhookUpdate({
+      eventId,
       paymentId: payment.paymentId,
       expectedCurrentStatus: payment.status,
       nextStatus,
@@ -184,20 +226,6 @@ export class WebhookProcessor {
       asaasCheckoutId: asaasCheckoutId ?? payment.asaasCheckoutId
     });
 
-    if (
-      applied &&
-      (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED") &&
-      payment.status !== "CONFIRMED" &&
-      payment.status !== "RECEIVED" &&
-      payment.gift?.id
-    ) {
-      await this.repository.incrementGiftFunding({
-        giftId: payment.gift.id,
-        paymentId: payment.paymentId,
-        quantity: payment.gift.quantity
-      });
-    }
-
     if (applied && (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")) {
       await this.enrichCustomerProfile({
         asaasCustomerIdFromPayload,
@@ -206,9 +234,106 @@ export class WebhookProcessor {
       });
     }
 
-    await this.repository.markWebhookProcessed(eventId, applied ? "updated" : "ignored_stale");
-
     return { duplicate: false, updated: applied };
+  }
+
+  private async processCheckoutEvent(input: {
+    eventId: string;
+    eventType: string;
+    asaasCheckoutId?: string;
+    externalReference?: string;
+  }) {
+    const paymentId = input.externalReference;
+    if (!paymentId) {
+      throw new AppError("Checkout webhook payload does not contain a payment reference.", 400);
+    }
+
+    const existingPayment = await this.repository.getPayment(paymentId);
+    const shell = await this.repository.getPaymentShell(paymentId);
+    const reservation = await this.repository.getPaymentReservation(paymentId);
+
+    if (!shell || !reservation) {
+      throw new AppError("Checkout webhook could not resolve shell or reservation state.", 404);
+    }
+
+    if (input.eventType === "CHECKOUT_CREATED" || input.eventType === "CHECKOUT_PAID") {
+      if (!existingPayment) {
+        const repairedPayment = await this.buildPaymentFromShell(paymentId, shell, reservation, input.asaasCheckoutId);
+        const checkoutId = input.asaasCheckoutId ?? repairedPayment.checkout?.sessionId;
+        if (!checkoutId) {
+          throw new AppError("Checkout recovery is missing the Asaas checkout id.", 400);
+        }
+        await this.repository.repairFinalizedPayment({
+          payment: {
+            ...repairedPayment,
+            asaasCheckoutId: checkoutId
+          },
+          asaasCheckoutId: checkoutId
+        });
+      }
+
+      await this.repository.markWebhookProcessed(input.eventId, "updated");
+      return { duplicate: false, updated: true };
+    }
+
+    if (input.eventType === "CHECKOUT_CANCELED" || input.eventType === "CHECKOUT_EXPIRED") {
+      if (!existingPayment || existingPayment.status === "CREATED" || existingPayment.status === "AWAITING_PAYMENT") {
+        await this.repository.releaseReservationAfterCheckoutFailure(paymentId);
+      }
+
+      await this.repository.markWebhookProcessed(input.eventId, "updated");
+      return { duplicate: false, updated: true };
+    }
+
+    await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
+    return { duplicate: false, updated: false };
+  }
+
+  private async buildPaymentFromShell(
+    paymentId: string,
+    shell: Awaited<ReturnType<PaymentRepository["getPaymentShell"]>>,
+    reservation: Awaited<ReturnType<PaymentRepository["getPaymentReservation"]>>,
+    asaasCheckoutId?: string
+  ) {
+    if (!shell || !reservation) {
+      throw new AppError("Payment shell is missing for checkout recovery.", 404);
+    }
+
+    const gift = await this.repository.getGift(shell.giftId);
+    if (!gift) {
+      throw new AppError("Gift metadata not found for checkout recovery.", 404);
+    }
+
+    const now = new Date().toISOString();
+    const uniqueQuotaValues = new Set(shell.quotaValuesCents);
+
+    return {
+      paymentId,
+      paymentMethod: shell.paymentMethod,
+      status: "CREATED" as const,
+      amountCents: shell.amountCents,
+      currency: "BRL" as const,
+      gift: {
+        id: gift.id,
+        name: gift.name,
+        image: gift.image,
+        fractional: gift.fractional,
+        quantity: reservation.quantity,
+        unitAmountCents: uniqueQuotaValues.size === 1 ? shell.quotaValuesCents[0] ?? null : null,
+        amountCents: shell.amountCents,
+        quotaValuesCents: uniqueQuotaValues.size === 1 ? undefined : shell.quotaValuesCents
+      },
+      checkout: asaasCheckoutId
+        ? {
+            sessionId: asaasCheckoutId,
+            url: shell.checkoutUrl ?? this.asaasClient.buildCheckoutUrl({ id: asaasCheckoutId }),
+            expiresAt: shell.checkoutExpiresAt
+          }
+        : undefined,
+      createdAt: shell.createdAt ?? now,
+      updatedAt: now,
+      customerProfileStatus: "PENDING" as const
+    };
   }
 
   private async resolvePaymentForWebhook(reference: WebhookPaymentReference): Promise<WebhookPaymentResolution> {
@@ -223,6 +348,36 @@ export class WebhookProcessor {
           resolutionSource: initialLookup.source
         }
       };
+    }
+
+    if (reference.externalReference) {
+      const shell = await this.repository.getPaymentShell(reference.externalReference);
+      const reservation = await this.repository.getPaymentReservation(reference.externalReference);
+
+      if (shell && reservation && reference.asaasCheckoutId) {
+        const repairedPayment = await this.buildPaymentFromShell(
+          reference.externalReference,
+          shell,
+          reservation,
+          reference.asaasCheckoutId
+        );
+        await this.repository.repairFinalizedPayment({
+          payment: {
+            ...repairedPayment,
+            asaasCheckoutId: reference.asaasCheckoutId
+          },
+          asaasCheckoutId: reference.asaasCheckoutId
+        });
+
+        return {
+          payment: await this.repository.getPayment(reference.externalReference),
+          diagnostics: {
+            asaasFallbackAttempted: false,
+            localLookupMatches: initialLookup.matches,
+            resolutionSource: "external_reference"
+          }
+        };
+      }
     }
 
     if (!reference.asaasPaymentId) {
@@ -247,6 +402,38 @@ export class WebhookProcessor {
       },
       "fallback"
     );
+
+    if (!fallbackLookup.payment && recoveredExternalReference && recoveredAsaasCheckoutId) {
+      const shell = await this.repository.getPaymentShell(recoveredExternalReference);
+      const reservation = await this.repository.getPaymentReservation(recoveredExternalReference);
+
+      if (shell && reservation) {
+        const repairedPayment = await this.buildPaymentFromShell(
+          recoveredExternalReference,
+          shell,
+          reservation,
+          recoveredAsaasCheckoutId
+        );
+        await this.repository.repairFinalizedPayment({
+          payment: {
+            ...repairedPayment,
+            asaasCheckoutId: recoveredAsaasCheckoutId
+          },
+          asaasCheckoutId: recoveredAsaasCheckoutId
+        });
+
+        return {
+          payment: await this.repository.getPayment(recoveredExternalReference),
+          diagnostics: {
+            asaasFallbackAttempted: true,
+            localLookupMatches: fallbackLookup.matches,
+            recoveredAsaasCheckoutId,
+            recoveredExternalReference,
+            resolutionSource: "asaas_fallback_external_reference"
+          }
+        };
+      }
+    }
 
     return {
       payment: fallbackLookup.payment,

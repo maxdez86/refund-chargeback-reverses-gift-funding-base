@@ -5,21 +5,47 @@ import { PaymentService } from "../src/domain/payment-service";
 const toalhasGift = PAYMENT_GIFTS_BY_ID.get("g-toalhas-banho");
 const pratosGift = PAYMENT_GIFTS_BY_ID.get("g-pratos");
 
+function createRepositoryMock(overrides: Record<string, unknown> = {}) {
+  return {
+    reserveCreatePayment: vi.fn().mockResolvedValue({
+      accepted: true,
+      reservation: {
+        paymentId: "payment-test-1"
+      }
+    }),
+    reserveGiftSelection: vi.fn().mockImplementation(async ({ gift, quantity }: { gift: typeof toalhasGift; quantity: number }) => {
+      if (gift?.id === "g-pratos" && quantity === 7) {
+        return {
+          quantity: 7,
+          quotaValuesCents: [5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 3_100],
+          amountCents: 33_100,
+          unitAmountCents: null
+        };
+      }
+
+      return {
+        quantity,
+        quotaValuesCents: Array.from({ length: quantity }, () => gift?.fractional ? (gift.partValueCents ?? 0) : (gift?.totalValueCents ?? 0)),
+        amountCents: gift?.fractional ? quantity * (gift.partValueCents ?? 0) : (gift?.totalValueCents ?? 0),
+        unitAmountCents: gift?.fractional ? (gift.partValueCents ?? null) : null
+      };
+    }),
+    putPaymentShell: vi.fn().mockResolvedValue(undefined),
+    finalizeCreatePayment: vi.fn().mockResolvedValue(undefined),
+    markCheckoutAmbiguous: vi.fn().mockResolvedValue(undefined),
+    releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue(undefined),
+    getPaymentShell: vi.fn().mockResolvedValue(null),
+    getPaymentReservation: vi.fn().mockResolvedValue(null),
+    getGift: vi.fn().mockResolvedValue(toalhasGift),
+    getPayment: vi.fn().mockResolvedValue(null),
+    ...overrides
+  };
+}
+
 describe("PaymentService", () => {
   it("creates a hosted PIX checkout without collecting payer data", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const repository = {
-      reserveCreatePayment: vi.fn().mockResolvedValue({
-        accepted: true,
-        reservation: {
-          paymentId: "payment-test-1"
-        }
-      }),
-      putPayment: vi.fn().mockResolvedValue(undefined),
-      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
-      getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn()
-    };
+    const repository = createRepositoryMock();
     const asaasClient = {
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-1"
@@ -55,11 +81,34 @@ describe("PaymentService", () => {
     expect(asaasClient.createCheckout.mock.calls[0][0]).not.toHaveProperty("customerData");
     expect(result.payment.status).toBe("CREATED");
     expect(result.payment.customerProfileStatus).toBe("PENDING");
-    expect(repository.putPayment).toHaveBeenCalledWith(
+    expect(repository.finalizeCreatePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asaasCheckoutId: "checkout-1",
+        idempotencyKey: "idem-test-pix",
+        payment: expect.objectContaining({
+          paymentId: result.payment.paymentId,
+          customerProfileStatus: "PENDING"
+        })
+      })
+    );
+    expect(repository.putPaymentShell).toHaveBeenCalledWith(
       expect.objectContaining({
         paymentId: result.payment.paymentId,
+        externalReference: result.payment.paymentId,
+        shellStatus: "CHECKOUT_CREATING"
+      })
+    );
+    expect(repository.reserveGiftSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: result.payment.paymentId
+      })
+    );
+    expect(repository.finalizeCreatePayment).toHaveBeenCalledWith(
+      expect.objectContaining({
         asaasCheckoutId: "checkout-1",
-        customerProfileStatus: "PENDING"
+        payment: expect.objectContaining({
+          customerProfileStatus: "PENDING"
+        })
       })
     );
     expect(infoSpy).toHaveBeenCalledWith(
@@ -72,18 +121,14 @@ describe("PaymentService", () => {
   });
 
   it("sends both billingTypes to Asaas when paymentMethod is HOSTED", async () => {
-    const repository = {
+    const repository = createRepositoryMock({
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: true,
         reservation: {
           paymentId: "payment-test-hosted-1"
         }
-      }),
-      putPayment: vi.fn().mockResolvedValue(undefined),
-      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
-      getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn()
-    };
+      })
+    });
     const asaasClient = {
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-hosted-1"
@@ -115,18 +160,15 @@ describe("PaymentService", () => {
   });
 
   it("uses the unit cota amount for fractional PIX checkout items", async () => {
-    const repository = {
+    const repository = createRepositoryMock({
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: true,
         reservation: {
           paymentId: "payment-test-fractional-pix-1"
         }
       }),
-      putPayment: vi.fn().mockResolvedValue(undefined),
-      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
-      getGift: vi.fn().mockResolvedValue(pratosGift),
-      getPayment: vi.fn()
-    };
+      getGift: vi.fn().mockResolvedValue(pratosGift)
+    });
     const asaasClient = {
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-fractional-pix-1"
@@ -152,30 +194,33 @@ describe("PaymentService", () => {
         items: [
           expect.objectContaining({
             name: "Jogo de Pratos 12 Peças",
-            quantity: 7,
+            quantity: 6,
             value: 50
+          }),
+          expect.objectContaining({
+            name: "Jogo de Pratos 12 Peças",
+            quantity: 1,
+            value: 31
           })
         ]
       })
     );
-    expect(result.payment.amountCents).toBe(35_000);
+    expect(result.payment.amountCents).toBe(33_100);
     expect(result.payment.gift.quantity).toBe(7);
-    expect(result.payment.gift.unitAmountCents).toBe(5_000);
+    expect(result.payment.gift.unitAmountCents).toBeNull();
+    expect(result.payment.gift.quotaValuesCents).toEqual([5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 3_100]);
   });
 
   it("uses the unit cota amount for fractional HOSTED checkout items", async () => {
-    const repository = {
+    const repository = createRepositoryMock({
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: true,
         reservation: {
           paymentId: "payment-test-fractional-hosted-1"
         }
       }),
-      putPayment: vi.fn().mockResolvedValue(undefined),
-      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
-      getGift: vi.fn().mockResolvedValue(pratosGift),
-      getPayment: vi.fn()
-    };
+      getGift: vi.fn().mockResolvedValue(pratosGift)
+    });
     const asaasClient = {
       createCheckout: vi.fn().mockResolvedValue({
         id: "checkout-fractional-hosted-1"
@@ -249,7 +294,9 @@ describe("PaymentService", () => {
         }
       }),
       getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn().mockResolvedValue(existingPayment)
+      getPayment: vi.fn().mockResolvedValue(existingPayment),
+      getPaymentShell: vi.fn().mockResolvedValue(null),
+      getPaymentReservation: vi.fn().mockResolvedValue(null)
     };
 
     const service = new PaymentService(repository as never, {} as never);
@@ -332,7 +379,9 @@ describe("PaymentService", () => {
         }
       }),
       getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn().mockResolvedValueOnce(null)
+      getPayment: vi.fn().mockResolvedValueOnce(null),
+      getPaymentShell: vi.fn().mockResolvedValue(null),
+      getPaymentReservation: vi.fn().mockResolvedValue(null)
     };
 
     const service = new PaymentService(repository as never, {} as never);
@@ -348,7 +397,7 @@ describe("PaymentService", () => {
     expect(result.payment.checkout?.sessionId).toBe("checkout-1");
   });
 
-  it("recovers from Asaas when both the projection row and the snapshot are missing", async () => {
+  it("fails with 409 when only shell/reservation recovery would be possible", async () => {
     const repository = {
       reserveCreatePayment: vi.fn().mockResolvedValue({
         accepted: false,
@@ -359,47 +408,28 @@ describe("PaymentService", () => {
         }
       }),
       getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn().mockResolvedValue(null)
+      getPayment: vi.fn().mockResolvedValue(null),
+      getPaymentShell: vi.fn().mockResolvedValue({
+        paymentId: "payment-asaas-recovered-1"
+      }),
+      getPaymentReservation: vi.fn().mockResolvedValue({
+        paymentId: "payment-asaas-recovered-1"
+      })
     };
-    const asaasClient = {
-      listPaymentsByExternalReference: vi.fn().mockResolvedValue([
+    const service = new PaymentService(repository as never, {} as never);
+
+    await expect(
+      service.createPayment(
         {
-          id: "asaas-payment-1",
-          billingType: "PIX",
-          status: "PENDING",
-          value: 5,
-          checkoutSession: "checkout-recovery-1",
-          description: "PIX Teste",
-          externalReference: "payment-asaas-recovered-1"
-        }
-      ]),
-      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-recovery-1")
-    };
-
-    const service = new PaymentService(repository as never, asaasClient as never);
-    const result = await service.createPayment(
-      {
-        giftId: "g-toalhas-banho",
-        paymentMethod: "PIX"
-      },
-      "idem-asaas-recovered"
-    );
-
-    expect(asaasClient.listPaymentsByExternalReference).toHaveBeenCalledWith("payment-asaas-recovered-1");
-    expect(asaasClient.buildCheckoutUrl).toHaveBeenCalledWith({ id: "checkout-recovery-1" });
-    expect(result.payment.paymentId).toBe("payment-asaas-recovered-1");
-    expect(result.payment.paymentMethod).toBe("PIX");
-    expect(result.payment.status).toBe("CREATED");
-    expect(result.payment.amountCents).toBe(500);
-    expect(result.payment.checkout).toEqual({
-      sessionId: "checkout-recovery-1",
-      url: "https://www.asaas.com/c/checkout-recovery-1"
-    });
-    expect(result.payment.gift.id).toBe("recovered");
-    expect(result.payment.gift.name).toBe("PIX Teste");
+          giftId: "g-toalhas-banho",
+          paymentMethod: "PIX"
+        },
+        "idem-asaas-recovered"
+      )
+    ).rejects.toThrow(/could not be recovered safely/);
   });
 
-  it("fails with 409 when neither projection, snapshot, nor Asaas record exists", async () => {
+  it("fails with 409 when neither projection nor snapshot exists", async () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const repository = {
       reserveCreatePayment: vi.fn().mockResolvedValue({
@@ -411,13 +441,12 @@ describe("PaymentService", () => {
         }
       }),
       getGift: vi.fn().mockResolvedValue(toalhasGift),
-      getPayment: vi.fn().mockResolvedValue(null)
-    };
-    const asaasClient = {
-      listPaymentsByExternalReference: vi.fn().mockResolvedValue([])
+      getPayment: vi.fn().mockResolvedValue(null),
+      getPaymentShell: vi.fn().mockResolvedValue(null),
+      getPaymentReservation: vi.fn().mockResolvedValue(null)
     };
 
-    const service = new PaymentService(repository as never, asaasClient as never);
+    const service = new PaymentService(repository as never, {} as never);
 
     await expect(
       service.createPayment(
