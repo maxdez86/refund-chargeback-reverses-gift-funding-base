@@ -69,6 +69,7 @@ pnpm --filter @brimax/infra-cdk cdk deploy \
   "${PAYMENTS_DATA_STACK_NAME}" \
   "${PAYMENTS_STACK_NAME}" \
   "${PAYMENTS_OBSERVABILITY_STACK_NAME}" \
+  --exclusively \
   --output "${CDK_OUTPUT_DIR}" \
   --require-approval never \
   "${CDK_ARGS[@]}"
