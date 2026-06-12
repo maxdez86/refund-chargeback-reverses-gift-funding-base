@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
 import { AppError } from "../src/lib/errors";
 
@@ -6,6 +6,7 @@ const getInvitationMock = vi.fn();
 const verifyTurnstileMock = vi.fn();
 const issueLookupProofMock = vi.fn();
 const getAppSecretMock = vi.fn();
+let handler: typeof import("../src/functions/invitation-get/handler").handler;
 
 vi.mock("../src/domain/invitation-service", () => ({
   InvitationService: class {
@@ -37,6 +38,10 @@ function buildEvent(code?: string) {
 }
 
 describe("invitation-get handler", () => {
+  beforeAll(async () => {
+    ({ handler } = await import("../src/functions/invitation-get/handler"));
+  });
+
   beforeEach(() => {
     getInvitationMock.mockReset();
     verifyTurnstileMock.mockReset().mockResolvedValue(undefined);
@@ -45,8 +50,6 @@ describe("invitation-get handler", () => {
   });
 
   it("short-circuits a warm ping without verifying or reading", async () => {
-    const { handler } = await import("../src/functions/invitation-get/handler");
-
     const response = await handler(
       { warmer: true } as unknown as APIGatewayProxyEventV2,
       context,
@@ -62,7 +65,6 @@ describe("invitation-get handler", () => {
   it("returns 403 with no invitation data when Turnstile rejects, even though the lookup started", async () => {
     verifyTurnstileMock.mockReset().mockRejectedValue(new AppError("Verificação anti-bot falhou.", 403));
     getInvitationMock.mockRejectedValue(new AppError("Convite não encontrado.", 404));
-    const { handler } = await import("../src/functions/invitation-get/handler");
 
     const response = await handler(buildEvent("ABC123"), context, callback);
 
@@ -81,7 +83,6 @@ describe("invitation-get handler", () => {
       lookupProof: "payload.signature",
       lookupProofExpiresAt: "2026-06-10T12:00:00.000Z"
     });
-    const { handler } = await import("../src/functions/invitation-get/handler");
 
     const response = await handler(buildEvent("ABC123"), context, callback);
 
@@ -97,7 +98,6 @@ describe("invitation-get handler", () => {
 
   it("returns 404 when verify passes but the invitation is missing", async () => {
     getInvitationMock.mockRejectedValue(new AppError("Convite não encontrado.", 404));
-    const { handler } = await import("../src/functions/invitation-get/handler");
 
     const response = await handler(buildEvent("NOPE"), context, callback);
 
@@ -105,8 +105,6 @@ describe("invitation-get handler", () => {
   });
 
   it("returns 400 when the invitation code is missing and verify passes", async () => {
-    const { handler } = await import("../src/functions/invitation-get/handler");
-
     const response = await handler(buildEvent(), context, callback);
 
     expect(getInvitationMock).not.toHaveBeenCalled();
