@@ -391,12 +391,14 @@ export class PaymentRepository {
                   "partsReserved = if_not_exists(partsReserved, :zero) + :partsReservedIncrement, " +
                   "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) + :amountIncrement, " +
                   "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, " +
-                  "fullyFunded = :fullyFunded",
+                  // fullyFunded means confirmed funding; a reservation must
+                  // never flip it — only the confirmation/release writers do.
+                  "fullyFunded = if_not_exists(fullyFunded, :fullyFundedDefault)",
                 ExpressionAttributeValues: {
                   ":amountIncrement": selection.amountCents,
                   ":entityType": "GiftState",
                   ":expectedVersion": state.version ?? 0,
-                  ":fullyFunded": getAvailableParts(input.gift, state) - selection.quantity <= 0,
+                  ":fullyFundedDefault": false,
                   ":giftId": input.gift.id,
                   ":partsReservedIncrement": selection.quantity,
                   ":updatedAt": now,

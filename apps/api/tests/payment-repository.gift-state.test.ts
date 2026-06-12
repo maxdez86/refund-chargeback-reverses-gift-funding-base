@@ -174,6 +174,57 @@ describe("PaymentRepository gift state", () => {
     );
   });
 
+  it("preserves the stored fullyFunded flag when reserving the final part", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          PK: "GIFT#g-pratos",
+          SK: "STATE",
+          giftId: "g-pratos",
+          partsFunded: 0,
+          partsReserved: 6,
+          confirmedAmountCents: 0,
+          reservedAmountCents: 30_000,
+          fullyFunded: false,
+          version: 6,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await repository.reserveGiftSelection({
+      gift: {
+        id: "g-pratos",
+        name: "Jogo de Pratos 12 Peças",
+        image: "jogo-pratos",
+        totalValueCents: 33_100,
+        fractional: true,
+        partValueCents: 5_000,
+        totalParts: 7,
+        finalPartValueCents: 3_100,
+        fundingModelVersion: "EXACT_FINAL_QUOTA"
+      },
+      paymentId: "payment-final-part",
+      quantity: 1,
+      expiresAt: "2026-06-12T20:00:00.000Z"
+    });
+
+    const transaction = send.mock.calls[1][0] as TransactWriteCommand;
+    const stateUpdate = transaction.input.TransactItems?.[0]?.Update;
+
+    expect(stateUpdate?.UpdateExpression).toContain(
+      "fullyFunded = if_not_exists(fullyFunded, :fullyFundedDefault)"
+    );
+    expect(stateUpdate?.ExpressionAttributeValues).toEqual(
+      expect.objectContaining({
+        ":fullyFundedDefault": false
+      })
+    );
+    expect(stateUpdate?.ExpressionAttributeValues).not.toHaveProperty(":fullyFunded");
+  });
+
   it("increments a single gift and marks it fully funded", async () => {
     const send = vi
       .fn()
