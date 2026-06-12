@@ -18,9 +18,10 @@ import {
 } from "../packages/contracts/src/rsvp.ts";
 import { AsaasWebhookResponseSchema } from "../packages/contracts/src/webhooks.ts";
 import {
+  createAsaasPixChargeForExternalReference,
   createDocumentClient,
   fetchStoredPayment,
-  pollForAsaasPaymentId,
+  findOrCreateAsaasCustomer,
   PROD_PROMOTION_PAYMENT_METHOD,
   PROD_PROMOTION_TURNSTILE_DUMMY_TOKEN,
   requiredEnv,
@@ -30,6 +31,7 @@ import {
   resolveIntegrationGift,
   resolveIntegrationGiftQuantity,
   resolveIntegrationInvitationCode,
+  resolvePaymentsTestPayer,
   resolveStage,
   resolveWeddingTableName
 } from "./lib/prod-promotion-support.ts";
@@ -287,7 +289,7 @@ async function createWebhookScenarioPayment(
   assert(fetched.payment.paymentId === created.payment.paymentId, `${phase} payment ID mismatch between create and get.`);
   assert(fetched.payment.gift.id === context.giftId, `${phase} gift mismatch in fetched payment.`);
 
-  return created.payment.paymentId;
+  return fetched.payment;
 }
 
 async function main() {
@@ -517,15 +519,17 @@ async function main() {
   });
 
   await runPhase("payment-create-fetch", results, async () => {
-    state.createdPaymentId = await createWebhookScenarioPayment(
+    const createdPayment = await createWebhookScenarioPayment(
       context,
       "payment-create-fetch",
       `prod-promotion-payment-${context.runMarker}`
     );
+    state.createdPaymentId = createdPayment.paymentId;
 
     return {
-      paymentId: state.createdPaymentId,
-      status: "CREATED"
+      amountCents: createdPayment.amountCents,
+      paymentId: createdPayment.paymentId,
+      status: createdPayment.status
     };
   });
 
@@ -660,28 +664,35 @@ async function main() {
       "payment-webhook-payment-id-fallback",
       context.giftId
     );
-    const fallbackPaymentId = await createWebhookScenarioPayment(
+    const fallbackPayment = await createWebhookScenarioPayment(
       context,
       "payment-webhook-payment-id-fallback",
       `prod-promotion-payment-fallback-${context.runMarker}`
     );
+    const fallbackPaymentId = fallbackPayment.paymentId;
     const documentClient = createDocumentClient();
     const tableName = await resolveWeddingTableName();
     const stored = await fetchStoredPayment(documentClient, tableName, fallbackPaymentId);
-    const resolvedAsaasPayment = await pollForAsaasPaymentId({
+    assert(!stored.asaasPaymentId, "Fallback test expects the local payment to start without asaasPaymentId.");
+    const payer = resolvePaymentsTestPayer();
+    const asaasCustomer = await findOrCreateAsaasCustomer({
       apiBaseUrl: resolveAsaasApiBaseUrl(),
       apiKey: await resolveAsaasApiKey(),
-      externalReference: fallbackPaymentId,
-      knownAsaasCheckoutId: stored.asaasCheckoutId,
-      paymentId: fallbackPaymentId,
-      pollIntervalMs: context.webhookPollIntervalMs,
-      timeoutMs: context.webhookTimeoutMs
+      payer
+    });
+    const directAsaasCharge = await createAsaasPixChargeForExternalReference({
+      amountCents: fallbackPayment.amountCents,
+      apiBaseUrl: resolveAsaasApiBaseUrl(),
+      apiKey: await resolveAsaasApiKey(),
+      customerId: asaasCustomer.id,
+      description: `Prod promotion fallback ${fallbackPaymentId}`,
+      externalReference: fallbackPaymentId
     });
     const today = nowIso().slice(0, 10);
     const webhookPayload = {
       event: "PAYMENT_RECEIVED",
       payment: {
-        id: resolvedAsaasPayment.asaasPaymentId,
+        id: directAsaasCharge.id,
         status: "RECEIVED",
         confirmedDate: today,
         clientPaymentDate: today
@@ -738,12 +749,12 @@ async function main() {
 
     return {
       baselineGiftPartsFunded,
+      directAsaasCustomerId: asaasCustomer.id,
+      directAsaasPaymentId: directAsaasCharge.id,
+      fallbackPaymentAmountCents: fallbackPayment.amountCents,
       giftPartsFundedAfter,
-      lookupAttempts: resolvedAsaasPayment.attempts,
-      lookupSource: resolvedAsaasPayment.lookupSource,
       observedStatuses: polled.statuses,
       paymentId: fallbackPaymentId,
-      resolvedAsaasPaymentId: resolvedAsaasPayment.asaasPaymentId,
       storedAsaasCheckoutId: stored.asaasCheckoutId,
       storedAsaasPaymentId: storedAfter.asaasPaymentId,
       terminalStatus: polled.payment.status

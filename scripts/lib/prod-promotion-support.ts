@@ -138,121 +138,164 @@ export function resolveAsaasApiBaseUrl() {
   return resolveStage() === "dev" ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
 }
 
-type AsaasPaymentLookupResult = {
-  checkoutSession?: string;
-  externalReference?: string;
+export type AsaasTestPayer = {
+  cpf: string;
+  email: string;
   id?: string;
+  name: string;
+  phone?: string;
 };
 
-async function asaasListRequest(
-  apiBaseUrl: string,
-  apiKey: string,
-  query: Record<string, string>,
-  fetchImpl: typeof fetch
-) {
-  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/payments`);
+type AsaasApiErrorItem = {
+  description?: string;
+};
 
-  for (const [key, value] of Object.entries(query)) {
-    url.searchParams.set(key, value);
+type AsaasCustomerRecord = {
+  id: string;
+};
+
+type AsaasListResponse<T> = {
+  data?: T[];
+  errors?: AsaasApiErrorItem[];
+  message?: string;
+};
+
+type AsaasPaymentRecord = {
+  id: string;
+};
+
+function extractAsaasErrorMessage(parsed: { errors?: AsaasApiErrorItem[]; message?: string }, responseStatus: number) {
+  const descriptions = parsed.errors
+    ?.map((error) => error.description?.trim())
+    .filter((description): description is string => Boolean(description));
+
+  if (descriptions && descriptions.length > 0) {
+    return descriptions.join(" | ");
   }
 
-  const response = await fetchImpl(url, {
+  if (typeof parsed.message === "string" && parsed.message.trim()) {
+    return parsed.message;
+  }
+
+  return `Asaas request failed with status ${responseStatus}.`;
+}
+
+async function asaasRequest<T>(input: {
+  apiBaseUrl: string;
+  apiKey: string;
+  body?: unknown;
+  fetchImpl?: typeof fetch;
+  method?: "GET" | "POST";
+  path: string;
+  query?: Record<string, string | undefined>;
+}) {
+  const url = new URL(`${input.apiBaseUrl.replace(/\/+$/, "")}${input.path}`);
+
+  if (input.query) {
+    for (const [key, value] of Object.entries(input.query)) {
+      if (value) {
+        url.searchParams.set(key, value);
+      }
+    }
+  }
+
+  const response = await (input.fetchImpl ?? fetch)(url, {
+    body: input.body ? JSON.stringify(input.body) : undefined,
     headers: {
       accept: "application/json",
       "content-type": "application/json",
-      access_token: apiKey
+      access_token: input.apiKey
     },
-    method: "GET"
+    method: input.method ?? "GET"
   });
   const text = await response.text();
-  const parsed = text ? (JSON.parse(text) as { data?: AsaasPaymentLookupResult[]; errors?: unknown; message?: string }) : {};
+  const parsed = text ? (JSON.parse(text) as { errors?: AsaasApiErrorItem[]; message?: string }) : {};
 
   if (!response.ok) {
-    throw new Error(
-      typeof parsed.message === "string"
-        ? parsed.message
-        : `Asaas list payments request failed with status ${response.status}.`
-    );
+    throw new Error(extractAsaasErrorMessage(parsed, response.status));
   }
 
-  return parsed.data ?? [];
+  return parsed as T;
 }
 
-export async function listAsaasPaymentsByExternalReference(
-  apiBaseUrl: string,
-  apiKey: string,
-  externalReference: string,
-  fetchImpl: typeof fetch = fetch
+export function resolvePaymentsTestPayer(): AsaasTestPayer {
+  const phone = process.env.PAYMENTS_TEST_PAYER_PHONE?.trim();
+
+  return {
+    cpf: requiredEnv("PAYMENTS_TEST_PAYER_CPF"),
+    email: requiredEnv("PAYMENTS_TEST_PAYER_EMAIL"),
+    name: requiredEnv("PAYMENTS_TEST_PAYER_NAME"),
+    ...(phone ? { phone } : {})
+  };
+}
+
+export async function findOrCreateAsaasCustomer(
+  input: {
+    apiBaseUrl: string;
+    apiKey: string;
+    payer: AsaasTestPayer;
+    fetchImpl?: typeof fetch;
+  }
 ) {
-  return asaasListRequest(apiBaseUrl, apiKey, { externalReference }, fetchImpl);
+  const existing = await asaasRequest<AsaasListResponse<AsaasCustomerRecord>>({
+    apiBaseUrl: input.apiBaseUrl,
+    apiKey: input.apiKey,
+    fetchImpl: input.fetchImpl,
+    path: "/customers",
+    query: {
+      cpfCnpj: input.payer.cpf
+    }
+  });
+
+  const existingCustomer = existing.data?.find((candidate) => typeof candidate.id === "string" && candidate.id);
+  if (existingCustomer?.id) {
+    return existingCustomer;
+  }
+
+  return asaasRequest<AsaasCustomerRecord>({
+    apiBaseUrl: input.apiBaseUrl,
+    apiKey: input.apiKey,
+    body: {
+      cpfCnpj: input.payer.cpf,
+      email: input.payer.email,
+      mobilePhone: input.payer.phone,
+      name: input.payer.name,
+      notificationDisabled: true
+    },
+    fetchImpl: input.fetchImpl,
+    method: "POST",
+    path: "/customers"
+  });
 }
 
-export async function listAsaasPaymentsByCheckoutSession(
-  apiBaseUrl: string,
-  apiKey: string,
-  checkoutSession: string,
-  fetchImpl: typeof fetch = fetch
-) {
-  return asaasListRequest(apiBaseUrl, apiKey, { checkoutSession }, fetchImpl);
-}
-
-export async function pollForAsaasPaymentId(input: {
+export async function createAsaasPixChargeForExternalReference(input: {
+  amountCents: number;
   apiBaseUrl: string;
   apiKey: string;
+  customerId: string;
+  description: string;
   externalReference: string;
   fetchImpl?: typeof fetch;
-  knownAsaasCheckoutId?: string;
-  paymentId: string;
-  pollIntervalMs: number;
-  timeoutMs: number;
 }) {
-  const deadline = Date.now() + input.timeoutMs;
-  const fetchImpl = input.fetchImpl ?? fetch;
-  let attempts = 0;
-
-  while (Date.now() < deadline) {
-    attempts += 1;
-    const byExternalReference = await listAsaasPaymentsByExternalReference(
-      input.apiBaseUrl,
-      input.apiKey,
-      input.externalReference,
-      fetchImpl
-    );
-    const matchedByExternalReference = byExternalReference.find((payment) => typeof payment.id === "string" && payment.id);
-
-    if (matchedByExternalReference?.id) {
-      return {
-        attempts,
-        asaasPaymentId: matchedByExternalReference.id,
-        lookupSource: "externalReference" as const
-      };
-    }
-
-    if (input.knownAsaasCheckoutId) {
-      const byCheckoutSession = await listAsaasPaymentsByCheckoutSession(
-        input.apiBaseUrl,
-        input.apiKey,
-        input.knownAsaasCheckoutId,
-        fetchImpl
-      );
-      const matchedByCheckoutSession = byCheckoutSession.find((payment) => typeof payment.id === "string" && payment.id);
-
-      if (matchedByCheckoutSession?.id) {
-        return {
-          attempts,
-          asaasPaymentId: matchedByCheckoutSession.id,
-          lookupSource: "checkoutSession" as const
-        };
-      }
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, input.pollIntervalMs));
+  if (!Number.isFinite(input.amountCents) || input.amountCents <= 0) {
+    throw new Error(`Invalid Asaas charge amountCents: ${input.amountCents}`);
   }
 
-  const checkoutDetail = input.knownAsaasCheckoutId ? ` Stored asaasCheckoutId=${input.knownAsaasCheckoutId}.` : "";
-  throw new Error(
-    `Timed out resolving Asaas payment id for paymentId=${input.paymentId} via externalReference.${checkoutDetail} Fallback webhook scenario could not start because Asaas did not expose a payment record yet.`
-  );
+  return asaasRequest<AsaasPaymentRecord>({
+    apiBaseUrl: input.apiBaseUrl,
+    apiKey: input.apiKey,
+    body: {
+      billingType: "PIX",
+      customer: input.customerId,
+      description: input.description,
+      dueDate: new Date().toISOString().slice(0, 10),
+      externalReference: input.externalReference,
+      value: input.amountCents / 100
+    },
+    fetchImpl: input.fetchImpl,
+    method: "POST",
+    path: "/payments"
+  });
 }
 
 export async function fetchStoredPayment(documentClient: DynamoDBDocumentClient, tableName: string, paymentId: string) {
