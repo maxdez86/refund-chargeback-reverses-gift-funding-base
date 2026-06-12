@@ -206,7 +206,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
           <div className="relative flex-1 overflow-hidden">
             <p
               ref={contentRef}
-              className="h-full overflow-hidden whitespace-pre-line text-sm leading-6 text-muted-foreground"
+              className="h-full overflow-hidden whitespace-pre-line [overflow-wrap:anywhere] text-sm leading-6 text-muted-foreground"
             >
               {message.message}
             </p>
@@ -246,7 +246,7 @@ function MessageCard({ message, index }: { message: GuestMessage; index: number 
             </DialogDescription>
           </DialogHeader>
           <div className="px-8 pb-8 pt-6">
-            <p className="whitespace-pre-line text-base leading-8 text-muted-foreground">
+            <p className="whitespace-pre-line [overflow-wrap:anywhere] text-base leading-8 text-muted-foreground">
               {message.message}
             </p>
           </div>

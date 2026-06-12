@@ -168,6 +168,44 @@ describe("GuestMessages section", () => {
     expect(screen.queryByRole("button", { name: /Mensagem curta/i })).not.toBeInTheDocument();
   });
 
+  it("wraps long unbroken message text in the card and full-content dialog", async () => {
+    const longUnbrokenMessage = "long".repeat(100);
+    listGuestMessagesMock.mockResolvedValueOnce({
+      messages: [
+        {
+          messageId: "msg-unbroken",
+          authorName: "Carla",
+          message: longUnbrokenMessage,
+          createdAt: "2026-05-28T18:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+    });
+
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.textContent?.includes(longUnbrokenMessage) ? 400 : 100;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 120;
+      },
+    });
+
+    renderWithClient(<GuestMessages />);
+
+    const cardMessage = await screen.findByText(longUnbrokenMessage);
+    expect(cardMessage).toHaveClass("[overflow-wrap:anywhere]");
+
+    fireEvent.click(screen.getByRole("button", { name: "... mais" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(longUnbrokenMessage)).toHaveClass("[overflow-wrap:anywhere]");
+  });
+
   it("scrolls to FAQ when the bottom arrow is clicked", async () => {
     listGuestMessagesMock.mockResolvedValueOnce({
       messages: [],
