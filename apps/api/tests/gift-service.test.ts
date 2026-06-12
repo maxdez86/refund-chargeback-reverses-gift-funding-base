@@ -88,4 +88,44 @@ describe("GiftService", () => {
       })
     );
   });
+
+  it("normalizes legacy metadata and part-only state rows", async () => {
+    const repository = {
+      listGiftMetadata: vi.fn().mockResolvedValue([
+        {
+          id: "g-armario",
+          name: "Armário de Cozinha",
+          image: "armario-cozinha",
+          totalValueCents: 174_900,
+          fractional: true,
+          partValueCents: 5_000,
+          totalParts: 35
+        }
+      ]),
+      listGiftStates: vi.fn().mockResolvedValue([
+        {
+          giftId: "g-armario",
+          partsFunded: 3,
+          fullyFunded: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      ])
+    };
+
+    const service = new GiftService(repository as never);
+    const response = await service.getGifts();
+
+    expect(response.gifts[0]).toEqual(
+      expect.objectContaining({
+        finalPartValueCents: null,
+        fundingModelVersion: "LEGACY_FIXED_50",
+        partsFunded: 3,
+        partsReserved: 0,
+        confirmedAmountCents: 15_000,
+        reservedAmountCents: 0,
+        availableAmountCents: 159_900,
+        availableParts: 32
+      })
+    );
+  });
 });
