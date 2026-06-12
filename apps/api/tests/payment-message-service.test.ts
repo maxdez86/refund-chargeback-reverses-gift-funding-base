@@ -89,6 +89,74 @@ describe("PaymentMessageService", () => {
     expect(result.message.body).toBe("Parabéns pelo casamento!");
   });
 
+  it("stores a post-payment message when payerEmail is missing", async () => {
+    const repository = {
+      getPayment: vi.fn().mockResolvedValue({
+        paymentId: "payment-4",
+        status: "CONFIRMED",
+        amountCents: 750,
+        payerFirstName: "MARIA",
+        gift: {
+          name: "Cota Lua de Mel"
+        }
+      }),
+      getPaymentMessage: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          paymentId: "payment-4",
+          body: "Muitas felicidades!",
+          submittedAt: "2026-05-12T10:00:00.000Z",
+          payerEmail: undefined,
+          payerName: "Maria",
+          giftName: "Cota Lua de Mel"
+        }),
+      putPaymentMessage: vi.fn().mockResolvedValue(true),
+      acquireNotificationSend: vi.fn().mockResolvedValue(true),
+      markNotificationSent: vi.fn().mockResolvedValue(undefined),
+      releaseNotificationSend: vi.fn().mockResolvedValue(undefined)
+    };
+    const emailService = {
+      sendEmail: vi.fn().mockResolvedValue({ ok: true, messageId: "msg-4" })
+    };
+
+    const service = new PaymentMessageService(repository as never, emailService as never);
+    const result = await service.createMessage("payment-4", {
+      body: "Muitas felicidades!"
+    });
+
+    expect(repository.putPaymentMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: "payment-4",
+        body: "Muitas felicidades!",
+        payerEmail: undefined,
+        payerName: "Maria",
+        giftName: "Cota Lua de Mel"
+      })
+    );
+    expect(repository.acquireNotificationSend).toHaveBeenCalledWith({
+      paymentId: "payment-4",
+      type: "COUPLE_MESSAGE",
+      payload: {
+        payerEmail: undefined
+      }
+    });
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "casamento@brimax.life",
+        subject: "Maria, enviou um presente para vocês 🤍"
+      })
+    );
+    expect(repository.markNotificationSent).toHaveBeenCalledWith({
+      paymentId: "payment-4",
+      type: "COUPLE_MESSAGE",
+      payload: {
+        payerEmail: undefined
+      }
+    });
+    expect(result.message.payerEmail).toBeUndefined();
+  });
+
   it("rejects messages before payment confirmation", async () => {
     const repository = {
       getPayment: vi.fn().mockResolvedValue({

@@ -158,6 +158,15 @@ describe("AppStack", () => {
         })
       ])
     });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '"WEBHOOK_PAYMENT_NOT_FOUND"',
+      MetricTransformations: Match.arrayWith([
+        Match.objectLike({
+          MetricName: "asaas-webhook-processor-webhook-payment-not-found",
+          MetricNamespace: "Brimax/Payments"
+        })
+      ])
+    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
