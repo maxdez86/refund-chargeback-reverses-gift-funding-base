@@ -196,6 +196,10 @@ jobs:
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          PAYMENTS_TEST_PAYER_CPF: ${{ secrets.PAYMENTS_TEST_PAYER_CPF }}
+          PAYMENTS_TEST_PAYER_EMAIL: ${{ secrets.PAYMENTS_TEST_PAYER_EMAIL }}
+          PAYMENTS_TEST_PAYER_NAME: ${{ secrets.PAYMENTS_TEST_PAYER_NAME }}
+          PAYMENTS_TEST_PAYER_PHONE: ${{ secrets.PAYMENTS_TEST_PAYER_PHONE }}
           PROD_PROMOTION_ARTIFACT_DIR: ${{ needs.discover-context.outputs.artifact_dir }}
           PROD_PROMOTION_GIFT_ID: ${{ needs.discover-context.outputs.gift_id }}
           PROD_PROMOTION_INVITATION_CODE: ${{ needs.discover-context.outputs.invitation_code }}

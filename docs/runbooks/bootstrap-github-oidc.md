@@ -224,7 +224,10 @@ Those values are consumed by `scripts/deploy-backend.sh` and enforced again by
 `infra/cdk/bin/app.ts` when the backend stacks are part of the CDK invocation.
 `prod-promotion-validation.yml` also reads `ASAAS_API_KEY` from the same `dev`
 environment so the `payment-webhook-payment-id-fallback` phase can resolve the
-live Asaas `payment.id` without widening AWS IAM access. Frontend, DNS, and
+live Asaas `payment.id` without widening AWS IAM access. That workflow also
+consumes the existing `PAYMENTS_TEST_PAYER_NAME`, `PAYMENTS_TEST_PAYER_EMAIL`,
+`PAYMENTS_TEST_PAYER_CPF`, and optional `PAYMENTS_TEST_PAYER_PHONE` secrets to
+create a deterministic live Asaas fallback fixture. Frontend, DNS, and
 Sentry-only dev deploy jobs do not require the raw Asaas secrets.
 
 If `deploy-backend` fails at the "Generate dev environment file" step with:
