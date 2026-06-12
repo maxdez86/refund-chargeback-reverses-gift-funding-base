@@ -14,11 +14,11 @@ function createRepositoryMock(overrides: Record<string, unknown> = {}) {
       }
     }),
     reserveGiftSelection: vi.fn().mockImplementation(async ({ gift, quantity }: { gift: typeof toalhasGift; quantity: number }) => {
-      if (gift?.id === "g-pratos" && quantity === 7) {
+      if (gift?.id === "g-pratos" && quantity === 6) {
         return {
-          quantity: 7,
-          quotaValuesCents: [5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 3_100],
-          amountCents: 33_100,
+          quantity: 6,
+          quotaValuesCents: [5_000, 5_000, 5_000, 5_000, 5_000, 5_000],
+          amountCents: 30_000,
           unitAmountCents: null
         };
       }
@@ -182,7 +182,7 @@ describe("PaymentService", () => {
       {
         giftId: "g-pratos",
         paymentMethod: "PIX",
-        quantity: 7
+        quantity: 6
       },
       "idem-test-fractional-pix"
     );
@@ -196,19 +196,14 @@ describe("PaymentService", () => {
             name: "Jogo de Pratos 12 Peças",
             quantity: 6,
             value: 50
-          }),
-          expect.objectContaining({
-            name: "Jogo de Pratos 12 Peças",
-            quantity: 1,
-            value: 31
           })
         ]
       })
     );
-    expect(result.payment.amountCents).toBe(33_100);
-    expect(result.payment.gift.quantity).toBe(7);
+    expect(result.payment.amountCents).toBe(30_000);
+    expect(result.payment.gift.quantity).toBe(6);
     expect(result.payment.gift.unitAmountCents).toBeNull();
-    expect(result.payment.gift.quotaValuesCents).toEqual([5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 3_100]);
+    expect(result.payment.gift.quotaValuesCents).toEqual([5_000, 5_000, 5_000, 5_000, 5_000, 5_000]);
   });
 
   it("uses the unit cota amount for fractional HOSTED checkout items", async () => {

@@ -198,12 +198,16 @@ describe("GuestMessages section", () => {
     renderWithClient(<GuestMessages />);
 
     const cardMessage = await screen.findByText(longUnbrokenMessage);
-    expect(cardMessage).toHaveClass("[overflow-wrap:anywhere]");
+    expect(cardMessage).toHaveClass("w-full", "min-w-0", "break-all");
 
     fireEvent.click(screen.getByRole("button", { name: "... mais" }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(longUnbrokenMessage)).toHaveClass("[overflow-wrap:anywhere]");
+    expect(within(dialog).getByText(longUnbrokenMessage)).toHaveClass(
+      "w-full",
+      "min-w-0",
+      "break-all"
+    );
   });
 
   it("scrolls to FAQ when the bottom arrow is clicked", async () => {
