@@ -18,6 +18,10 @@ function toBrlDecimal(valueInCents: number) {
   return valueInCents / 100;
 }
 
+function resolveCheckoutItemValue(giftSelection: ResolvedGiftSelection) {
+  return toBrlDecimal(giftSelection.unitAmountCents ?? giftSelection.amountCents);
+}
+
 const DEFAULT_CHECKOUT_EXPIRATION_MINUTES = 60;
 
 type NormalizedCreatePaymentRequest = {
@@ -243,7 +247,7 @@ export class PaymentService {
           name: input.giftName,
           description: `Brimax payment ${input.paymentId}`,
           quantity: input.giftSelection.quantity,
-          value: toBrlDecimal(input.giftSelection.amountCents)
+          value: resolveCheckoutItemValue(input.giftSelection)
         }
       ],
       minutesToExpire: input.checkoutExpirationMinutes

@@ -3,6 +3,7 @@ import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { PaymentService } from "../src/domain/payment-service";
 
 const toalhasGift = PAYMENT_GIFTS_BY_ID.get("g-toalhas-banho");
+const pratosGift = PAYMENT_GIFTS_BY_ID.get("g-pratos");
 
 describe("PaymentService", () => {
   it("creates a hosted PIX checkout without collecting payer data", async () => {
@@ -111,6 +112,107 @@ describe("PaymentService", () => {
     );
     expect(result.payment.paymentMethod).toBe("HOSTED");
     expect(result.payment.checkout?.sessionId).toBe("checkout-hosted-1");
+  });
+
+  it("uses the unit cota amount for fractional PIX checkout items", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: true,
+        reservation: {
+          paymentId: "payment-test-fractional-pix-1"
+        }
+      }),
+      putPayment: vi.fn().mockResolvedValue(undefined),
+      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getGift: vi.fn().mockResolvedValue(pratosGift),
+      getPayment: vi.fn()
+    };
+    const asaasClient = {
+      createCheckout: vi.fn().mockResolvedValue({
+        id: "checkout-fractional-pix-1"
+      }),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-fractional-pix-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    const result = await service.createPayment(
+      {
+        giftId: "g-pratos",
+        paymentMethod: "PIX",
+        quantity: 7
+      },
+      "idem-test-fractional-pix"
+    );
+
+    expect(asaasClient.createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingTypes: ["PIX"],
+        chargeTypes: ["DETACHED"],
+        items: [
+          expect.objectContaining({
+            name: "Jogo de Pratos 12 Peças",
+            quantity: 7,
+            value: 50
+          })
+        ]
+      })
+    );
+    expect(result.payment.amountCents).toBe(35_000);
+    expect(result.payment.gift.quantity).toBe(7);
+    expect(result.payment.gift.unitAmountCents).toBe(5_000);
+  });
+
+  it("uses the unit cota amount for fractional HOSTED checkout items", async () => {
+    const repository = {
+      reserveCreatePayment: vi.fn().mockResolvedValue({
+        accepted: true,
+        reservation: {
+          paymentId: "payment-test-fractional-hosted-1"
+        }
+      }),
+      putPayment: vi.fn().mockResolvedValue(undefined),
+      completeCreatePayment: vi.fn().mockResolvedValue(undefined),
+      getGift: vi.fn().mockResolvedValue(pratosGift),
+      getPayment: vi.fn()
+    };
+    const asaasClient = {
+      createCheckout: vi.fn().mockResolvedValue({
+        id: "checkout-fractional-hosted-1"
+      }),
+      buildCheckoutUrl: vi.fn().mockReturnValue("https://www.asaas.com/c/checkout-fractional-hosted-1")
+    };
+
+    const service = new PaymentService(repository as never, asaasClient as never);
+
+    const result = await service.createPayment(
+      {
+        giftId: "g-pratos",
+        paymentMethod: "HOSTED",
+        quantity: 3
+      },
+      "idem-test-fractional-hosted"
+    );
+
+    expect(asaasClient.createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingTypes: ["PIX", "CREDIT_CARD"],
+        chargeTypes: ["DETACHED", "INSTALLMENT"],
+        installment: {
+          maxInstallmentCount: 10
+        },
+        items: [
+          expect.objectContaining({
+            name: "Jogo de Pratos 12 Peças",
+            quantity: 3,
+            value: 50
+          })
+        ]
+      })
+    );
+    expect(result.payment.amountCents).toBe(15_000);
+    expect(result.payment.gift.quantity).toBe(3);
+    expect(result.payment.gift.unitAmountCents).toBe(5_000);
   });
 
   it("returns the existing payment when the same idempotency key is replayed", async () => {
