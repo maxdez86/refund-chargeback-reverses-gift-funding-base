@@ -213,16 +213,19 @@ No manual GitHub Environment setup is required after the command succeeds.
 
 ## Backend Deploy Secret Requirement
 
-`deploy-backend` is stricter than the other `dev` deploy jobs. It is the only `dev`
-deploy path that requires the raw Asaas deploy-time secrets to be present in the
-GitHub `dev` environment:
+`deploy-backend` and `prod-promotion-validation.yml` are stricter than the other
+`dev` jobs. They require raw Asaas secrets to be present in the GitHub `dev`
+environment:
 
 - `ASAAS_API_KEY`
 - `ASAAS_WEBHOOK_TOKEN`
 
 Those values are consumed by `scripts/deploy-backend.sh` and enforced again by
 `infra/cdk/bin/app.ts` when the backend stacks are part of the CDK invocation.
-Frontend, DNS, and Sentry-only dev deploy jobs do not require the raw Asaas secrets.
+`prod-promotion-validation.yml` also reads `ASAAS_API_KEY` from the same `dev`
+environment so the `payment-webhook-payment-id-fallback` phase can resolve the
+live Asaas `payment.id` without widening AWS IAM access. Frontend, DNS, and
+Sentry-only dev deploy jobs do not require the raw Asaas secrets.
 
 If `deploy-backend` fails at the "Generate dev environment file" step with:
 

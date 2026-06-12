@@ -193,6 +193,7 @@ jobs:
       - name: Run prod-promotion integration suite
         env:
           API_BASE_URL: ${{ needs.discover-context.outputs.api_base_url }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           PROD_PROMOTION_ARTIFACT_DIR: ${{ needs.discover-context.outputs.artifact_dir }}
