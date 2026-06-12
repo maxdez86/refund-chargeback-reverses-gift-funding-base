@@ -245,6 +245,7 @@ export class AppStack extends cdk.Stack {
       EMAIL_FROM: `Casamento Brimax <${senderEmailIdentity}>`,
       EMAIL_CONFIGURATION_SET_NAME: emailConfigurationSet.configurationSetName,
       HOSTED_CHECKOUT_SUCCESS_URL: siteBaseUrl,
+      PAYMENTS_CHECKOUT_EXPIRATION_MINUTES: "20",
       PAYMENTS_SITE_BASE_URL: siteBaseUrl,
       SITE_BASE_URL: siteBaseUrl,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,

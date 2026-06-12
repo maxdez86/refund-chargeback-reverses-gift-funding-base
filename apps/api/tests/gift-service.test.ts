@@ -17,7 +17,8 @@ describe("GiftService", () => {
           fundingModelVersion: "LEGACY_FIXED_50"
         }
       ]),
-      listGiftStates: vi.fn().mockResolvedValue([])
+      listGiftStates: vi.fn().mockResolvedValue([]),
+      listStaleOpenReservations: vi.fn().mockResolvedValue([])
     };
 
     const service = new GiftService(repository as never);
@@ -67,7 +68,8 @@ describe("GiftService", () => {
           version: 1,
           updatedAt: "2026-05-13T00:00:00.000Z"
         }
-      ])
+      ]),
+      listStaleOpenReservations: vi.fn().mockResolvedValue([])
     };
 
     const service = new GiftService(repository as never);
@@ -109,7 +111,8 @@ describe("GiftService", () => {
           fullyFunded: false,
           updatedAt: "2026-05-13T00:00:00.000Z"
         }
-      ])
+      ]),
+      listStaleOpenReservations: vi.fn().mockResolvedValue([])
     };
 
     const service = new GiftService(repository as never);
@@ -127,5 +130,42 @@ describe("GiftService", () => {
         availableParts: 32
       })
     );
+  });
+
+  it("runs the stale-checkout sweep before reading the gift states", async () => {
+    const repository = {
+      listGiftMetadata: vi.fn().mockResolvedValue([]),
+      listGiftStates: vi.fn().mockResolvedValue([]),
+      listStaleOpenReservations: vi.fn().mockResolvedValue([]),
+      getPayment: vi.fn(),
+      releaseReservationAfterCheckoutFailure: vi.fn(),
+      tryExpireStalePayment: vi.fn()
+    };
+
+    const service = new GiftService(repository as never);
+    await service.getGifts();
+
+    expect(repository.listStaleOpenReservations).toHaveBeenCalledTimes(1);
+    expect(repository.listStaleOpenReservations.mock.invocationCallOrder[0]).toBeLessThan(
+      repository.listGiftMetadata.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("still serves the registry when the stale-checkout sweep fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const repository = {
+      listGiftMetadata: vi.fn().mockResolvedValue([]),
+      listGiftStates: vi.fn().mockResolvedValue([]),
+      listStaleOpenReservations: vi.fn().mockRejectedValue(new Error("gsi unavailable"))
+    };
+
+    const service = new GiftService(repository as never);
+    const response = await service.getGifts();
+
+    expect(response.ok).toBe(true);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"metric\":\"CHECKOUT_EXPIRY_SWEEP_FAILED\"")
+    );
+    errorSpy.mockRestore();
   });
 });

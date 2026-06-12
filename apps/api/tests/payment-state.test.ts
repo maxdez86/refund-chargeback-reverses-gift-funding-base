@@ -1,7 +1,9 @@
 import { PAYMENT_GIFTS_BY_ID } from "@brimax/config";
 import { describe, expect, it } from "vitest";
 import {
+  CHECKOUT_EXPIRY_GRACE_MS,
   initialPaymentStatus,
+  isStalePendingCheckout,
   mapAsaasWebhookToPaymentStatus,
   resolveGiftSelection,
   shouldApplyStatusTransition
@@ -98,5 +100,26 @@ describe("payment-state", () => {
     expect(shouldApplyStatusTransition("CONFIRMED", "RECEIVED")).toBe(true);
     expect(shouldApplyStatusTransition("EXPIRED", "RECEIVED")).toBe(true);
     expect(shouldApplyStatusTransition("CHARGEBACK", "RECEIVED")).toBe(true);
+  });
+
+  it("flags a pending checkout as stale only past the expiry grace window", () => {
+    const expiresAt = "2026-06-12T12:00:00.000Z";
+    const expiresAtMs = Date.parse(expiresAt);
+
+    expect(isStalePendingCheckout("CREATED", expiresAt, expiresAtMs)).toBe(false);
+    expect(isStalePendingCheckout("CREATED", expiresAt, expiresAtMs + CHECKOUT_EXPIRY_GRACE_MS)).toBe(false);
+    expect(isStalePendingCheckout("CREATED", expiresAt, expiresAtMs + CHECKOUT_EXPIRY_GRACE_MS + 1)).toBe(true);
+    expect(
+      isStalePendingCheckout("AWAITING_PAYMENT", expiresAt, expiresAtMs + CHECKOUT_EXPIRY_GRACE_MS + 1)
+    ).toBe(true);
+  });
+
+  it("never flags non-pending statuses or unparsable expiries as stale", () => {
+    const farPastGrace = Date.parse("2027-01-01T00:00:00.000Z");
+
+    expect(isStalePendingCheckout("PROCESSING", "2026-06-12T12:00:00.000Z", farPastGrace)).toBe(false);
+    expect(isStalePendingCheckout("CONFIRMED", "2026-06-12T12:00:00.000Z", farPastGrace)).toBe(false);
+    expect(isStalePendingCheckout("CREATED", undefined, farPastGrace)).toBe(false);
+    expect(isStalePendingCheckout("CREATED", "not-a-date", farPastGrace)).toBe(false);
   });
 });

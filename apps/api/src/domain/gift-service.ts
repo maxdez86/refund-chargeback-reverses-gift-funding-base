@@ -1,10 +1,25 @@
 import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
+import { sweepStaleCheckouts } from "./checkout-expiry";
 
 export class GiftService {
   constructor(private readonly repository = new PaymentRepository()) {}
 
   async getGifts() {
+    // Release stale abandoned-checkout reservations before reading the gift
+    // states, so this same response already reflects the freed parts. The
+    // sweep must never take the registry down with it.
+    try {
+      await sweepStaleCheckouts(this.repository, Date.now());
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          metric: "CHECKOUT_EXPIRY_SWEEP_FAILED",
+          errorMessage: error instanceof Error ? error.message : String(error)
+        })
+      );
+    }
+
     const giftMetadata = await this.repository.listGiftMetadata();
     const giftStates = await this.repository.listGiftStates();
     const statesByGiftId = new Map(giftStates.map((state) => [state.giftId, state]));

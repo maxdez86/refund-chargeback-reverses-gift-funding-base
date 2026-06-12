@@ -29,6 +29,7 @@ import {
   paymentKeys,
   paymentReservationKeys,
   paymentShellKeys,
+  reservationOpenIndex,
   webhookKeys
 } from "../key-builder";
 import { GSI1_NAME, TTL_ATTRIBUTE } from "../table";
@@ -223,6 +224,17 @@ function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity
   };
 }
 
+// A transaction canceled purely by condition checks means another writer won a
+// race we guard against — safe to treat as "lost the race". Any other reason
+// (TransactionConflict, throttling, validation) must keep propagating.
+function isConditionalCheckOnlyCancellation(error: TransactionCanceledException) {
+  const reasons = error.CancellationReasons ?? [];
+  return (
+    reasons.length > 0 &&
+    reasons.every((reason) => reason.Code === "ConditionalCheckFailed" || reason.Code === "None")
+  );
+}
+
 export class PaymentRepository {
   private readonly documentClient: DynamoDBDocumentClient;
   private readonly tableName: string;
@@ -415,6 +427,7 @@ export class PaymentRepository {
                 TableName: this.tableName,
                 Item: {
                   ...paymentReservationKeys(input.paymentId),
+                  ...reservationOpenIndex(input.expiresAt),
                   entityType: "PaymentReservation",
                   paymentId: input.paymentId,
                   giftId: input.gift.id,
@@ -700,8 +713,14 @@ export class PaymentRepository {
   async repairFinalizedPayment(input: {
     payment: StoredPayment;
     asaasCheckoutId: string;
+    reservationStatus?: StoredPaymentReservationStatus;
   }) {
     const now = new Date().toISOString();
+    // A late CHECKOUT_CREATED repair must not resurrect a reservation that was
+    // already released or consumed — flipping it back to ACTIVE without
+    // re-incrementing the gift counters would defeat the late-confirm guard.
+    const reservationHeld =
+      input.reservationStatus !== "RELEASED" && input.reservationStatus !== "CONSUMED";
 
     await this.documentClient.send(
       new TransactWriteCommand({
@@ -740,14 +759,19 @@ export class PaymentRepository {
               TableName: this.tableName,
               Key: paymentReservationKeys(input.payment.paymentId),
               ConditionExpression: "attribute_exists(PK)",
-              UpdateExpression:
-                "SET #status = :status, asaasCheckoutId = :asaasCheckoutId, updatedAt = :updatedAt",
-              ExpressionAttributeNames: {
-                "#status": "status"
-              },
+              UpdateExpression: reservationHeld
+                ? "SET #status = :status, asaasCheckoutId = :asaasCheckoutId, updatedAt = :updatedAt"
+                : "SET asaasCheckoutId = :asaasCheckoutId, updatedAt = :updatedAt",
+              ...(reservationHeld
+                ? {
+                    ExpressionAttributeNames: {
+                      "#status": "status"
+                    }
+                  }
+                : {}),
               ExpressionAttributeValues: {
                 ":asaasCheckoutId": input.asaasCheckoutId,
-                ":status": "ACTIVE",
+                ...(reservationHeld ? { ":status": "ACTIVE" } : {}),
                 ":updatedAt": now
               }
             }
@@ -813,73 +837,86 @@ export class PaymentRepository {
 
     const gift = await this.getGift(reservation.giftId);
     const state = gift ? (await this.getGiftState(reservation.giftId)) ?? defaultGiftState(reservation.giftId) : null;
+    const shell = await this.getPaymentShell(paymentId);
     const now = new Date().toISOString();
 
     if (!gift || !state) {
       return;
     }
 
-    try {
-      await this.documentClient.send(
-        new TransactWriteCommand({
-          TransactItems: [
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: giftStateKeys(reservation.giftId),
-              ConditionExpression: "attribute_exists(PK)",
-              UpdateExpression:
-                "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsReservedDecrement, " +
-                "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDecrement, " +
-                "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
-              ExpressionAttributeValues: {
-                ":amountDecrement": reservation.amountCents,
-                ":fullyFunded": false,
-                ":partsReservedDecrement": reservation.quantity,
-                ":updatedAt": now,
-                ":versionIncrement": 1,
-                ":zero": 0
-              }
-            }
-          },
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: paymentReservationKeys(paymentId),
-              // Guard against a concurrent release/consume double-decrementing
-              // the gift counters: the whole transaction cancels if another
-              // writer already moved the reservation out of its held state.
-              ConditionExpression:
-                "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
-              UpdateExpression: "SET #status = :status, updatedAt = :updatedAt",
-              ExpressionAttributeNames: {
-                "#status": "status"
-              },
-              ExpressionAttributeValues: {
-                ":consumed": "CONSUMED",
-                ":released": "RELEASED",
-                ":status": "RELEASED",
-                ":updatedAt": now
-              }
-            }
-          },
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: paymentShellKeys(paymentId),
-              ConditionExpression: "attribute_exists(PK)",
-              UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
-              ExpressionAttributeValues: {
-                ":shellStatus": "CHECKOUT_RELEASED",
-                ":updatedAt": now
-              }
-            }
+    const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
+      {
+        Update: {
+          TableName: this.tableName,
+          Key: giftStateKeys(reservation.giftId),
+          ConditionExpression: "attribute_exists(PK)",
+          UpdateExpression:
+            "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsReservedDecrement, " +
+            "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDecrement, " +
+            "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
+          ExpressionAttributeValues: {
+            ":amountDecrement": reservation.amountCents,
+            ":fullyFunded": false,
+            ":partsReservedDecrement": reservation.quantity,
+            ":updatedAt": now,
+            ":versionIncrement": 1,
+            ":zero": 0
           }
-          ]
-        })
-      );
+        }
+      },
+      {
+        Update: {
+          TableName: this.tableName,
+          Key: paymentReservationKeys(paymentId),
+          // Guard against a concurrent release/consume double-decrementing
+          // the gift counters: the whole transaction cancels if another
+          // writer already moved the reservation out of its held state.
+          ConditionExpression:
+            "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
+          UpdateExpression: "SET #status = :status, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
+          ExpressionAttributeNames: {
+            "#status": "status"
+          },
+          ExpressionAttributeValues: {
+            ":consumed": "CONSUMED",
+            ":released": "RELEASED",
+            ":status": "RELEASED",
+            ":updatedAt": now
+          }
+        }
+      }
+    ];
+
+    // A reservation can exist without a shell (the shell write failed during
+    // create). attribute_exists(PK) on a missing shell would cancel the whole
+    // transaction and silently leak the reservation, so only include the shell
+    // update when the shell is actually there.
+    if (shell) {
+      transactItems.push({
+        Update: {
+          TableName: this.tableName,
+          Key: paymentShellKeys(paymentId),
+          ConditionExpression: "attribute_exists(PK)",
+          UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
+          ExpressionAttributeValues: {
+            ":shellStatus": "CHECKOUT_RELEASED",
+            ":updatedAt": now
+          }
+        }
+      });
+    }
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
     } catch (error) {
-      if (error instanceof TransactionCanceledException) {
+      if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
+        console.warn(
+          JSON.stringify({
+            metric: "RESERVATION_RELEASE_RACE_LOST",
+            paymentId,
+            cancellationReasons: error.CancellationReasons?.map((reason) => reason.Code)
+          })
+        );
         return;
       }
 
@@ -1357,12 +1394,16 @@ export class PaymentRepository {
           Update: {
             TableName: this.tableName,
             Key: paymentReservationKeys(input.paymentId),
-            ConditionExpression: "attribute_exists(PK)",
-            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt",
+            // The counter math below was derived from the reservation status
+            // read above; if another writer moved it since, the stale math
+            // must not land — cancel the transaction instead.
+            ConditionExpression: "#status = :observedReservationStatus",
+            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
             ExpressionAttributeNames: {
               "#status": "status"
             },
             ExpressionAttributeValues: {
+              ":observedReservationStatus": reservation.status,
               ":reservationStatus": "CONSUMED",
               ":updatedAt": now
             }
@@ -1415,12 +1456,18 @@ export class PaymentRepository {
           Update: {
             TableName: this.tableName,
             Key: paymentReservationKeys(input.paymentId),
-            ConditionExpression: "attribute_exists(PK)",
-            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt",
+            // Guard on the reservation itself, not only the payment item: a
+            // concurrent releaseReservationAfterCheckoutFailure never touches
+            // the payment item, so the payment-status condition alone would
+            // let both racers decrement the gift counters.
+            ConditionExpression: "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
+            UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
             ExpressionAttributeNames: {
               "#status": "status"
             },
             ExpressionAttributeValues: {
+              ":consumed": "CONSUMED",
+              ":released": "RELEASED",
               ":reservationStatus": "RELEASED",
               ":updatedAt": now
             }
@@ -1481,6 +1528,45 @@ export class PaymentRepository {
       return true;
     } catch (error) {
       if (error instanceof ConditionalCheckFailedException) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  async listStaleOpenReservations(cutoffIso: string, limit = 25): Promise<StoredPaymentReservation[]> {
+    const response = await this.documentClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: GSI1_NAME,
+        KeyConditionExpression: "GSI1PK = :open AND GSI1SK < :cutoff",
+        ExpressionAttributeValues: {
+          ":open": reservationOpenIndex(cutoffIso).GSI1PK,
+          ":cutoff": cutoffIso
+        },
+        Limit: limit
+      })
+    );
+
+    return (response.Items as StoredPaymentReservation[] | undefined) ?? [];
+  }
+
+  // Lazy-expiry entry point: same atomic transition as a CHECKOUT_EXPIRED
+  // webhook, but losing a race (e.g. a confirmation landed first) is expected
+  // and reported as `false` instead of bubbling the AWS exception into domain/.
+  async tryExpireStalePayment(input: {
+    paymentId: string;
+    expectedCurrentStatus: PaymentStatus;
+  }): Promise<boolean> {
+    try {
+      return await this.applyWebhookUpdate({
+        paymentId: input.paymentId,
+        expectedCurrentStatus: input.expectedCurrentStatus,
+        nextStatus: "EXPIRED"
+      });
+    } catch (error) {
+      if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
         return false;
       }
 

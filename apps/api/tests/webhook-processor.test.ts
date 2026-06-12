@@ -788,3 +788,200 @@ describe("WebhookProcessor", () => {
     expect(repository.incrementGiftFunding).not.toHaveBeenCalled();
   });
 });
+
+describe("WebhookProcessor checkout events", () => {
+  function createCheckoutEventRepository(input: {
+    eventType: string;
+    payment?: Record<string, unknown> | null;
+    reservation?: Record<string, unknown> | null;
+    shell?: Record<string, unknown> | null;
+    applyWebhookUpdateResult?: boolean;
+  }) {
+    return {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: input.eventType,
+          checkout: {
+            id: "checkout-1",
+            externalReference: "payment-1"
+          }
+        }),
+        asaasCheckoutId: "checkout-1",
+        externalReference: "payment-1"
+      }),
+      getPayment: vi.fn().mockResolvedValue(input.payment ?? null),
+      getPaymentReservation: vi.fn().mockResolvedValue(input.reservation ?? null),
+      getPaymentShell: vi.fn().mockResolvedValue(input.shell ?? null),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-travesseiros",
+        name: "Travesseiros",
+        image: "travesseiros",
+        totalValueCents: 10_000,
+        fractional: false,
+        partValueCents: null,
+        totalParts: null
+      }),
+      applyWebhookUpdate: vi.fn().mockResolvedValue(input.applyWebhookUpdateResult ?? true),
+      releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue(undefined),
+      repairFinalizedPayment: vi.fn().mockResolvedValue(undefined),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+  }
+
+  const activeReservation = {
+    paymentId: "payment-1",
+    giftId: "g-travesseiros",
+    quantity: 1,
+    quotaValuesCents: [10_000],
+    amountCents: 10_000,
+    status: "ACTIVE",
+    expiresAt: "2026-06-12T12:00:00.000Z",
+    createdAt: "2026-06-12T11:00:00.000Z",
+    updatedAt: "2026-06-12T11:00:00.000Z"
+  };
+
+  it("marks CHECKOUT_EXPIRED as ignored_stale instead of throwing when the reservation is missing", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_EXPIRED",
+      reservation: null
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-stale");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-checkout-stale", "ignored_stale");
+    expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+    expect(repository.applyWebhookUpdate).not.toHaveBeenCalled();
+  });
+
+  it("expires a pending payment atomically on CHECKOUT_EXPIRED", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_EXPIRED",
+      payment: { paymentId: "payment-1", status: "AWAITING_PAYMENT" },
+      reservation: activeReservation
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-expired");
+
+    expect(result).toEqual({ duplicate: false, updated: true });
+    expect(repository.applyWebhookUpdate).toHaveBeenCalledWith({
+      eventId: "event-checkout-expired",
+      paymentId: "payment-1",
+      expectedCurrentStatus: "AWAITING_PAYMENT",
+      nextStatus: "EXPIRED",
+      asaasCheckoutId: "checkout-1"
+    });
+    expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+    expect(repository.markWebhookProcessed).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pending payment on CHECKOUT_CANCELED", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_CANCELED",
+      payment: { paymentId: "payment-1", status: "CREATED" },
+      reservation: activeReservation
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-canceled");
+
+    expect(result).toEqual({ duplicate: false, updated: true });
+    expect(repository.applyWebhookUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedCurrentStatus: "CREATED",
+        nextStatus: "CANCELED"
+      })
+    );
+  });
+
+  it("releases the reservation directly when the payment record is missing", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_EXPIRED",
+      payment: null,
+      reservation: activeReservation
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-orphan");
+
+    expect(result).toEqual({ duplicate: false, updated: true });
+    expect(repository.releaseReservationAfterCheckoutFailure).toHaveBeenCalledWith("payment-1");
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-checkout-orphan", "updated");
+    expect(repository.applyWebhookUpdate).not.toHaveBeenCalled();
+  });
+
+  it("ignores CHECKOUT_EXPIRED for a payment that already confirmed", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_EXPIRED",
+      payment: { paymentId: "payment-1", status: "CONFIRMED" },
+      reservation: { ...activeReservation, status: "CONSUMED" }
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-late");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-checkout-late", "ignored_stale");
+    expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+    expect(repository.applyWebhookUpdate).not.toHaveBeenCalled();
+  });
+
+  it("marks the event ignored_stale when the atomic update loses the race", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_EXPIRED",
+      payment: { paymentId: "payment-1", status: "AWAITING_PAYMENT" },
+      reservation: activeReservation,
+      applyWebhookUpdateResult: false
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-race");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-checkout-race", "ignored_stale");
+  });
+
+  it("does not repair a payment from CHECKOUT_CREATED when the reservation was already released", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_CREATED",
+      payment: null,
+      reservation: { ...activeReservation, status: "RELEASED" },
+      shell: {
+        paymentId: "payment-1",
+        giftId: "g-travesseiros",
+        amountCents: 10_000,
+        quotaValuesCents: [10_000],
+        paymentMethod: "PIX",
+        externalReference: "payment-1",
+        shellStatus: "CHECKOUT_RELEASED",
+        createdAt: "2026-06-12T11:00:00.000Z",
+        updatedAt: "2026-06-12T11:00:00.000Z"
+      }
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-created-late");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.repairFinalizedPayment).not.toHaveBeenCalled();
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-checkout-created-late", "ignored_stale");
+  });
+
+  it("still fails CHECKOUT_PAID when shell and reservation are both missing", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_PAID",
+      payment: null,
+      reservation: null,
+      shell: null
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+
+    await expect(processor.processEvent("event-checkout-paid-missing")).rejects.toThrow(
+      "Checkout webhook could not resolve shell or reservation state."
+    );
+    expect(repository.markWebhookProcessed).not.toHaveBeenCalled();
+  });
+});

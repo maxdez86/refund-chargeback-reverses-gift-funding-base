@@ -5,6 +5,7 @@ import {
   idempotencyKeys,
   invitationKeys,
   paymentKeys,
+  reservationOpenIndex,
   webhookKeys
 } from "../src/services/dynamodb/key-builder";
 
@@ -44,6 +45,13 @@ describe("DynamoDB key builders", () => {
     expect(asaasPaymentLookupIndex("pay_asaas_123")).toEqual({
       GSI1PK: "ASAAS#PAYMENT#pay_asaas_123",
       GSI1SK: "PAYMENT"
+    });
+  });
+
+  it("creates the open reservation sparse index values", () => {
+    expect(reservationOpenIndex("2026-06-12T20:00:00.000Z")).toEqual({
+      GSI1PK: "RESERVATION#OPEN",
+      GSI1SK: "2026-06-12T20:00:00.000Z"
     });
   });
 });

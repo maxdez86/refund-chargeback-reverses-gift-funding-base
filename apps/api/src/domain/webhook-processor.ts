@@ -249,15 +249,62 @@ export class WebhookProcessor {
     }
 
     const existingPayment = await this.repository.getPayment(paymentId);
-    const shell = await this.repository.getPaymentShell(paymentId);
     const reservation = await this.repository.getPaymentReservation(paymentId);
 
+    if (input.eventType === "CHECKOUT_CANCELED" || input.eventType === "CHECKOUT_EXPIRED") {
+      // No reservation means there is nothing to release — e.g. a sandbox
+      // event from another environment. Throwing here would only poison the
+      // queue into the DLQ, so acknowledge and move on.
+      if (!reservation) {
+        await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
+        return { duplicate: false, updated: false };
+      }
+
+      if (existingPayment) {
+        if (existingPayment.status !== "CREATED" && existingPayment.status !== "AWAITING_PAYMENT") {
+          await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
+          return { duplicate: false, updated: false };
+        }
+
+        const applied = await this.repository.applyWebhookUpdate({
+          eventId: input.eventId,
+          paymentId,
+          expectedCurrentStatus: existingPayment.status,
+          nextStatus: input.eventType === "CHECKOUT_CANCELED" ? "CANCELED" : "EXPIRED",
+          asaasCheckoutId: input.asaasCheckoutId
+        });
+
+        if (!applied) {
+          await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
+          return { duplicate: false, updated: false };
+        }
+
+        return { duplicate: false, updated: true };
+      }
+
+      await this.repository.releaseReservationAfterCheckoutFailure(paymentId);
+      await this.repository.markWebhookProcessed(input.eventId, "updated");
+      return { duplicate: false, updated: true };
+    }
+
+    const shell = await this.repository.getPaymentShell(paymentId);
+
+    // A created/paid checkout with no local state is a real inconsistency
+    // (money may be involved) — keep throwing so SQS retries and the DLQ alerts.
     if (!shell || !reservation) {
       throw new AppError("Checkout webhook could not resolve shell or reservation state.", 404);
     }
 
     if (input.eventType === "CHECKOUT_CREATED" || input.eventType === "CHECKOUT_PAID") {
       if (!existingPayment) {
+        if (
+          input.eventType === "CHECKOUT_CREATED" &&
+          (reservation.status === "RELEASED" || reservation.status === "CONSUMED")
+        ) {
+          await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
+          return { duplicate: false, updated: false };
+        }
+
         const repairedPayment = await this.buildPaymentFromShell(paymentId, shell, reservation, input.asaasCheckoutId);
         const checkoutId = input.asaasCheckoutId ?? repairedPayment.checkout?.sessionId;
         if (!checkoutId) {
@@ -268,17 +315,9 @@ export class WebhookProcessor {
             ...repairedPayment,
             asaasCheckoutId: checkoutId
           },
-          asaasCheckoutId: checkoutId
+          asaasCheckoutId: checkoutId,
+          reservationStatus: reservation.status
         });
-      }
-
-      await this.repository.markWebhookProcessed(input.eventId, "updated");
-      return { duplicate: false, updated: true };
-    }
-
-    if (input.eventType === "CHECKOUT_CANCELED" || input.eventType === "CHECKOUT_EXPIRED") {
-      if (!existingPayment || existingPayment.status === "CREATED" || existingPayment.status === "AWAITING_PAYMENT") {
-        await this.repository.releaseReservationAfterCheckoutFailure(paymentId);
       }
 
       await this.repository.markWebhookProcessed(input.eventId, "updated");
@@ -366,7 +405,8 @@ export class WebhookProcessor {
             ...repairedPayment,
             asaasCheckoutId: reference.asaasCheckoutId
           },
-          asaasCheckoutId: reference.asaasCheckoutId
+          asaasCheckoutId: reference.asaasCheckoutId,
+          reservationStatus: reservation.status
         });
 
         return {
@@ -446,7 +486,8 @@ export class WebhookProcessor {
             ...repairedPayment,
             asaasCheckoutId: recoveredAsaasCheckoutId
           },
-          asaasCheckoutId: recoveredAsaasCheckoutId
+          asaasCheckoutId: recoveredAsaasCheckoutId,
+          reservationStatus: reservation.status
         });
 
         return {
