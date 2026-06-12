@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import useEmblaCarousel from "embla-carousel-react";
 import { motion } from "framer-motion";
 import {
@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner";
 import {
   type CreatePaymentRequest,
-  type Gift as GiftResource,
   type PaymentStatus,
 } from "@brimax/contracts";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
@@ -32,6 +31,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  type GiftView,
+  fundedPercent,
+  getContributionAmount,
+  getFundedAmount,
+  getGiftAvailability,
+  getRemainingParts,
+  sortGifts,
+  toGiftView,
+} from "@/lib/gift-state";
 import { getGifts, giftsQueryKey } from "@/lib/gifts-api";
 import {
   buildSharedWidthImageFallbackSrc,
@@ -49,46 +58,6 @@ import {
 } from "@/lib/payment-flow";
 import { returnToPresentes } from "@/lib/presentes-return";
 import { scrollToAnchor } from "@/lib/scroll-to-anchor";
-
-type Gift = {
-  id: string;
-  name: string;
-  imageSlug: string;
-  totalValue: number;
-  fractional: boolean;
-  partValue: number | null;
-  totalParts: number | null;
-  finalPartValue: number | null;
-  fundingModelVersion: "LEGACY_FIXED_50" | "EXACT_FINAL_QUOTA";
-  partsFunded: number | null;
-  partsReserved: number | null;
-  confirmedAmount: number;
-  reservedAmount: number;
-  availableAmount: number;
-  availableParts: number;
-  fullyFunded: boolean;
-};
-
-function toGiftView(gift: GiftResource): Gift {
-  return {
-    id: gift.id,
-    name: gift.name,
-    imageSlug: gift.image,
-    totalValue: gift.totalValueCents / 100,
-    fractional: gift.fractional,
-    partValue: gift.partValueCents ? gift.partValueCents / 100 : null,
-    totalParts: gift.totalParts,
-    finalPartValue: gift.finalPartValueCents ? gift.finalPartValueCents / 100 : null,
-    fundingModelVersion: gift.fundingModelVersion,
-    partsFunded: gift.partsFunded,
-    partsReserved: gift.partsReserved,
-    confirmedAmount: gift.confirmedAmountCents / 100,
-    reservedAmount: gift.reservedAmountCents / 100,
-    availableAmount: gift.availableAmountCents / 100,
-    availableParts: gift.availableParts,
-    fullyFunded: gift.fullyFunded
-  };
-}
 
 const PRESENTES_CARD_IMAGE_SIZES = "(max-width: 767px) 82vw, (max-width: 1279px) 42vw, 28vw";
 const PRESENTES_DIALOG_IMAGE_SIZES = "(max-width: 639px) 90vw, 32rem";
@@ -147,71 +116,6 @@ function isPendingPaymentStatus(status: PaymentStatus) {
   return status === "CREATED" || status === "AWAITING_PAYMENT" || status === "PROCESSING";
 }
 
-function isFullyFunded(g: Gift): boolean {
-  if (g.fundingModelVersion === "EXACT_FINAL_QUOTA") {
-    return g.availableAmount <= 0 || g.availableParts <= 0;
-  }
-
-  if (g.fractional && g.totalParts != null && g.partsFunded != null) {
-    return g.partsFunded >= g.totalParts;
-  }
-  return g.fullyFunded;
-}
-
-function fundedPercent(g: Gift): number {
-  if (g.fundingModelVersion === "EXACT_FINAL_QUOTA") {
-    if (g.totalValue <= 0) return 0;
-    return Math.min(100, Math.round((g.confirmedAmount / g.totalValue) * 100));
-  }
-
-  if (!g.fractional || !g.totalParts || g.partsFunded == null) return 0;
-  return Math.min(100, Math.round((g.partsFunded / g.totalParts) * 100));
-}
-
-function getRemainingParts(gift: Gift) {
-  if (gift.fundingModelVersion === "EXACT_FINAL_QUOTA") {
-    return gift.availableParts;
-  }
-
-  return gift.fractional && gift.totalParts != null && gift.partsFunded != null
-    ? gift.totalParts - gift.partsFunded - (gift.partsReserved ?? 0)
-    : 0;
-}
-
-function getFundedAmount(gift: Gift) {
-  if (gift.fundingModelVersion === "EXACT_FINAL_QUOTA") {
-    return gift.confirmedAmount;
-  }
-
-  return gift.fractional && gift.partValue != null && gift.partsFunded != null
-    ? gift.partValue * gift.partsFunded
-    : 0;
-}
-
-function getContributionAmount(gift: Gift, quantity: number) {
-  if (!gift.fractional) {
-    return gift.totalValue;
-  }
-
-  if (gift.fundingModelVersion !== "EXACT_FINAL_QUOTA") {
-    return quantity * (gift.partValue ?? 0);
-  }
-
-  const partValue = gift.partValue ?? 0;
-  const finalPartValue = gift.finalPartValue ?? partValue;
-  const regularPartsTotal = Math.max(0, (gift.totalParts ?? 0) - 1);
-  const soldParts = Math.max(0, (gift.totalParts ?? 0) - gift.availableParts);
-  const regularPartsRemaining = Math.max(0, regularPartsTotal - soldParts);
-  const regularPartsToTake = Math.min(quantity, regularPartsRemaining);
-  const finalPartsToTake = Math.max(0, quantity - regularPartsToTake);
-
-  return regularPartsToTake * partValue + finalPartsToTake * finalPartValue;
-}
-
-function sortGifts(gifts: Gift[]): Gift[] {
-  return [...gifts].sort((a, b) => a.totalValue - b.totalValue);
-}
-
 function ProgressBar({ percent }: { percent: number }) {
   return (
     <div className="w-full" aria-hidden="true">
@@ -225,9 +129,11 @@ function ProgressBar({ percent }: { percent: number }) {
   );
 }
 
-function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
-  const fullFunded = isFullyFunded(gift);
-  const percent = gift.fractional ? fundedPercent(gift) : fullFunded ? 100 : 0;
+function GiftCard({ gift, onOpen }: { gift: GiftView; onOpen: (g: GiftView) => void }) {
+  const availability = getGiftAvailability(gift);
+  const confirmedFunded = availability === "CONFIRMED_FUNDED";
+  const reservedPending = availability === "RESERVED_PENDING";
+  const percent = gift.fractional ? fundedPercent(gift) : confirmedFunded ? 100 : 0;
   const imagePresentation = GIFT_CARD_IMAGE_PRESENTATION[gift.id];
   const remainingParts = getRemainingParts(gift);
   const fundedAmount = getFundedAmount(gift);
@@ -235,10 +141,14 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
   return (
     <article
       className={`flex w-full flex-col h-full bg-card border border-border/50 rounded-2xl overflow-hidden shadow-sm transition-all ${
-        fullFunded ? "opacity-70" : "hover:shadow-md"
+        confirmedFunded ? "opacity-70" : availability === "AVAILABLE" ? "hover:shadow-md" : ""
       }`}
       aria-label={`${gift.name} — ${formatBRL(gift.totalValue)}${
-        fullFunded ? " — presente já garantido" : ""
+        confirmedFunded
+          ? " — presente já garantido"
+          : reservedPending
+            ? " — reservado no momento"
+            : ""
       }`}
     >
       <div
@@ -255,9 +165,9 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
           pictureClassName="block w-full h-full"
           className={`h-full w-full p-2 ${
             imagePresentation?.imageClassName ?? "object-contain object-center"
-          } ${fullFunded ? "grayscale" : ""}`}
+          } ${confirmedFunded ? "grayscale" : ""}`}
         />
-        {fullFunded && (
+        {confirmedFunded && (
           <div className="absolute inset-0 bg-background/40 flex items-center justify-center">
             <span className="inline-flex items-center gap-2 rounded-full bg-background/90 px-4 py-2 text-xs font-medium tracking-widest uppercase text-foreground/80 shadow-sm">
               <Check className="h-3 w-3" aria-hidden="true" />
@@ -299,7 +209,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
               </span>
               <span>{percent}%</span>
             </div>
-            {!fullFunded && (
+            {availability === "AVAILABLE" && (
               <div className="text-xs text-muted-foreground">
                 {remainingParts}{" "}
                 {remainingParts === 1 ? "cota restante" : "cotas restantes"}
@@ -309,7 +219,7 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
         )}
 
         <div className="mt-auto pt-1.5 md:pt-2.5 lg:pt-2">
-          {fullFunded ? (
+          {confirmedFunded ? (
             <Button
               variant="outline"
               className="h-10 w-full cursor-not-allowed rounded-full"
@@ -318,6 +228,20 @@ function GiftCard({ gift, onOpen }: { gift: Gift; onOpen: (g: Gift) => void }) {
             >
               Presente já garantido
             </Button>
+          ) : reservedPending ? (
+            <>
+              <Button
+                variant="outline"
+                className="h-10 w-full cursor-not-allowed rounded-full"
+                disabled
+                aria-disabled="true"
+              >
+                Reservado no momento
+              </Button>
+              <p className="mt-1.5 text-center text-xs text-muted-foreground">
+                Aguardando confirmação de pagamento
+              </p>
+            </>
           ) : (
             <Button
               className="h-10 w-full rounded-full"
@@ -413,7 +337,7 @@ function GiftDialog({
   onOpenChange,
   onReturnFromCheckout,
 }: {
-  gift: Gift | null;
+  gift: GiftView | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onReturnFromCheckout: () => void;
@@ -703,12 +627,15 @@ export function Presentes() {
   });
   const [prevEnabled, setPrevEnabled] = useState(false);
   const [nextEnabled, setNextEnabled] = useState(true);
-  const [activeGift, setActiveGift] = useState<Gift | null>(null);
+  const [activeGift, setActiveGift] = useState<GiftView | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<StoredPendingPayment | null>(() =>
     readStoredPendingPayment()
   );
   const [resumingPayment, setResumingPayment] = useState(false);
+  const queryClient = useQueryClient();
+  const reconcileInFlightRef = useRef(false);
+  const lastReconcileRef = useRef<{ paymentId: string; at: number } | null>(null);
 
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
@@ -774,9 +701,74 @@ export function Presentes() {
     return () => root.removeEventListener("wheel", onWheel);
   }, [emblaApi]);
 
+  const reconcilePendingPayment = useCallback(async () => {
+    // The hash callback path (Asaas redirect) owns its own flow.
+    if (readCurrentPaymentReturn()) {
+      return;
+    }
+
+    const stored = readStoredPendingPayment();
+    if (!stored) {
+      return;
+    }
+
+    // popstate + pageshow commonly both fire on a single Back navigation.
+    if (reconcileInFlightRef.current) {
+      return;
+    }
+    const last = lastReconcileRef.current;
+    if (last && last.paymentId === stored.paymentId && Date.now() - last.at < 5000) {
+      return;
+    }
+
+    reconcileInFlightRef.current = true;
+    lastReconcileRef.current = { paymentId: stored.paymentId, at: Date.now() };
+
+    try {
+      const payment = await getPayment(stored.paymentId);
+
+      if (isPendingPaymentStatus(payment.status)) {
+        return;
+      }
+
+      clearStoredPendingPayment();
+      setPendingPayment(null);
+
+      if (payment.status === "CONFIRMED" || payment.status === "RECEIVED") {
+        openPaymentConfirmationDialog({
+          paymentId: payment.paymentId,
+          paymentStatus: "success",
+        });
+      } else if (payment.status === "CANCELED") {
+        toast.message("Este pagamento foi cancelado.");
+      } else if (payment.status === "EXPIRED") {
+        toast.message("Esta sessão de pagamento expirou.");
+      } else {
+        toast.message("Este pagamento não está mais disponível para retomada.");
+      }
+
+      void queryClient.invalidateQueries({ queryKey: giftsQueryKey });
+    } catch (error) {
+      if (error instanceof PaymentApiError && error.status === 404) {
+        clearStoredPendingPayment();
+        setPendingPayment(null);
+        toast.message("Este pagamento não está mais disponível para retomada.");
+        void queryClient.invalidateQueries({ queryKey: giftsQueryKey });
+      }
+      // Other errors: keep the banner — the payment may still be live.
+    } finally {
+      reconcileInFlightRef.current = false;
+    }
+  }, [queryClient]);
+
   useEffect(() => {
     const refreshPendingPayment = () => {
       setPendingPayment(readStoredPendingPayment());
+    };
+
+    const handleReturnNavigation = () => {
+      refreshPendingPayment();
+      void reconcilePendingPayment();
     };
 
     const onPageShow = (event: PageTransitionEvent) => {
@@ -784,21 +776,25 @@ export function Presentes() {
         return;
       }
 
-      refreshPendingPayment();
+      handleReturnNavigation();
     };
 
     window.addEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
-    window.addEventListener("popstate", refreshPendingPayment);
+    window.addEventListener("popstate", handleReturnNavigation);
     window.addEventListener("pageshow", onPageShow);
+
+    // Cross-origin Back from Asaas often lands as a full reload (pageshow
+    // persisted=false, no popstate), so reconcile on mount as well.
+    void reconcilePendingPayment();
 
     return () => {
       window.removeEventListener(PAYMENT_FLOW_UPDATED_EVENT, refreshPendingPayment);
-      window.removeEventListener("popstate", refreshPendingPayment);
+      window.removeEventListener("popstate", handleReturnNavigation);
       window.removeEventListener("pageshow", onPageShow);
     };
-  }, []);
+  }, [reconcilePendingPayment]);
 
-  const handleOpen = (g: Gift) => {
+  const handleOpen = (g: GiftView) => {
     setActiveGift(g);
     setDialogOpen(true);
   };
@@ -843,6 +839,7 @@ export function Presentes() {
 
       clearStoredPendingPayment();
       setPendingPayment(null);
+      void queryClient.invalidateQueries({ queryKey: giftsQueryKey });
 
       if (payment.status === "CONFIRMED" || payment.status === "RECEIVED") {
         openPaymentConfirmationDialog({
@@ -864,6 +861,14 @@ export function Presentes() {
 
       toast.message("Este pagamento não está mais disponível para retomada.");
     } catch (error) {
+      if (error instanceof PaymentApiError && error.status === 404) {
+        clearStoredPendingPayment();
+        setPendingPayment(null);
+        void queryClient.invalidateQueries({ queryKey: giftsQueryKey });
+        toast.message("Este pagamento não está mais disponível para retomada.");
+        return;
+      }
+
       const message =
         error instanceof PaymentApiError
           ? error.message

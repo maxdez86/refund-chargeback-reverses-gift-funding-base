@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 
 const listMock = vi.fn();
 const createMock = vi.fn();
 const deleteMock = vi.fn();
 const verifyTurnstileMock = vi.fn();
+let getHandler: typeof import("../src/functions/guest-messages-get/handler").handler;
+let createHandler: typeof import("../src/functions/guest-messages-create/handler").handler;
+let deleteHandler: typeof import("../src/functions/admin-guest-message-delete/handler").handler;
 
 vi.mock("../src/domain/guest-message-service", () => ({
   GuestMessageService: class {
@@ -19,6 +22,18 @@ vi.mock("../src/lib/turnstile", () => ({
 }));
 
 describe("guest message handlers", () => {
+  beforeAll(async () => {
+    [
+      { handler: getHandler },
+      { handler: createHandler },
+      { handler: deleteHandler }
+    ] = await Promise.all([
+      import("../src/functions/guest-messages-get/handler"),
+      import("../src/functions/guest-messages-create/handler"),
+      import("../src/functions/admin-guest-message-delete/handler")
+    ]);
+  });
+
   beforeEach(() => {
     listMock.mockReset();
     createMock.mockReset();
@@ -32,9 +47,8 @@ describe("guest message handlers", () => {
       messages: [],
       nextCursor: "cursor-2"
     });
-    const { handler } = await import("../src/functions/guest-messages-get/handler");
 
-    const response = await handler({
+    const response = await getHandler({
       headers: {},
       queryStringParameters: { cursor: "cursor-1" }
     } as APIGatewayProxyEventV2);
@@ -57,9 +71,8 @@ describe("guest message handlers", () => {
       },
       notificationSent: true
     });
-    const { handler } = await import("../src/functions/guest-messages-create/handler");
 
-    const response = await handler({
+    const response = await createHandler({
       headers: {},
       body: JSON.stringify({ authorName: "Ana", message: "Com carinho." })
     } as APIGatewayProxyEventV2);
@@ -79,9 +92,8 @@ describe("guest message handlers", () => {
       messageId: "msg-1",
       deletedAt: "2026-05-29T18:10:00.000Z"
     });
-    const { handler } = await import("../src/functions/admin-guest-message-delete/handler");
 
-    const response = await handler({
+    const response = await deleteHandler({
       headers: {},
       pathParameters: { messageId: "msg-1" }
     } as APIGatewayProxyEventV2);
