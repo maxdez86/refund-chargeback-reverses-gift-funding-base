@@ -399,6 +399,151 @@ describe("WebhookProcessor", () => {
     });
   });
 
+  it("recovers the external reference from the Asaas checkout session when the payment carries none", async () => {
+    const repository = {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: "PAYMENT_CONFIRMED",
+          payment: {
+            id: "pay_no_external_ref",
+            customer: "cus_9",
+            checkoutSession: "checkout-session-9",
+            status: "CONFIRMED",
+            confirmedDate: "2026-06-12"
+          }
+        }),
+        asaasPaymentId: "pay_no_external_ref",
+        asaasCheckoutId: "checkout-session-9"
+      }),
+      getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue(null),
+      getPaymentByAsaasCheckoutId: vi.fn().mockResolvedValue(null),
+      getGift: vi.fn().mockResolvedValue({
+        id: "g-test-pix",
+        image: "pix-teste"
+      }),
+      getPayment: vi
+        .fn()
+        .mockResolvedValueOnce({
+          paymentId: "payment-9",
+          status: "PROCESSING",
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+        })
+        .mockResolvedValueOnce({
+          paymentId: "payment-9",
+          status: "CONFIRMED",
+          amountCents: 500,
+          customerProfileStatus: "PENDING",
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+        })
+        .mockResolvedValueOnce({
+          paymentId: "payment-9",
+          status: "CONFIRMED",
+          amountCents: 500,
+          payerEmail: "buyer@example.com",
+          payerFirstName: "Buyer",
+          customerProfileStatus: "READY",
+          gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+        }),
+      applyWebhookUpdate: vi.fn().mockResolvedValue(true),
+      updatePaymentCustomerProfile: vi.fn().mockResolvedValue(undefined),
+      acquireNotificationSend: vi.fn().mockResolvedValue(true),
+      markNotificationSent: vi.fn().mockResolvedValue(undefined),
+      releaseNotificationSend: vi.fn().mockResolvedValue(undefined),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const asaasClient = {
+      getPaymentById: vi.fn().mockResolvedValue({
+        id: "pay_no_external_ref",
+        customer: "cus_9",
+        checkoutSession: "checkout-session-9"
+      }),
+      getCheckoutById: vi.fn().mockResolvedValue({
+        id: "checkout-session-9",
+        externalReference: "payment-9"
+      }),
+      getCustomerById: vi.fn().mockResolvedValue({
+        id: "cus_9",
+        name: "Buyer Person",
+        email: "buyer@example.com"
+      })
+    };
+    const emailService = {
+      sendEmail: vi.fn().mockResolvedValue({ ok: true, messageId: "msg-9" })
+    };
+
+    const processor = new WebhookProcessor(repository as never, asaasClient as never, emailService as never);
+    const result = await processor.processEvent("event-checkout-session");
+
+    expect(result).toEqual({ duplicate: false, updated: true });
+    expect(asaasClient.getCheckoutById).toHaveBeenCalledWith("checkout-session-9");
+    expect(repository.getPayment).toHaveBeenCalledWith("payment-9");
+    expect(annotateTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhook_asaas_fallback_attempted: true,
+        webhook_recovered_external_reference: true,
+        webhook_resolution_source: "asaas_fallback_external_reference"
+      })
+    );
+    expect(repository.applyWebhookUpdate).toHaveBeenCalledWith({
+      eventId: "event-checkout-session",
+      paymentId: "payment-9",
+      expectedCurrentStatus: "PROCESSING",
+      nextStatus: "CONFIRMED",
+      confirmedOn: "2026-06-12",
+      receivedOn: undefined,
+      asaasPaymentId: "pay_no_external_ref",
+      asaasCheckoutId: "checkout-session-9"
+    });
+  });
+
+  it("recovers the external reference from the checkout session callback url", async () => {
+    const repository = {
+      getWebhookEvent: vi.fn().mockResolvedValue({
+        payload: JSON.stringify({
+          event: "PAYMENT_CONFIRMED",
+          payment: {
+            id: "pay_callback_only",
+            checkoutSession: "checkout-session-10",
+            status: "CONFIRMED"
+          }
+        }),
+        asaasPaymentId: "pay_callback_only",
+        asaasCheckoutId: "checkout-session-10"
+      }),
+      getPaymentByAsaasPaymentId: vi.fn().mockResolvedValue(null),
+      getPaymentByAsaasCheckoutId: vi.fn().mockResolvedValue(null),
+      getPayment: vi.fn().mockResolvedValue({
+        paymentId: "payment-10",
+        status: "RECEIVED",
+        gift: { id: "g-test-pix", name: "PIX Teste", quantity: 1 }
+      }),
+      markWebhookProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const asaasClient = {
+      getPaymentById: vi.fn().mockResolvedValue({
+        id: "pay_callback_only",
+        checkoutSession: "checkout-session-10"
+      }),
+      getCheckoutById: vi.fn().mockResolvedValue({
+        id: "checkout-session-10",
+        callback: {
+          successUrl: "https://brimax.life/presentes#paymentId=payment-10&status=success"
+        }
+      })
+    };
+    const emailService = {
+      sendEmail: vi.fn()
+    };
+
+    const processor = new WebhookProcessor(repository as never, asaasClient as never, emailService as never);
+    const result = await processor.processEvent("event-callback-url");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(asaasClient.getCheckoutById).toHaveBeenCalledWith("checkout-session-10");
+    expect(repository.getPayment).toHaveBeenCalledWith("payment-10");
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith("event-callback-url", "ignored_stale");
+  });
+
   it("keeps failing when payment resolution still fails after Asaas recovery", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const repository = {

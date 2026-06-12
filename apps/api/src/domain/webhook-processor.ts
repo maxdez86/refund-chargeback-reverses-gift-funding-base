@@ -380,7 +380,7 @@ export class WebhookProcessor {
       }
     }
 
-    if (!reference.asaasPaymentId) {
+    if (!reference.asaasPaymentId && !reference.asaasCheckoutId) {
       return {
         payment: null,
         diagnostics: {
@@ -391,10 +391,13 @@ export class WebhookProcessor {
       };
     }
 
-    const asaasPayment = await this.asaasClient.getPaymentById(reference.asaasPaymentId);
-    const recoveredExternalReference = reference.externalReference ?? asaasPayment.externalReference;
-    const recoveredAsaasCheckoutId = reference.asaasCheckoutId ?? asaasPayment.checkoutSession;
-    const fallbackLookup = await this.lookupPayment(
+    const asaasPayment = reference.asaasPaymentId
+      ? await this.asaasClient.getPaymentById(reference.asaasPaymentId)
+      : null;
+    let recoveredExternalReference = reference.externalReference ?? asaasPayment?.externalReference;
+    const recoveredAsaasCheckoutId = reference.asaasCheckoutId ?? asaasPayment?.checkoutSession;
+
+    let fallbackLookup = await this.lookupPayment(
       {
         asaasPaymentId: reference.asaasPaymentId,
         asaasCheckoutId: recoveredAsaasCheckoutId,
@@ -402,6 +405,30 @@ export class WebhookProcessor {
       },
       "fallback"
     );
+
+    if (!fallbackLookup.payment && !recoveredExternalReference && recoveredAsaasCheckoutId) {
+      // Payments spawned from a checkout session don't inherit its
+      // externalReference, so both the webhook payload and GET /payments can
+      // come back without our paymentId. The checkout session still carries it
+      // (externalReference + callback URLs), so fetch it to recover the local key.
+      const asaasCheckout = await this.asaasClient.getCheckoutById(recoveredAsaasCheckoutId);
+      recoveredExternalReference =
+        asaasCheckout.externalReference ??
+        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.successUrl) ??
+        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.cancelUrl) ??
+        parsePaymentIdFromCallbackUrl(asaasCheckout.callback?.expiredUrl);
+
+      if (recoveredExternalReference) {
+        fallbackLookup = await this.lookupPayment(
+          {
+            asaasPaymentId: reference.asaasPaymentId,
+            asaasCheckoutId: recoveredAsaasCheckoutId,
+            externalReference: recoveredExternalReference
+          },
+          "fallback"
+        );
+      }
+    }
 
     if (!fallbackLookup.payment && recoveredExternalReference && recoveredAsaasCheckoutId) {
       const shell = await this.repository.getPaymentShell(recoveredExternalReference);
