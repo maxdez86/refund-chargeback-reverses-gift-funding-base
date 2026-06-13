@@ -35,7 +35,8 @@ describe("AppStack", () => {
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
-    template.resourceCountIs("AWS::SQS::Queue", 2);
+    // webhook queue + DLQ and checkout-expiry queue + DLQ.
+    template.resourceCountIs("AWS::SQS::Queue", 4);
     template.resourceCountIs("AWS::SecretsManager::Secret", 1);
     template.resourceCountIs("AWS::SES::EmailIdentity", 0);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
@@ -130,8 +131,9 @@ describe("AppStack", () => {
       }
     });
 
-    // Keep-warm: 8 guest-facing functions chunked into 2 rules (≤5 targets each).
-    template.resourceCountIs("AWS::Events::Rule", 2);
+    // Keep-warm: 9 guest-facing functions chunked into 2 rules (≤5 targets each),
+    // plus the checkout-expiry schedule => 3 EventBridge rules.
+    template.resourceCountIs("AWS::Events::Rule", 3);
     template.hasResourceProperties("AWS::Events::Rule", {
       Name: "dev-brimax-keep-warm-0",
       ScheduleExpression: "rate(4 minutes)",
@@ -147,6 +149,18 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Events::Rule", {
       Name: "dev-brimax-keep-warm-1",
       ScheduleExpression: "rate(4 minutes)"
+    });
+    // Checkout-expiry correctness floor: every minute, feeding the SAME queue the
+    // GET /gifts trigger uses (target is the queue ARN, with a JSON Input).
+    template.hasResourceProperties("AWS::Events::Rule", {
+      Name: "dev-brimax-checkout-expiry-schedule",
+      ScheduleExpression: "rate(1 minute)",
+      Targets: Match.arrayWith([
+        Match.objectLike({
+          Arn: Match.anyValue(),
+          Input: "{\"source\":\"schedule\"}"
+        })
+      ])
     });
     template.hasResourceProperties("AWS::Lambda::Permission", {
       Action: "lambda:InvokeFunction",
@@ -170,19 +184,55 @@ describe("AppStack", () => {
         })
       ])
     });
+    // The sweep failure metric now lives on the worker log group, not GET /gifts.
     template.hasResourceProperties("AWS::Logs::MetricFilter", {
       FilterPattern:
         '?"CHECKOUT_EXPIRY_SWEEP_FAILED" ?"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"',
+      LogGroupName: {
+        Ref: Match.stringLikeRegexp("^CheckoutExpiryWorkerFunctionLogGroup")
+      },
+      MetricTransformations: [
+        {
+          MetricName: "checkout-expiry-worker-sweep-failed",
+          MetricNamespace: "Brimax/Payments",
+          MetricValue: "1"
+        }
+      ]
+    });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '"CHECKOUT_EXPIRY_PROTECTED_STALE"',
+      LogGroupName: {
+        Ref: Match.stringLikeRegexp("^CheckoutExpiryWorkerFunctionLogGroup")
+      },
+      MetricTransformations: [
+        {
+          MetricName: "checkout-expiry-protected-stale",
+          MetricNamespace: "Brimax/Payments",
+          MetricValue: "1"
+        }
+      ]
+    });
+    // The enqueue-failure metric stays on the GET /gifts log group.
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '"CHECKOUT_EXPIRY_TRIGGER_ENQUEUE_FAILED"',
       LogGroupName: {
         Ref: Match.stringLikeRegexp("^GetGiftsFunctionLogGroup")
       },
       MetricTransformations: [
         {
-          MetricName: "get-gifts-checkout-expiry-sweep-failed",
+          MetricName: "checkout-expiry-trigger-enqueue-failed",
           MetricNamespace: "Brimax/Payments",
           MetricValue: "1"
         }
       ]
+    });
+    // The checkout-expiry worker consumes its queue with batchSize 1 and a
+    // maxConcurrency floor of 2 (NOT reserved concurrency).
+    template.hasResourceProperties("AWS::Lambda::EventSourceMapping", {
+      BatchSize: 1,
+      ScalingConfig: {
+        MaximumConcurrency: 2
+      }
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
@@ -333,49 +383,62 @@ describe("AppStack", () => {
     );
     expect(getGiftsPolicy).toBeDefined();
 
-    const getGiftsPolicyActions = (
+    const getGiftsPolicyStatements = (
       getGiftsPolicy?.Properties?.PolicyDocument as {
         Statement: Array<{ Action: string | string[]; Resource: unknown }>;
       }
-    ).Statement.flatMap((statement) =>
+    ).Statement;
+    const getGiftsPolicyActions = getGiftsPolicyStatements.flatMap((statement) =>
       Array.isArray(statement.Action) ? statement.Action : [statement.Action]
     );
 
+    // GET /gifts is now read-only on the table (batch read) + send-only on the
+    // expiry queue. It must NOT carry any table write permission.
     expect(getGiftsPolicyActions).toEqual(
       expect.arrayContaining([
         "dynamodb:BatchGetItem",
         "dynamodb:GetItem",
         "dynamodb:Query",
         "dynamodb:Scan",
-        "dynamodb:UpdateItem"
+        "sqs:SendMessage"
       ])
     );
-    expect(getGiftsPolicyActions).not.toEqual(
-      expect.arrayContaining([
-        "dynamodb:BatchWriteItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:PutItem"
-      ])
-    );
+    expect(getGiftsPolicyActions).not.toContain("dynamodb:UpdateItem");
+    expect(getGiftsPolicyActions).not.toContain("dynamodb:PutItem");
+    expect(getGiftsPolicyActions).not.toContain("dynamodb:DeleteItem");
+    expect(getGiftsPolicyActions).not.toContain("dynamodb:BatchWriteItem");
 
-    const getGiftsPolicyStatements = (
-      getGiftsPolicy?.Properties?.PolicyDocument as {
-        Statement: Array<{ Action: string | string[]; Resource: unknown }>;
-      }
-    ).Statement;
     const readStatement = getGiftsPolicyStatements.find((statement) =>
       (Array.isArray(statement.Action) ? statement.Action : [statement.Action]).includes(
         "dynamodb:Query"
       )
     );
-    const updateStatement = getGiftsPolicyStatements.find((statement) =>
-      (Array.isArray(statement.Action) ? statement.Action : [statement.Action]).includes(
-        "dynamodb:UpdateItem"
-      )
-    );
-
     expect(JSON.stringify(readStatement?.Resource)).toContain("/index/*");
-    expect(JSON.stringify(updateStatement?.Resource)).not.toContain("/index/*");
+
+    // The checkout-expiry worker holds full read/write on the table (it runs the
+    // expiry TransactWriteItems) plus consume on its queue.
+    const workerFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("CheckoutExpiryWorkerFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(workerFunctionEntry).toBeDefined();
+    expect(workerFunctionEntry?.[1].Properties?.MemorySize).toBe(512);
+    expect(workerFunctionEntry?.[1].Properties?.Timeout).toBe(60);
+
+    const workerRoleLogicalId = (
+      workerFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const workerPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(workerRoleLogicalId)
+    );
+    const workerPolicyJson = JSON.stringify(workerPolicy?.Properties?.PolicyDocument);
+    expect(workerPolicyJson).toContain("dynamodb:UpdateItem");
+    expect(workerPolicyJson).toContain("dynamodb:PutItem");
+    expect(workerPolicyJson).toContain("dynamodb:DeleteItem");
+    expect(workerPolicyJson).toContain("sqs:ReceiveMessage");
 
     for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
       expect(resource.Properties).not.toHaveProperty("FunctionName");

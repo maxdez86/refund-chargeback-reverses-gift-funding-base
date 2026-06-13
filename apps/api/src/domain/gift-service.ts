@@ -1,30 +1,21 @@
 import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
+import { PAYMENT_GIFTS } from "@brimax/config";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
-import { sweepStaleCheckouts } from "./checkout-expiry";
 
 export class GiftService {
   constructor(private readonly repository = new PaymentRepository()) {}
 
   async getGifts() {
-    // Release stale abandoned-checkout reservations before reading the gift
-    // states, so this same response already reflects the freed parts. The
-    // sweep must never take the registry down with it.
-    try {
-      await sweepStaleCheckouts(this.repository, Date.now());
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          metric: "CHECKOUT_EXPIRY_SWEEP_FAILED",
-          errorMessage: error instanceof Error ? error.message : String(error)
-        })
-      );
-    }
+    // Fast read: one BatchGetItem over metadata + state keys for every known
+    // gift id, instead of two full-table Scans. Stale-checkout cleanup no longer
+    // runs here — it is durable, traffic-independent background work (SQS +
+    // EventBridge worker). A reservation that expired but has not yet been swept
+    // may briefly show as unavailable; the worker reconciles within ~1 min.
+    const giftIds = PAYMENT_GIFTS.map((gift) => gift.id);
+    const { metadata, states } = await this.repository.batchGetGiftCatalog(giftIds);
+    const statesByGiftId = new Map(states.map((state) => [state.giftId, state]));
 
-    const giftMetadata = await this.repository.listGiftMetadata();
-    const giftStates = await this.repository.listGiftStates();
-    const statesByGiftId = new Map(giftStates.map((state) => [state.giftId, state]));
-
-    const gifts: Gift[] = giftMetadata.map((gift) => {
+    const gifts: Gift[] = metadata.map((gift) => {
       const state = statesByGiftId.get(gift.id);
       const partsFunded = state?.partsFunded ?? 0;
       const partsReserved = state?.partsReserved ?? 0;
@@ -66,6 +57,19 @@ export class GiftService {
         updatedAt: state?.updatedAt ?? null
       };
     });
+
+    // METADATA is seeded for every gift, so a gap means real drift, not a normal
+    // absent-state row. Omit it (matches the old Scan behavior) and log it.
+    const presentIds = new Set(metadata.map((gift) => gift.id));
+    const missingMetadataIds = giftIds.filter((id) => !presentIds.has(id));
+    if (missingMetadataIds.length > 0) {
+      console.warn(
+        JSON.stringify({
+          metric: "GIFT_METADATA_MISSING",
+          giftIds: missingMetadataIds
+        })
+      );
+    }
 
     return GetGiftsResponseSchema.parse({
       ok: true,

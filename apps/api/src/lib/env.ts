@@ -8,6 +8,7 @@ type Env = {
   contactEmail: string;
   emailFrom: string;
   emailConfigurationSetName?: string;
+  expiryQueueUrl: string;
   hostedCheckoutSuccessUrl: string;
   rsvpNotificationTo: string;
   siteBaseUrl: string;
@@ -108,6 +109,7 @@ export function getEnv(): Env {
     contactEmail,
     emailFrom: process.env.EMAIL_FROM ?? contactEmail,
     emailConfigurationSetName: process.env.EMAIL_CONFIGURATION_SET_NAME?.trim() || undefined,
+    expiryQueueUrl: process.env.EXPIRY_QUEUE_URL ?? "",
     hostedCheckoutSuccessUrl: process.env.HOSTED_CHECKOUT_SUCCESS_URL?.trim() || siteBaseUrl,
     rsvpNotificationTo: process.env.RSVP_NOTIFICATION_TO ?? contactEmail,
     siteBaseUrl,

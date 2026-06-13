@@ -42,6 +42,9 @@ describe("ObservabilityStack", () => {
       alertEmail: "alerts@example.com",
       alarmedFunctions: appStack.alarmedFunctions,
       applicationLogGroups: appStack.applicationLogGroups,
+      checkoutExpiryDlq: appStack.checkoutExpiryDlq,
+      checkoutExpiryQueue: appStack.checkoutExpiryQueue,
+      checkoutExpiryWorkerFunction: appStack.checkoutExpiryWorkerFunction,
       createPaymentFunction: appStack.createPaymentFunction,
       distribution: edgeStack.distribution,
       httpApi: appStack.httpApi,
@@ -56,7 +59,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 17);
+    // 15 fixed alarms + one Lambda-throttle alarm per alarmed function (10).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 25);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -78,16 +82,33 @@ describe("ObservabilityStack", () => {
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmActions: Match.anyValue(),
-      AlarmDescription: "Alerts when GET /gifts cannot clean up stale checkout reservations.",
+      AlarmDescription: "Alerts when the checkout-expiry worker cannot clean up stale reservations.",
       ComparisonOperator: "GreaterThanOrEqualToThreshold",
       EvaluationPeriods: 1,
-      MetricName: "get-gifts-checkout-expiry-sweep-failed",
+      MetricName: "checkout-expiry-worker-sweep-failed",
       Namespace: "Brimax/Payments",
       OKActions: Match.anyValue(),
       Period: 300,
       Statistic: "Sum",
       Threshold: 1,
       TreatMissingData: "notBreaching"
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when the checkout-expiry dead-letter queue receives messages.",
+      Threshold: 1
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when GET /gifts cannot enqueue stale-checkout triggers.",
+      MetricName: "checkout-expiry-trigger-enqueue-failed",
+      Namespace: "Brimax/Payments",
+      Threshold: 1
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription:
+        "Alerts when stale reservations sit under protected (processing/terminal) payments — likely drift.",
+      MetricName: "checkout-expiry-protected-stale",
+      Namespace: "Brimax/Payments",
+      Threshold: 5
     });
 
     template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
@@ -105,6 +126,8 @@ describe("ObservabilityStack", () => {
     expect(dashboardBody).toContain("limit 50");
     expect(dashboardBody).toContain("Webhook Unmatched / Processor Errors");
     expect(dashboardBody).toContain("asaas-webhook-processor-webhook-payment-not-found");
+    expect(dashboardBody).toContain("Checkout Expiry Queue / DLQ");
+    expect(dashboardBody).toContain("checkout-expiry-worker-sweep-failed");
     expect(dashboardBody).not.toContain("cloudwatch/home");
     expect(dashboardBody).not.toContain("#xray:traces/service-map");
     expect(dashboardBody).not.toContain("ApiAccessLogs");

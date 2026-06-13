@@ -41,6 +41,9 @@ export class AppStack extends cdk.Stack {
   readonly webhookProcessorFunction: lambda.IFunction;
   readonly webhookDlq: sqs.IQueue;
   readonly webhookQueue: sqs.IQueue;
+  readonly checkoutExpiryWorkerFunction: lambda.IFunction;
+  readonly checkoutExpiryDlq: sqs.IQueue;
+  readonly checkoutExpiryQueue: sqs.IQueue;
   private readonly functionLogGroups = new Map<string, logs.LogGroup>();
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
@@ -92,6 +95,21 @@ export class AppStack extends cdk.Stack {
     });
     this.webhookDlq = webhookDlq;
     this.webhookQueue = webhookQueue;
+    // Durable, traffic-independent stale-checkout cleanup. Mirrors the webhook
+    // queue (redrive 5, 14-day DLQ). The worker timeout is 60s, so the queue
+    // visibility timeout must comfortably exceed it.
+    const expiryDlq = new sqs.Queue(this, "CheckoutExpiryDlq", {
+      retentionPeriod: cdk.Duration.days(14)
+    });
+    const expiryQueue = new sqs.Queue(this, "CheckoutExpiryQueue", {
+      deadLetterQueue: {
+        queue: expiryDlq,
+        maxReceiveCount: 5
+      },
+      visibilityTimeout: cdk.Duration.seconds(120)
+    });
+    this.checkoutExpiryDlq = expiryDlq;
+    this.checkoutExpiryQueue = expiryQueue;
     const senderDomain =
       props.stage === "prod"
         ? new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
@@ -253,6 +271,7 @@ export class AppStack extends cdk.Stack {
       PAYMENTS_SITE_BASE_URL: siteBaseUrl,
       SITE_BASE_URL: siteBaseUrl,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
+      EXPIRY_QUEUE_URL: expiryQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
     };
@@ -288,6 +307,7 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/gifts-get/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
+      memorySize: 512,
       projectRoot,
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(10)
@@ -342,6 +362,16 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30)
     });
     this.webhookProcessorFunction = webhookProcessorFn;
+    const checkoutExpiryWorkerFn = this.createTaggedNodejsFunction("CheckoutExpiryWorkerFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/checkout-expiry-worker/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      memorySize: 512,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(60)
+    });
+    this.checkoutExpiryWorkerFunction = checkoutExpiryWorkerFn;
     const invitationGetFn = this.createTaggedNodejsFunction("InvitationGetFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
@@ -368,7 +398,8 @@ export class AppStack extends cdk.Stack {
       invitationGetFn,
       rsvpFn,
       asaasWebhookFn,
-      webhookProcessorFn
+      webhookProcessorFn,
+      checkoutExpiryWorkerFn
     ];
 
     // Keep the guest-facing functions warm (excludes the vendor webhook pair
@@ -395,6 +426,30 @@ export class AppStack extends cdk.Stack {
       })
     );
 
+    // Bound worker parallelism with the event-source maxConcurrency (floor of 2),
+    // NOT function reserved concurrency: reserved concurrency + an SQS source
+    // turns throttles into receive-count inflation and false dead-lettering. The
+    // sweep is idempotent (condition guards), so two overlapping workers are safe.
+    checkoutExpiryWorkerFn.addEventSource(
+      new lambdaEventSources.SqsEventSource(expiryQueue, {
+        batchSize: 1,
+        maxConcurrency: 2
+      })
+    );
+
+    // Correctness floor: cleanup runs every minute regardless of site traffic.
+    // EventBridge targets the SAME queue the GET /gifts trigger feeds, so there
+    // is a single invocation path (no competing async-invoke retry/DLQ).
+    new events.Rule(this, "CheckoutExpirySchedule", {
+      ruleName: resourceName("brimax-checkout-expiry-schedule", props.stage),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      targets: [
+        new eventsTargets.SqsQueue(expiryQueue, {
+          message: events.RuleTargetInput.fromObject({ source: "schedule" })
+        })
+      ]
+    });
+
     props.table.grantReadWriteData(createPaymentFn);
     discardPaymentFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -407,13 +462,16 @@ export class AppStack extends cdk.Stack {
       })
     );
     props.table.grantReadData(getPaymentFn);
+    // GET /gifts is now a pure read: it batch-reads the catalog and only sends an
+    // expiry-trigger message. It no longer writes to the table — the worker owns
+    // all stale-checkout mutations.
     props.table.grantReadData(getGiftsFn);
-    getGiftsFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["dynamodb:UpdateItem"],
-        resources: [props.table.tableArn]
-      })
-    );
+    expiryQueue.grantSendMessages(getGiftsFn);
+    // The worker performs TransactWriteItems (expiry release + payment
+    // ConditionCheck) and queries the open-reservation GSI, so it needs full
+    // read/write (covers PutItem/UpdateItem/DeleteItem/ConditionCheckItem).
+    props.table.grantReadWriteData(checkoutExpiryWorkerFn);
+    expiryQueue.grantConsumeMessages(checkoutExpiryWorkerFn);
     props.table.grantReadData(getGuestMessagesFn);
     props.table.grantReadWriteData(createGuestMessagesFn);
     props.table.grantReadWriteData(deleteGuestMessageFn);
@@ -532,9 +590,10 @@ export class AppStack extends cdk.Stack {
     }
 
     this.addMetricFilters(this.getFunctionLogGroup("CreatePaymentFunction"), "create-payment");
-    this.addCheckoutExpirySweepMetricFilter(
-      this.getFunctionLogGroup("GetGiftsFunction")
+    this.addCheckoutExpiryWorkerMetricFilters(
+      this.getFunctionLogGroup("CheckoutExpiryWorkerFunction")
     );
+    this.addCheckoutExpiryTriggerMetricFilter(this.getFunctionLogGroup("GetGiftsFunction"));
     this.addMetricFilters(this.getFunctionLogGroup("AsaasWebhookFunction"), "asaas-webhook");
     this.addMetricFilters(
       this.getFunctionLogGroup("AsaasWebhookProcessorFunction"),
@@ -577,6 +636,10 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "WebhookQueueUrl", {
       value: webhookQueue.queueUrl
+    });
+
+    new cdk.CfnOutput(this, "CheckoutExpiryQueueUrl", {
+      value: expiryQueue.queueUrl
     });
 
     new cdk.CfnOutput(this, "AppSecretArn", {
@@ -734,15 +797,32 @@ export class AppStack extends cdk.Stack {
     });
   }
 
-  private addCheckoutExpirySweepMetricFilter(logGroup: logs.ILogGroup) {
-    new logs.MetricFilter(this, "GetGiftsCheckoutExpirySweepFailuresMetric", {
+  private addCheckoutExpiryWorkerMetricFilters(logGroup: logs.ILogGroup) {
+    new logs.MetricFilter(this, "CheckoutExpiryWorkerSweepFailuresMetric", {
       logGroup,
       metricNamespace: "Brimax/Payments",
-      metricName: "get-gifts-checkout-expiry-sweep-failed",
+      metricName: "checkout-expiry-worker-sweep-failed",
       filterPattern: logs.FilterPattern.anyTerm(
         "CHECKOUT_EXPIRY_SWEEP_FAILED",
         "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"
       ),
+      metricValue: "1"
+    });
+    new logs.MetricFilter(this, "CheckoutExpiryProtectedStaleMetric", {
+      logGroup,
+      metricNamespace: "Brimax/Payments",
+      metricName: "checkout-expiry-protected-stale",
+      filterPattern: logs.FilterPattern.literal('"CHECKOUT_EXPIRY_PROTECTED_STALE"'),
+      metricValue: "1"
+    });
+  }
+
+  private addCheckoutExpiryTriggerMetricFilter(logGroup: logs.ILogGroup) {
+    new logs.MetricFilter(this, "CheckoutExpiryTriggerEnqueueFailuresMetric", {
+      logGroup,
+      metricNamespace: "Brimax/Payments",
+      metricName: "checkout-expiry-trigger-enqueue-failed",
+      filterPattern: logs.FilterPattern.literal('"CHECKOUT_EXPIRY_TRIGGER_ENQUEUE_FAILED"'),
       metricValue: "1"
     });
   }

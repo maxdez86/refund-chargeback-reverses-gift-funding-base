@@ -107,35 +107,85 @@ describe("PaymentRepository checkout expiry", () => {
         .mockResolvedValueOnce({});
     }
 
-    it("drops the open-reservation index entry and updates the shell when present", async () => {
+    it("guards on payment non-existence, restricts to open statuses, and updates the shell", async () => {
       const send = mockSendForRelease({ paymentId: "payment-1", shellStatus: "CHECKOUT_READY" });
       const repository = new PaymentRepository({ send } as never, "table-test");
 
-      await repository.releaseReservationAfterCheckoutFailure("payment-1");
+      const outcome = await repository.releaseReservationAfterCheckoutFailure("payment-1");
 
+      expect(outcome).toBe("released");
       const transaction = send.mock.calls[4][0] as TransactWriteCommand;
       const items = transaction.input.TransactItems ?? [];
 
-      expect(items).toHaveLength(3);
-      expect(items[1]?.Update?.UpdateExpression).toContain("REMOVE GSI1PK, GSI1SK");
-      expect(items[2]?.Update?.Key).toEqual({ PK: "PAYMENT#payment-1", SK: "SHELL" });
+      expect(items).toHaveLength(4);
+      // Orphan-release guard: the payment row must still not exist.
+      expect(items[0]?.ConditionCheck).toEqual(
+        expect.objectContaining({
+          Key: { PK: "PAYMENT#payment-1", SK: "PAYMENT" },
+          ConditionExpression: "attribute_not_exists(PK)"
+        })
+      );
+      expect(items[1]?.Update?.Key).toEqual({ PK: "GIFT#g-travesseiros", SK: "STATE" });
+      expect(items[2]?.Update?.ConditionExpression).toBe(
+        "attribute_exists(PK) AND (#status = :pendingCheckout OR #status = :active)"
+      );
+      expect(items[2]?.Update?.UpdateExpression).toContain("REMOVE GSI1PK, GSI1SK");
+      expect(items[3]?.Update?.Key).toEqual({ PK: "PAYMENT#payment-1", SK: "SHELL" });
     });
 
     it("omits the shell transact item when the shell row does not exist", async () => {
       const send = mockSendForRelease(null);
       const repository = new PaymentRepository({ send } as never, "table-test");
 
-      await repository.releaseReservationAfterCheckoutFailure("payment-1");
+      const outcome = await repository.releaseReservationAfterCheckoutFailure("payment-1");
 
+      expect(outcome).toBe("released");
       const transaction = send.mock.calls[4][0] as TransactWriteCommand;
       const items = transaction.input.TransactItems ?? [];
 
-      expect(items).toHaveLength(2);
-      expect(items[0]?.Update?.Key).toEqual({ PK: "GIFT#g-travesseiros", SK: "STATE" });
-      expect(items[1]?.Update?.Key).toEqual({ PK: "PAYMENT#payment-1", SK: "RESERVATION" });
+      expect(items).toHaveLength(3);
+      expect(items[0]?.ConditionCheck?.Key).toEqual({ PK: "PAYMENT#payment-1", SK: "PAYMENT" });
+      expect(items[1]?.Update?.Key).toEqual({ PK: "GIFT#g-travesseiros", SK: "STATE" });
+      expect(items[2]?.Update?.Key).toEqual({ PK: "PAYMENT#payment-1", SK: "RESERVATION" });
     });
 
-    it("logs and swallows a cancellation caused only by condition checks", async () => {
+    it("returns missing-context without a transaction when the reservation is absent", async () => {
+      const send = vi.fn().mockResolvedValueOnce({ Item: undefined });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).resolves.toBe(
+        "missing-context"
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns race-lost for an already-released reservation", async () => {
+      const send = vi.fn().mockResolvedValueOnce({ Item: reservationItem("RELEASED") });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).resolves.toBe(
+        "race-lost"
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("protects funded and recovery-hold reservations from orphan release", async () => {
+      const consumedSend = vi.fn().mockResolvedValueOnce({ Item: reservationItem("CONSUMED") });
+      const consumedRepository = new PaymentRepository({ send: consumedSend } as never, "table-test");
+      await expect(
+        consumedRepository.releaseReservationAfterCheckoutFailure("payment-1")
+      ).resolves.toBe("protected");
+      expect(consumedSend).toHaveBeenCalledTimes(1);
+
+      const holdSend = vi.fn().mockResolvedValueOnce({ Item: reservationItem("RECOVERY_HOLD") });
+      const holdRepository = new PaymentRepository({ send: holdSend } as never, "table-test");
+      await expect(
+        holdRepository.releaseReservationAfterCheckoutFailure("payment-1")
+      ).resolves.toBe("protected");
+      expect(holdSend).toHaveBeenCalledTimes(1);
+    });
+
+    it("logs and returns race-lost on a cancellation caused only by condition checks", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const send = vi
         .fn()
@@ -143,10 +193,12 @@ describe("PaymentRepository checkout expiry", () => {
         .mockResolvedValueOnce({ Item: giftItem })
         .mockResolvedValueOnce({ Item: giftStateItem })
         .mockResolvedValueOnce({ Item: undefined })
-        .mockRejectedValueOnce(canceledTransaction(["None", "ConditionalCheckFailed"]));
+        .mockRejectedValueOnce(canceledTransaction(["None", "None", "ConditionalCheckFailed"]));
       const repository = new PaymentRepository({ send } as never, "table-test");
 
-      await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).resolves.toBeUndefined();
+      await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).resolves.toBe(
+        "race-lost"
+      );
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("\"metric\":\"RESERVATION_RELEASE_RACE_LOST\"")
       );
@@ -160,7 +212,7 @@ describe("PaymentRepository checkout expiry", () => {
         .mockResolvedValueOnce({ Item: giftItem })
         .mockResolvedValueOnce({ Item: giftStateItem })
         .mockResolvedValueOnce({ Item: undefined })
-        .mockRejectedValueOnce(canceledTransaction(["None", "TransactionConflict"]));
+        .mockRejectedValueOnce(canceledTransaction(["None", "None", "TransactionConflict"]));
       const repository = new PaymentRepository({ send } as never, "table-test");
 
       await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).rejects.toThrow(

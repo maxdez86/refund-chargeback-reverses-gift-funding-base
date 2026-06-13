@@ -1,10 +1,28 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GiftService } from "../src/domain/gift-service";
 
+function repositoryWith(metadata: unknown[], states: unknown[]) {
+  return {
+    batchGetGiftCatalog: vi.fn().mockResolvedValue({ metadata, states })
+  };
+}
+
 describe("GiftService", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // METADATA is seeded for every PAYMENT_GIFTS id, so a subset fixture logs
+    // GIFT_METADATA_MISSING for the rest — silence it except where asserted.
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
   it("returns shared gift metadata with zero-funded defaults when state rows are missing", async () => {
-    const repository = {
-      listGiftMetadata: vi.fn().mockResolvedValue([
+    const repository = repositoryWith(
+      [
         {
           id: "g-toalhas-banho",
           name: "4 Toalhas de Banho",
@@ -16,16 +34,16 @@ describe("GiftService", () => {
           finalPartValueCents: null,
           fundingModelVersion: "LEGACY_FIXED_50"
         }
-      ]),
-      listGiftStates: vi.fn().mockResolvedValue([]),
-      listStaleOpenReservations: vi.fn().mockResolvedValue([])
-    };
+      ],
+      []
+    );
 
     const service = new GiftService(repository as never);
     const response = await service.getGifts();
     const toalhasGift = response.gifts.find((gift) => gift.id === "g-toalhas-banho");
 
     expect(response.ok).toBe(true);
+    expect(repository.batchGetGiftCatalog).toHaveBeenCalledTimes(1);
     expect(toalhasGift).toEqual(
       expect.objectContaining({
         id: "g-toalhas-banho",
@@ -43,8 +61,8 @@ describe("GiftService", () => {
   });
 
   it("merges stored gift state into the shared catalog", async () => {
-    const repository = {
-      listGiftMetadata: vi.fn().mockResolvedValue([
+    const repository = repositoryWith(
+      [
         {
           id: "g-armario",
           name: "Armário de Cozinha",
@@ -56,8 +74,8 @@ describe("GiftService", () => {
           finalPartValueCents: null,
           fundingModelVersion: "LEGACY_FIXED_50"
         }
-      ]),
-      listGiftStates: vi.fn().mockResolvedValue([
+      ],
+      [
         {
           giftId: "g-armario",
           partsFunded: 3,
@@ -68,9 +86,8 @@ describe("GiftService", () => {
           version: 1,
           updatedAt: "2026-05-13T00:00:00.000Z"
         }
-      ]),
-      listStaleOpenReservations: vi.fn().mockResolvedValue([])
-    };
+      ]
+    );
 
     const service = new GiftService(repository as never);
     const response = await service.getGifts();
@@ -92,8 +109,8 @@ describe("GiftService", () => {
   });
 
   it("normalizes legacy metadata and part-only state rows", async () => {
-    const repository = {
-      listGiftMetadata: vi.fn().mockResolvedValue([
+    const repository = repositoryWith(
+      [
         {
           id: "g-armario",
           name: "Armário de Cozinha",
@@ -103,17 +120,16 @@ describe("GiftService", () => {
           partValueCents: 5_000,
           totalParts: 35
         }
-      ]),
-      listGiftStates: vi.fn().mockResolvedValue([
+      ],
+      [
         {
           giftId: "g-armario",
           partsFunded: 3,
           fullyFunded: false,
           updatedAt: "2026-05-13T00:00:00.000Z"
         }
-      ]),
-      listStaleOpenReservations: vi.fn().mockResolvedValue([])
-    };
+      ]
+    );
 
     const service = new GiftService(repository as never);
     const response = await service.getGifts();
@@ -132,40 +148,34 @@ describe("GiftService", () => {
     );
   });
 
-  it("runs the stale-checkout sweep before reading the gift states", async () => {
-    const repository = {
-      listGiftMetadata: vi.fn().mockResolvedValue([]),
-      listGiftStates: vi.fn().mockResolvedValue([]),
-      listStaleOpenReservations: vi.fn().mockResolvedValue([]),
-      getPayment: vi.fn(),
-      releaseReservationAfterCheckoutFailure: vi.fn(),
-      tryExpireStalePayment: vi.fn()
+  it("reads the catalog with a single batch get and never runs a sweep", async () => {
+    const repository = repositoryWith([], []) as Record<string, unknown> & {
+      batchGetGiftCatalog: ReturnType<typeof vi.fn>;
     };
-
-    const service = new GiftService(repository as never);
-    await service.getGifts();
-
-    expect(repository.listStaleOpenReservations).toHaveBeenCalledTimes(1);
-    expect(repository.listStaleOpenReservations.mock.invocationCallOrder[0]).toBeLessThan(
-      repository.listGiftMetadata.mock.invocationCallOrder[0]
-    );
-  });
-
-  it("still serves the registry when the stale-checkout sweep fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const repository = {
-      listGiftMetadata: vi.fn().mockResolvedValue([]),
-      listGiftStates: vi.fn().mockResolvedValue([]),
-      listStaleOpenReservations: vi.fn().mockRejectedValue(new Error("gsi unavailable"))
-    };
+    // Sweep collaborators must not exist on the read path anymore.
+    repository.listStaleOpenReservations = vi.fn();
+    repository.tryExpireStalePayment = vi.fn();
+    repository.releaseReservationAfterCheckoutFailure = vi.fn();
 
     const service = new GiftService(repository as never);
     const response = await service.getGifts();
 
     expect(response.ok).toBe(true);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("\"metric\":\"CHECKOUT_EXPIRY_SWEEP_FAILED\"")
+    expect(repository.batchGetGiftCatalog).toHaveBeenCalledTimes(1);
+    expect(repository.listStaleOpenReservations).not.toHaveBeenCalled();
+    expect(repository.tryExpireStalePayment).not.toHaveBeenCalled();
+    expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+  });
+
+  it("omits gifts whose metadata row is absent and logs the gap", async () => {
+    const repository = repositoryWith([], []);
+
+    const service = new GiftService(repository as never);
+    const response = await service.getGifts();
+
+    expect(response.gifts).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("\"metric\":\"GIFT_METADATA_MISSING\"")
     );
-    errorSpy.mockRestore();
   });
 });

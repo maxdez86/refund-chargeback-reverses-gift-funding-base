@@ -1,4 +1,5 @@
 import {
+  BatchGetCommand,
   GetCommand,
   PutCommand,
   ScanCommand,
@@ -121,6 +122,87 @@ describe("PaymentRepository gift state", () => {
         image: "armario-cozinha"
       })
     ]);
+  });
+
+  describe("batchGetGiftCatalog", () => {
+    it("batch-reads metadata + state keys and routes items by sort key", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Responses: {
+          "table-test": [
+            { PK: "GIFT#g-armario", SK: "METADATA", id: "g-armario", image: "armario-cozinha" },
+            {
+              PK: "GIFT#g-armario",
+              SK: "STATE",
+              giftId: "g-armario",
+              partsFunded: 2,
+              fullyFunded: false
+            }
+          ]
+        }
+      });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const { metadata, states } = await repository.batchGetGiftCatalog(["g-armario"]);
+
+      expect(send).toHaveBeenCalledTimes(1);
+      const command = send.mock.calls[0][0] as BatchGetCommand;
+      expect(command).toBeInstanceOf(BatchGetCommand);
+      expect(command.input.RequestItems?.["table-test"]?.Keys).toEqual([
+        { PK: "GIFT#g-armario", SK: "METADATA" },
+        { PK: "GIFT#g-armario", SK: "STATE" }
+      ]);
+      expect(metadata).toEqual([expect.objectContaining({ id: "g-armario" })]);
+      expect(states).toEqual([expect.objectContaining({ giftId: "g-armario", partsFunded: 2 })]);
+    });
+
+    it("tolerates absent items (metadata without a state row) as normal gaps", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Responses: {
+          "table-test": [{ PK: "GIFT#g-armario", SK: "METADATA", id: "g-armario" }]
+        }
+      });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const { metadata, states } = await repository.batchGetGiftCatalog(["g-armario"]);
+
+      expect(metadata).toHaveLength(1);
+      expect(states).toEqual([]);
+    });
+
+    it("retries only the unprocessed keys, then returns once they drain", async () => {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({
+          Responses: { "table-test": [{ PK: "GIFT#g-armario", SK: "METADATA", id: "g-armario" }] },
+          UnprocessedKeys: { "table-test": { Keys: [{ PK: "GIFT#g-armario", SK: "STATE" }] } }
+        })
+        .mockResolvedValueOnce({
+          Responses: {
+            "table-test": [{ PK: "GIFT#g-armario", SK: "STATE", giftId: "g-armario", partsFunded: 1 }]
+          }
+        });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const { metadata, states } = await repository.batchGetGiftCatalog(["g-armario"]);
+
+      expect(send).toHaveBeenCalledTimes(2);
+      const retryCommand = send.mock.calls[1][0] as BatchGetCommand;
+      expect(retryCommand.input.RequestItems?.["table-test"]?.Keys).toEqual([
+        { PK: "GIFT#g-armario", SK: "STATE" }
+      ]);
+      expect(metadata).toHaveLength(1);
+      expect(states).toHaveLength(1);
+    });
+
+    it("fails only when unprocessed keys never drain after the retry budget", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Responses: { "table-test": [] },
+        UnprocessedKeys: { "table-test": { Keys: [{ PK: "GIFT#g-armario", SK: "STATE" }] } }
+      });
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(repository.batchGetGiftCatalog(["g-armario"])).rejects.toThrow(/unprocessed/);
+    });
   });
 
   it("reserves against a legacy versionless gift state row", async () => {

@@ -22,14 +22,14 @@ function createRepositoryMock(overrides: Record<string, unknown> = {}) {
   return {
     listStaleOpenReservations: vi.fn().mockResolvedValue([]),
     getPayment: vi.fn().mockResolvedValue(null),
-    releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue(undefined),
+    releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue("released"),
     tryExpireStalePayment: vi.fn().mockResolvedValue(true),
     ...overrides
   };
 }
 
 describe("sweepStaleCheckouts", () => {
-  it("queries with the grace-adjusted cutoff and expires pending payments", async () => {
+  it("queries with the grace-adjusted cutoff (and default limit) and expires pending payments", async () => {
     const repository = createRepositoryMock({
       listStaleOpenReservations: vi.fn().mockResolvedValue([reservationFor("payment-1")]),
       getPayment: vi.fn().mockResolvedValue({
@@ -38,31 +38,87 @@ describe("sweepStaleCheckouts", () => {
       })
     });
 
-    await sweepStaleCheckouts(repository as never, NOW_MS);
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
 
     expect(repository.listStaleOpenReservations).toHaveBeenCalledWith(
-      new Date(NOW_MS - CHECKOUT_EXPIRY_GRACE_MS).toISOString()
+      new Date(NOW_MS - CHECKOUT_EXPIRY_GRACE_MS).toISOString(),
+      25
     );
     expect(repository.tryExpireStalePayment).toHaveBeenCalledWith({
       paymentId: "payment-1",
       expectedCurrentStatus: "AWAITING_PAYMENT"
     });
     expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+    expect(summary).toEqual(
+      expect.objectContaining({ scanned: 1, released: 1, raceLost: 0, protected: 0, failedIds: [] })
+    );
+    expect(summary.oldestStaleAgeMs).toBeGreaterThan(0);
+  });
+
+  it("forwards a configurable limit to the GSI query", async () => {
+    const repository = createRepositoryMock();
+
+    await sweepStaleCheckouts(repository as never, NOW_MS, { limit: 100 });
+
+    expect(repository.listStaleOpenReservations).toHaveBeenCalledWith(expect.any(String), 100);
   });
 
   it("releases the reservation when the payment record is missing", async () => {
     const repository = createRepositoryMock({
       listStaleOpenReservations: vi.fn().mockResolvedValue([reservationFor("payment-orphan")]),
-      getPayment: vi.fn().mockResolvedValue(null)
+      getPayment: vi.fn().mockResolvedValue(null),
+      releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue("released")
     });
 
-    await sweepStaleCheckouts(repository as never, NOW_MS);
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
 
     expect(repository.releaseReservationAfterCheckoutFailure).toHaveBeenCalledWith("payment-orphan");
     expect(repository.tryExpireStalePayment).not.toHaveBeenCalled();
+    expect(summary.released).toBe(1);
   });
 
-  it("skips payments that are processing or already terminal", async () => {
+  it("tallies release outcomes (race-lost / protected / missing-context)", async () => {
+    const repository = createRepositoryMock({
+      listStaleOpenReservations: vi
+        .fn()
+        .mockResolvedValue([reservationFor("p-race"), reservationFor("p-protected"), reservationFor("p-missing")]),
+      getPayment: vi.fn().mockResolvedValue(null),
+      releaseReservationAfterCheckoutFailure: vi
+        .fn()
+        .mockResolvedValueOnce("race-lost")
+        .mockResolvedValueOnce("protected")
+        .mockResolvedValueOnce("missing-context")
+    });
+
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
+
+    expect(summary).toEqual(
+      expect.objectContaining({
+        scanned: 3,
+        released: 0,
+        raceLost: 1,
+        protected: 1,
+        missingContext: 1,
+        failedIds: []
+      })
+    );
+  });
+
+  it("classifies a lost expiry race (tryExpire => false) as race-lost, not a failure", async () => {
+    const repository = createRepositoryMock({
+      listStaleOpenReservations: vi.fn().mockResolvedValue([reservationFor("payment-late")]),
+      getPayment: vi.fn().mockResolvedValue({ paymentId: "payment-late", status: "CREATED" }),
+      tryExpireStalePayment: vi.fn().mockResolvedValue(false)
+    });
+
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
+
+    expect(summary.raceLost).toBe(1);
+    expect(summary.released).toBe(0);
+    expect(summary.failedIds).toEqual([]);
+  });
+
+  it("treats processing and terminal payments as protected and leaves them alone", async () => {
     const repository = createRepositoryMock({
       listStaleOpenReservations: vi
         .fn()
@@ -73,13 +129,14 @@ describe("sweepStaleCheckouts", () => {
         .mockResolvedValueOnce({ paymentId: "payment-confirmed", status: "CONFIRMED" })
     });
 
-    await sweepStaleCheckouts(repository as never, NOW_MS);
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
 
     expect(repository.tryExpireStalePayment).not.toHaveBeenCalled();
     expect(repository.releaseReservationAfterCheckoutFailure).not.toHaveBeenCalled();
+    expect(summary.protected).toBe(2);
   });
 
-  it("continues sweeping the remaining reservations when one item fails", async () => {
+  it("records a retryable failure as a failedId while still sweeping the rest of the batch", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const repository = createRepositoryMock({
       listStaleOpenReservations: vi
@@ -91,16 +148,47 @@ describe("sweepStaleCheckouts", () => {
         .mockResolvedValueOnce({ paymentId: "payment-2", status: "CREATED" })
     });
 
-    await sweepStaleCheckouts(repository as never, NOW_MS);
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
 
     expect(repository.tryExpireStalePayment).toHaveBeenCalledWith({
       paymentId: "payment-2",
       expectedCurrentStatus: "CREATED"
     });
+    expect(summary.failedIds).toEqual(["payment-broken"]);
+    expect(summary.released).toBe(1);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("\"metric\":\"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED\"")
     );
     errorSpy.mockRestore();
+  });
+
+  it("surfaces a retryable expiry transaction failure (e.g. TransactionConflict) as a failedId", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const repository = createRepositoryMock({
+      listStaleOpenReservations: vi.fn().mockResolvedValue([reservationFor("payment-conflict")]),
+      getPayment: vi.fn().mockResolvedValue({ paymentId: "payment-conflict", status: "AWAITING_PAYMENT" }),
+      tryExpireStalePayment: vi.fn().mockRejectedValue(new Error("TransactionConflict"))
+    });
+
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
+
+    expect(summary.failedIds).toEqual(["payment-conflict"]);
+    errorSpy.mockRestore();
+  });
+
+  it("processes more candidates than the concurrency bound without dropping any", async () => {
+    const reservations = Array.from({ length: 9 }, (_, index) => reservationFor(`payment-${index}`));
+    const repository = createRepositoryMock({
+      listStaleOpenReservations: vi.fn().mockResolvedValue(reservations),
+      getPayment: vi.fn().mockResolvedValue(null),
+      releaseReservationAfterCheckoutFailure: vi.fn().mockResolvedValue("released")
+    });
+
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS, { concurrency: 4 });
+
+    expect(summary.scanned).toBe(9);
+    expect(summary.released).toBe(9);
+    expect(repository.releaseReservationAfterCheckoutFailure).toHaveBeenCalledTimes(9);
   });
 });
 
