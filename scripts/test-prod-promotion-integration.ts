@@ -10,6 +10,7 @@ import {
 import {
   CreatePaymentMessageResponseSchema,
   CreatePaymentResponseSchema,
+  DiscardPaymentResponseSchema,
   GetPaymentResponseSchema
 } from "../packages/contracts/src/payments.ts";
 import {
@@ -255,6 +256,15 @@ async function fetchGiftPartsFunded(context: Context, phase: string, giftId: str
   const selectedGift = parsed.gifts.find((gift) => gift.id === giftId);
   assert(selectedGift, `Gift ${giftId} missing for phase ${phase}.`);
   return selectedGift.partsFunded;
+}
+
+async function fetchGiftSnapshot(context: Context, phase: string, giftId: string) {
+  const { body, response } = await requestJson(context, phase, `${context.apiBaseUrl}/gifts`);
+  assertStatus(response.status, 200, `${phase} gifts`, body);
+  const parsed = parseWithSchema(`${phase} gifts`, GetGiftsResponseSchema, body);
+  const selectedGift = parsed.gifts.find((gift) => gift.id === giftId);
+  assert(selectedGift, `Gift ${giftId} missing for phase ${phase}.`);
+  return selectedGift;
 }
 
 async function createWebhookScenarioPayment(
@@ -761,6 +771,122 @@ async function main() {
     };
   });
 
+  await runPhase("payment-discard", results, async () => {
+    // Self-contained: uses its own fresh CREATED payment so it never disturbs the
+    // webhook phases (which confirm `state.createdPaymentId`). Scope is deliberately
+    // limited to what a live run can assert deterministically: happy-path discard,
+    // state-based idempotent repeat, and inventory release back to baseline. The
+    // race conditions around discard — transaction contention, "confirmation webhook
+    // wins the race" (409), Asaas cancel-error reconciliation via checkout lookup,
+    // and ambiguous remote statuses (ACTIVE/PAID/404/timeout) — are NOT reproducible
+    // against a live API and stay covered at the unit level
+    // (apps/api/tests/payment-discard-service.test.ts) by design. The forbidden-status
+    // 409 guard against a real terminal payment is exercised in `negative-paths`.
+    const giftBefore = await fetchGiftSnapshot(context, "payment-discard", context.giftId);
+    const baselinePartsReserved = giftBefore.partsReserved;
+    const baselineReservedAmountCents = giftBefore.reservedAmountCents;
+    const baselinePartsFunded = giftBefore.partsFunded;
+
+    const discardPayment = await createWebhookScenarioPayment(
+      context,
+      "payment-discard",
+      `prod-promotion-discard-${context.runMarker}`
+    );
+    const discardPaymentId = discardPayment.paymentId;
+
+    // The reservation is held the moment the payment is created — prove it before discard.
+    const giftReserved = await fetchGiftSnapshot(context, "payment-discard", context.giftId);
+    assert(
+      giftReserved.partsReserved >= baselinePartsReserved + context.giftQuantity,
+      "Gift partsReserved did not increase after creating the discard payment."
+    );
+    assert(
+      giftReserved.reservedAmountCents > baselineReservedAmountCents,
+      "Gift reservedAmountCents did not increase after creating the discard payment."
+    );
+
+    const discarded = await requestJson(
+      context,
+      "payment-discard",
+      `${context.apiBaseUrl}/payments/${encodeURIComponent(discardPaymentId)}/discard`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `prod-promotion-discard-${context.runMarker}`
+        }
+      }
+    );
+    assertStatus(discarded.response.status, 200, "payment-discard", discarded.body);
+    const discardedParsed = parseWithSchema("payment-discard", DiscardPaymentResponseSchema, discarded.body);
+    assert(discardedParsed.ok === true, "Discard response should report ok=true.");
+    assert(
+      discardedParsed.payment.status === "CANCELED",
+      "Discarded payment status should be CANCELED."
+    );
+
+    const fetchedAfter = await requestJson(
+      context,
+      "payment-discard",
+      `${context.apiBaseUrl}/payments/${encodeURIComponent(discardPaymentId)}`
+    );
+    assertStatus(fetchedAfter.response.status, 200, "payment-discard get", fetchedAfter.body);
+    const fetchedAfterParsed = parseWithSchema("payment-discard get", GetPaymentResponseSchema, fetchedAfter.body);
+    assert(
+      fetchedAfterParsed.payment.status === "CANCELED",
+      "Discarded payment did not persist as CANCELED."
+    );
+
+    // State-based idempotency: a repeat discard returns the same CANCELED payload, not a 409.
+    const discardedAgain = await requestJson(
+      context,
+      "payment-discard",
+      `${context.apiBaseUrl}/payments/${encodeURIComponent(discardPaymentId)}/discard`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `prod-promotion-discard-${context.runMarker}`
+        }
+      }
+    );
+    assertStatus(discardedAgain.response.status, 200, "payment-discard repeat", discardedAgain.body);
+    const discardedAgainParsed = parseWithSchema(
+      "payment-discard repeat",
+      DiscardPaymentResponseSchema,
+      discardedAgain.body
+    );
+    assert(
+      discardedAgainParsed.payment.status === "CANCELED",
+      "Repeated discard should keep the payment CANCELED."
+    );
+
+    const giftAfter = await fetchGiftSnapshot(context, "payment-discard", context.giftId);
+    assert(
+      giftAfter.partsReserved === baselinePartsReserved,
+      "Gift partsReserved did not return to baseline after discard."
+    );
+    assert(
+      giftAfter.reservedAmountCents === baselineReservedAmountCents,
+      "Gift reservedAmountCents did not return to baseline after discard."
+    );
+    assert(
+      giftAfter.partsFunded === baselinePartsFunded,
+      "Discard must release the reservation, not fund the gift (partsFunded changed)."
+    );
+
+    return {
+      paymentId: discardPaymentId,
+      baselinePartsReserved,
+      baselineReservedAmountCents,
+      reservedPartsWhileHeld: giftReserved.partsReserved,
+      discardStatus: discardedParsed.payment.status,
+      repeatDiscardStatus: discardedAgainParsed.payment.status,
+      restoredPartsReserved: giftAfter.partsReserved,
+      restoredReservedAmountCents: giftAfter.reservedAmountCents
+    };
+  });
+
   await runPhase("payment-message", results, async () => {
     assert(state.createdPaymentId, "Payment ID required before payment-message phase.");
     const { body, response } = await requestJson(
@@ -875,8 +1001,27 @@ async function main() {
     );
     assertStatus(missingPayment.response.status, 404, "negative-paths missing payment", missingPayment.body);
 
+    // `state.createdPaymentId` was confirmed by the `payment-webhook` phase, so it is a
+    // real terminal (paid) payment. Discarding it must be rejected with 409 — this
+    // validates the server-side status guard against live data, complementing the unit
+    // coverage in apps/api/tests/payment-discard-service.test.ts.
+    assert(state.createdPaymentId, "Payment ID required before negative-paths discard guard.");
+    const discardConfirmed = await requestJson(
+      context,
+      "negative-paths",
+      `${context.apiBaseUrl}/payments/${encodeURIComponent(state.createdPaymentId)}/discard`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": `prod-promotion-discard-confirmed-${context.runMarker}`
+        }
+      }
+    );
+    assertStatus(discardConfirmed.response.status, 409, "negative-paths discard confirmed payment", discardConfirmed.body);
+
     return {
-      checks: 6
+      checks: 7
     };
   });
 
