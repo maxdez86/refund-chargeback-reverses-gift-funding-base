@@ -116,29 +116,82 @@ export function verifyManagedWebhook(webhook, desiredWebhook) {
   return webhook;
 }
 
-async function asaasRequest({ apiBaseUrl, apiKey, body, fetchImpl, method = "GET", path }) {
-  const response = await fetchImpl(`${normalizeBaseUrl(apiBaseUrl)}${path}`, {
-    method,
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      access_token: apiKey
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+// Asaas (and the gateway/WAF in front of it) occasionally answers with a
+// non-JSON body — an HTML error/maintenance page on 5xx, a throttling page on
+// 429, or a block page. Parsing that as JSON used to throw the opaque
+// "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON" and hid the real
+// HTTP status. These statuses are transient and safe to retry on reads.
+const TRANSIENT_RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_GET_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 300;
 
-  const text = await response.text();
-  const parsed = text ? JSON.parse(text) : {};
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (!response.ok) {
-    const message =
-      parsed?.errors ?? parsed?.message ?? `Asaas request failed with status ${response.status}.`;
-    throw new Error(
-      typeof message === "string" ? message : JSON.stringify(message)
-    );
+function summarizeResponseBody(text) {
+  const trimmed = (text ?? "").trim();
+
+  if (!trimmed) {
+    return "<empty response body>";
   }
 
-  return parsed;
+  const singleLine = trimmed.replace(/\s+/g, " ");
+  return singleLine.length > 200 ? `${singleLine.slice(0, 200)}…` : singleLine;
+}
+
+async function asaasRequest({ apiBaseUrl, apiKey, body, fetchImpl, method = "GET", path }) {
+  const url = `${normalizeBaseUrl(apiBaseUrl)}${path}`;
+  // Only idempotent reads are retried; a create/update must never be replayed.
+  const maxAttempts = method === "GET" ? MAX_GET_ATTEMPTS : 1;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetchImpl(url, {
+      method,
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        access_token: apiKey
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    const text = await response.text();
+    let parsed;
+    let parseFailed = false;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parseFailed = true;
+    }
+
+    if (response.ok && !parseFailed) {
+      return parsed;
+    }
+
+    // Build an actionable error: the real status plus the structured Asaas error
+    // when present, or a snippet of the raw (likely HTML) body otherwise.
+    const structuredDetail = !parseFailed && parsed ? parsed.errors ?? parsed.message : undefined;
+    const detail = structuredDetail ?? summarizeResponseBody(text);
+    const detailText = typeof detail === "string" ? detail : JSON.stringify(detail);
+    lastError = new Error(
+      response.ok
+        ? `Asaas ${method} ${path} returned a non-JSON ${response.status} response: ${detailText}`
+        : `Asaas ${method} ${path} failed with status ${response.status}: ${detailText}`
+    );
+
+    const transient = TRANSIENT_RETRY_STATUSES.has(response.status) || (response.ok && parseFailed);
+    if (attempt < maxAttempts && transient) {
+      await sleep(RETRY_BASE_DELAY_MS * attempt);
+      continue;
+    }
+
+    throw lastError;
+  }
+
+  // Loop always returns or throws above; this satisfies control-flow analysis.
+  throw lastError ?? new Error(`Asaas ${method} ${path} failed.`);
 }
 
 export async function syncAsaasWebhook({
