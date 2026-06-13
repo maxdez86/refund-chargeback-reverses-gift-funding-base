@@ -383,6 +383,12 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(createPaymentFn);
     props.table.grantReadData(getPaymentFn);
     props.table.grantReadData(getGiftsFn);
+    getGiftsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:UpdateItem"],
+        resources: [props.table.tableArn]
+      })
+    );
     props.table.grantReadData(getGuestMessagesFn);
     props.table.grantReadWriteData(createGuestMessagesFn);
     props.table.grantReadWriteData(deleteGuestMessageFn);
@@ -491,6 +497,9 @@ export class AppStack extends cdk.Stack {
     }
 
     this.addMetricFilters(this.getFunctionLogGroup("CreatePaymentFunction"), "create-payment");
+    this.addCheckoutExpirySweepMetricFilter(
+      this.getFunctionLogGroup("GetGiftsFunction")
+    );
     this.addMetricFilters(this.getFunctionLogGroup("AsaasWebhookFunction"), "asaas-webhook");
     this.addMetricFilters(
       this.getFunctionLogGroup("AsaasWebhookProcessorFunction"),
@@ -686,6 +695,19 @@ export class AppStack extends cdk.Stack {
       metricNamespace: "Brimax/Payments",
       metricName: `${metricNamespaceSuffix}-webhook-payment-not-found`,
       filterPattern: logs.FilterPattern.literal('"WEBHOOK_PAYMENT_NOT_FOUND"'),
+      metricValue: "1"
+    });
+  }
+
+  private addCheckoutExpirySweepMetricFilter(logGroup: logs.ILogGroup) {
+    new logs.MetricFilter(this, "GetGiftsCheckoutExpirySweepFailuresMetric", {
+      logGroup,
+      metricNamespace: "Brimax/Payments",
+      metricName: "get-gifts-checkout-expiry-sweep-failed",
+      filterPattern: logs.FilterPattern.anyTerm(
+        "CHECKOUT_EXPIRY_SWEEP_FAILED",
+        "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"
+      ),
       metricValue: "1"
     });
   }
