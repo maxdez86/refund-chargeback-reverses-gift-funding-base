@@ -13,6 +13,8 @@ import { PaymentApiError } from "@/lib/payments-api";
 const getGiftsMock = vi.fn();
 const getPaymentMock = vi.fn();
 const createPaymentMock = vi.fn();
+const discardPaymentMock = vi.fn();
+const toastErrorMock = vi.fn();
 
 vi.mock("embla-carousel-react", () => ({
   default: () => [vi.fn(), null],
@@ -53,7 +55,15 @@ vi.mock("@/lib/payments-api", () => ({
     }
   },
   createPayment: (...args: unknown[]) => createPaymentMock(...args),
+  discardPayment: (...args: unknown[]) => discardPaymentMock(...args),
   getPayment: (...args: unknown[]) => getPaymentMock(...args),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    message: vi.fn(),
+  },
 }));
 
 function makeGift(overrides: Record<string, unknown> = {}) {
@@ -146,7 +156,10 @@ describe("Presentes", () => {
     getGiftsMock.mockReset();
     getPaymentMock.mockReset();
     createPaymentMock.mockReset();
+    discardPaymentMock.mockReset();
+    toastErrorMock.mockReset();
     getGiftsMock.mockResolvedValue([makeGift()]);
+    discardPaymentMock.mockResolvedValue(makePaymentSummary("CANCELED", { checkout: undefined }));
     window.localStorage.clear();
     window.history.replaceState({}, "", "/");
     Object.defineProperty(window, "location", {
@@ -173,9 +186,33 @@ describe("Presentes", () => {
     expect(screen.getByRole("button", { name: "Descartar" })).toBeInTheDocument();
   });
 
-  it("clears the stored payment when the guest discards recovery", async () => {
+  it("discards through the API, clears recovery, and refreshes gifts on success", async () => {
     storePendingPayment();
     getPaymentMock.mockResolvedValue(makePaymentSummary("AWAITING_PAYMENT"));
+
+    const queryClient = renderPresentes();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento em andamento")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+
+    expect(discardPaymentMock).toHaveBeenCalledWith("payment-1");
+    await waitFor(() => {
+      expect(screen.queryByText("Pagamento em andamento")).not.toBeInTheDocument();
+    });
+    expect(window.localStorage.getItem(LAST_PAYMENT_ID_STORAGE_KEY)).toBeNull();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["gifts"] });
+  });
+
+  it("keeps recovery and reports an actionable error when discard fails", async () => {
+    storePendingPayment();
+    getPaymentMock.mockResolvedValue(makePaymentSummary("AWAITING_PAYMENT"));
+    discardPaymentMock.mockRejectedValue(
+      new PaymentApiError("O checkout ainda está ativo.", 409)
+    );
 
     renderPresentes();
 
@@ -186,9 +223,43 @@ describe("Presentes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
 
     await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith("O checkout ainda está ativo.");
+    });
+    expect(screen.getByText("Pagamento em andamento")).toBeInTheDocument();
+    expect(window.localStorage.getItem(LAST_PAYMENT_ID_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("disables resume and discard and suppresses repeated clicks while discarding", async () => {
+    storePendingPayment();
+    getPaymentMock.mockResolvedValue(makePaymentSummary("AWAITING_PAYMENT"));
+    let resolveDiscard: ((value: ReturnType<typeof makePaymentSummary>) => void) | undefined;
+    discardPaymentMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDiscard = resolve;
+        })
+    );
+
+    renderPresentes();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Descartar" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Descartando…" })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "Continuar pagamento" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Descartando…" }));
+    expect(discardPaymentMock).toHaveBeenCalledTimes(1);
+
+    resolveDiscard?.(makePaymentSummary("CANCELED", { checkout: undefined }));
+    await waitFor(() => {
       expect(screen.queryByText("Pagamento em andamento")).not.toBeInTheDocument();
     });
-    expect(window.localStorage.getItem(LAST_PAYMENT_ID_STORAGE_KEY)).toBeNull();
   });
 
   it("reopens the checkout when the stored payment is still pending", async () => {

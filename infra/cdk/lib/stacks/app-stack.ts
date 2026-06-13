@@ -222,6 +222,10 @@ export class AppStack extends cdk.Stack {
           ThrottlingBurstLimit: 5,
           ThrottlingRateLimit: 1
         },
+        "POST /payments/{paymentId}/discard": {
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 1
+        },
         "POST /guest-messages": {
           ThrottlingBurstLimit: 5,
           ThrottlingRateLimit: 1
@@ -263,6 +267,15 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(15)
     });
     this.createPaymentFunction = createPaymentFn;
+    const discardPaymentFn = this.createTaggedNodejsFunction("DiscardPaymentFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/payments-discard/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      memorySize: 1024,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(15)
+    });
     const getPaymentFn = this.createTaggedNodejsFunction("GetPaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-get/handler.ts"),
       environment: commonEnvironment,
@@ -348,6 +361,7 @@ export class AppStack extends cdk.Stack {
     });
     this.alarmedFunctions = [
       createPaymentFn,
+      discardPaymentFn,
       getPaymentFn,
       createGuestMessagesFn,
       paymentMessageFn,
@@ -357,7 +371,7 @@ export class AppStack extends cdk.Stack {
       webhookProcessorFn
     ];
 
-    // Keep the 8 guest-facing functions warm (excludes the vendor webhook pair
+    // Keep the guest-facing functions warm (excludes the vendor webhook pair
     // and the admin delete). Runs in every stage: dev pings also de-flake the
     // prod-promotion suite, which hits live api.dev.brimax.life.
     this.addKeepWarmSchedule(
@@ -366,6 +380,7 @@ export class AppStack extends cdk.Stack {
         rsvpFn,
         createGuestMessagesFn,
         createPaymentFn,
+        discardPaymentFn,
         getGiftsFn,
         getGuestMessagesFn,
         getPaymentFn,
@@ -381,6 +396,16 @@ export class AppStack extends cdk.Stack {
     );
 
     props.table.grantReadWriteData(createPaymentFn);
+    discardPaymentFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "dynamodb:ConditionCheckItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem"
+        ],
+        resources: [props.table.tableArn]
+      })
+    );
     props.table.grantReadData(getPaymentFn);
     props.table.grantReadData(getGiftsFn);
     getGiftsFn.addToRolePolicy(
@@ -402,6 +427,7 @@ export class AppStack extends cdk.Stack {
     // grantRead is whole-secret only — each reader below can read every key in
     // the bucket. Union of the former per-secret readers (6 functions).
     appSecret.grantRead(createPaymentFn);
+    appSecret.grantRead(discardPaymentFn);
     appSecret.grantRead(webhookProcessorFn);
     appSecret.grantRead(asaasWebhookFn);
     appSecret.grantRead(invitationGetFn);
@@ -422,6 +448,14 @@ export class AppStack extends cdk.Stack {
       integration: new apigwv2Integrations.HttpLambdaIntegration(
         "CreatePaymentIntegration",
         createPaymentFn
+      )
+    });
+    const discardPaymentRoutes = this.httpApi.addRoutes({
+      path: "/payments/{paymentId}/discard",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "DiscardPaymentIntegration",
+        discardPaymentFn
       )
     });
     this.httpApi.addRoutes({
@@ -494,6 +528,7 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, paymentMessageRoutes);
       addStageRouteDependency(defaultStage, createGuestMessagesRoutes);
       addStageRouteDependency(defaultStage, createPaymentRoutes);
+      addStageRouteDependency(defaultStage, discardPaymentRoutes);
     }
 
     this.addMetricFilters(this.getFunctionLogGroup("CreatePaymentFunction"), "create-payment");

@@ -56,7 +56,7 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 16);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 17);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",

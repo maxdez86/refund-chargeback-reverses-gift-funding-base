@@ -169,6 +169,87 @@ describe("PaymentRepository checkout expiry", () => {
     });
   });
 
+  describe("discardPendingPayment", () => {
+    function mockSendForDiscard() {
+      return vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
+        .mockResolvedValueOnce({
+          Item: {
+            paymentId: "payment-1",
+            shellStatus: "CHECKOUT_READY",
+            asaasCheckoutId: "checkout-1"
+          }
+        })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({ Item: giftStateItem })
+        .mockResolvedValueOnce({});
+    }
+
+    it("atomically cancels payment, releases checkout state, and restores gift counters", async () => {
+      const send = mockSendForDiscard();
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.discardPendingPayment({
+          paymentId: "payment-1",
+          expectedPaymentStatus: "AWAITING_PAYMENT",
+          expectedReservationStatus: "ACTIVE",
+          expectedShellStatus: "CHECKOUT_READY"
+        })
+      ).resolves.toBe(true);
+
+      const transaction = send.mock.calls[4][0] as TransactWriteCommand;
+      const items = transaction.input.TransactItems ?? [];
+
+      expect(items).toHaveLength(4);
+      expect(items[0]?.Update).toEqual(
+        expect.objectContaining({
+          Key: { PK: "PAYMENT#payment-1", SK: "PAYMENT" },
+          ConditionExpression: "attribute_exists(PK) AND #status = :expectedStatus"
+        })
+      );
+      expect(items[1]?.Update?.UpdateExpression).toContain("REMOVE GSI1PK, GSI1SK");
+      expect(items[2]?.Update?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({ ":shellStatus": "CHECKOUT_RELEASED" })
+      );
+      expect(items[3]?.Update?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":partsDelta": 1,
+          ":amountDelta": 10_000
+        })
+      );
+    });
+
+    it("returns false when a webhook wins a transaction condition", async () => {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
+        .mockResolvedValueOnce({
+          Item: {
+            paymentId: "payment-1",
+            shellStatus: "CHECKOUT_READY",
+            asaasCheckoutId: "checkout-1"
+          }
+        })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({ Item: giftStateItem })
+        .mockRejectedValueOnce(
+          canceledTransaction(["ConditionalCheckFailed", "None", "None", "None"])
+        );
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.discardPendingPayment({
+          paymentId: "payment-1",
+          expectedPaymentStatus: "CREATED",
+          expectedReservationStatus: "ACTIVE",
+          expectedShellStatus: "CHECKOUT_READY"
+        })
+      ).resolves.toBe(false);
+    });
+  });
+
   describe("applyWebhookUpdate reservation guards", () => {
     function mockSendForWebhookUpdate(reservationStatus: string) {
       return vi

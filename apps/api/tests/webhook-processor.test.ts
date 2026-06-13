@@ -1005,6 +1005,28 @@ describe("WebhookProcessor checkout events", () => {
     expect(repository.applyWebhookUpdate).not.toHaveBeenCalled();
   });
 
+  it("ignores a later CHECKOUT_CANCELED event after discard already released the checkout", async () => {
+    const repository = createCheckoutEventRepository({
+      eventType: "CHECKOUT_CANCELED",
+      payment: { paymentId: "payment-1", status: "CANCELED" },
+      reservation: { ...activeReservation, status: "RELEASED" },
+      shell: {
+        paymentId: "payment-1",
+        shellStatus: "CHECKOUT_RELEASED"
+      }
+    });
+
+    const processor = new WebhookProcessor(repository as never, {} as never, {} as never);
+    const result = await processor.processEvent("event-checkout-discarded");
+
+    expect(result).toEqual({ duplicate: false, updated: false });
+    expect(repository.markWebhookProcessed).toHaveBeenCalledWith(
+      "event-checkout-discarded",
+      "ignored_stale"
+    );
+    expect(repository.applyWebhookUpdate).not.toHaveBeenCalled();
+  });
+
   it("marks the event ignored_stale when the atomic update loses the race", async () => {
     const repository = createCheckoutEventRepository({
       eventType: "CHECKOUT_EXPIRED",

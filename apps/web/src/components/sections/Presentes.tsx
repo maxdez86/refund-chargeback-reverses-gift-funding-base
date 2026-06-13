@@ -46,7 +46,12 @@ import {
   buildSharedWidthImageFallbackSrc,
   buildSharedWidthImageSources,
 } from "@/lib/media";
-import { createPayment, getPayment, PaymentApiError } from "@/lib/payments-api";
+import {
+  createPayment,
+  discardPayment,
+  getPayment,
+  PaymentApiError
+} from "@/lib/payments-api";
 import {
   PAYMENT_FLOW_UPDATED_EVENT,
   clearStoredPendingPayment,
@@ -633,7 +638,9 @@ export function Presentes() {
     readStoredPendingPayment()
   );
   const [resumingPayment, setResumingPayment] = useState(false);
+  const [discardingPayment, setDiscardingPayment] = useState(false);
   const queryClient = useQueryClient();
+  const discardInFlightRef = useRef(false);
   const reconcileInFlightRef = useRef(false);
   const lastReconcileRef = useRef<{ paymentId: string; at: number } | null>(null);
 
@@ -804,13 +811,33 @@ export function Presentes() {
     setActiveGift(null);
   }, []);
 
-  const handleDismissPendingPayment = () => {
-    clearStoredPendingPayment();
-    setPendingPayment(null);
+  const handleDismissPendingPayment = async () => {
+    if (!pendingPayment || resumingPayment || discardInFlightRef.current) {
+      return;
+    }
+
+    discardInFlightRef.current = true;
+    setDiscardingPayment(true);
+
+    try {
+      await discardPayment(pendingPayment.paymentId);
+      clearStoredPendingPayment();
+      setPendingPayment(null);
+      await queryClient.invalidateQueries({ queryKey: giftsQueryKey });
+    } catch (error) {
+      const message =
+        error instanceof PaymentApiError
+          ? error.message
+          : "Não foi possível descartar o pagamento agora. Tente novamente.";
+      toast.error(message);
+    } finally {
+      discardInFlightRef.current = false;
+      setDiscardingPayment(false);
+    }
   };
 
   const handleResumePendingPayment = async () => {
-    if (!pendingPayment || resumingPayment) {
+    if (!pendingPayment || resumingPayment || discardingPayment) {
       return;
     }
 
@@ -948,7 +975,7 @@ export function Presentes() {
                   type="button"
                   className="rounded-full"
                   onClick={() => void handleResumePendingPayment()}
-                  disabled={resumingPayment}
+                  disabled={resumingPayment || discardingPayment}
                 >
                   {resumingPayment ? "Verificando pagamento..." : "Continuar pagamento"}
                 </Button>
@@ -956,10 +983,10 @@ export function Presentes() {
                   type="button"
                   variant="outline"
                   className="rounded-full"
-                  onClick={handleDismissPendingPayment}
-                  disabled={resumingPayment}
+                  onClick={() => void handleDismissPendingPayment()}
+                  disabled={resumingPayment || discardingPayment}
                 >
-                  Descartar
+                  {discardingPayment ? "Descartando…" : "Descartar"}
                 </Button>
               </div>
             </div>

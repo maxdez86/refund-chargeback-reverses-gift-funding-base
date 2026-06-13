@@ -1,6 +1,7 @@
 import {
   CreatePaymentMessageResponseSchema,
   CreatePaymentResponseSchema,
+  DiscardPaymentResponseSchema,
   GetPaymentResponseSchema,
   type CreatePaymentMessageRequest,
   type CreatePaymentRequest,
@@ -69,6 +70,41 @@ export async function getPayment(paymentId: string): Promise<PaymentSummary> {
   }
 
   const parsed = GetPaymentResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new PaymentApiError(
+      "Resposta inválida do servidor de pagamentos."
+    );
+  }
+
+  return parsed.data.payment;
+}
+
+export async function discardPayment(paymentId: string): Promise<PaymentSummary> {
+  if (!API_URL) {
+    throw new PaymentApiError(
+      "API URL não configurada (VITE_API_URL)."
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/payments/${encodeURIComponent(paymentId)}/discard`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+      },
+    }
+  );
+  const text = await response.text();
+  const body: unknown = text ? safeJsonParse(text) : null;
+
+  if (!response.ok) {
+    const message = extractErrorMessage(body) ?? `HTTP ${response.status}`;
+    throw new PaymentApiError(message, response.status);
+  }
+
+  const parsed = DiscardPaymentResponseSchema.safeParse(body);
   if (!parsed.success) {
     throw new PaymentApiError(
       "Resposta inválida do servidor de pagamentos."

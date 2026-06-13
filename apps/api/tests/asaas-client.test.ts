@@ -79,6 +79,34 @@ describe("AsaasClient checkout timing", () => {
       expect.stringContaining("\"secretCacheHit\":true")
     );
   });
+
+  it("cancels a checkout with POST and an empty JSON body", async () => {
+    vi.spyOn(secretCache, "getSecretValueWithMetadata").mockResolvedValue({
+      cacheHit: true,
+      value: JSON.stringify({ asaasApiKey: "secret-token" })
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "checkout-123", status: "CANCELED" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new AsaasClient();
+    await expect(client.cancelCheckout("checkout/123")).resolves.toEqual(
+      expect.objectContaining({ status: "CANCELED" })
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pathname: "/v3/checkouts/checkout%2F123/cancel"
+      }),
+      expect.objectContaining({
+        method: "POST",
+        body: "{}"
+      })
+    );
+  });
 });
 
 describe("AsaasClient not-found handling", () => {

@@ -49,6 +49,9 @@ describe("AppStack", () => {
       RouteKey: "GET /payments/{paymentId}"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /payments/{paymentId}/discard"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /gifts"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
@@ -287,6 +290,38 @@ describe("AppStack", () => {
         logicalId.startsWith("GetGiftsFunction") && resource.Type === "AWS::Lambda::Function"
     );
     expect(getGiftsFunctionEntry).toBeDefined();
+
+    const discardPaymentFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("DiscardPaymentFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(discardPaymentFunctionEntry).toBeDefined();
+
+    const discardPaymentRoleLogicalId = (
+      discardPaymentFunctionEntry?.[1].Properties?.Role as {
+        "Fn::GetAtt": [string, string];
+      }
+    )["Fn::GetAtt"][0];
+    const discardPaymentPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(discardPaymentRoleLogicalId)
+    );
+    expect(discardPaymentPolicy).toBeDefined();
+
+    const discardPaymentPolicyJson = JSON.stringify(
+      discardPaymentPolicy?.Properties?.PolicyDocument
+    );
+    expect(discardPaymentPolicyJson).toContain("dynamodb:GetItem");
+    expect(discardPaymentPolicyJson).toContain("dynamodb:UpdateItem");
+    expect(discardPaymentPolicyJson).toContain("dynamodb:ConditionCheckItem");
+    expect(discardPaymentPolicyJson).toContain("secretsmanager:GetSecretValue");
+    expect(discardPaymentPolicyJson).not.toContain("dynamodb:Scan");
+    expect(discardPaymentPolicyJson).not.toContain("dynamodb:PutItem");
+    expect(discardPaymentPolicyJson).not.toContain("/index/*");
+    expect(discardPaymentPolicyJson).not.toContain("sqs:");
+    expect(discardPaymentPolicyJson).not.toContain("ses:");
 
     const getGiftsRoleLogicalId = (
       getGiftsFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }

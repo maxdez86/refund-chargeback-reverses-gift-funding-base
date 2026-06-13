@@ -10,6 +10,7 @@
     "./functions/guest-messages-get/handler": "./src/functions/guest-messages-get/handler.ts",
     "./functions/invitation-get/handler": "./src/functions/invitation-get/handler.ts",
     "./functions/payments-create/handler": "./src/functions/payments-create/handler.ts",
+    "./functions/payments-discard/handler": "./src/functions/payments-discard/handler.ts",
     "./functions/payments-get/handler": "./src/functions/payments-get/handler.ts",
     "./functions/payments-message/handler": "./src/functions/payments-message/handler.ts",
     "./functions/rsvp/handler": "./src/functions/rsvp/handler.ts",

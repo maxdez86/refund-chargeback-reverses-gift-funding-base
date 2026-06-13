@@ -89,6 +89,11 @@ export const GetPaymentResponseSchema = z.object({
   payment: PaymentSummarySchema
 });
 
+export const DiscardPaymentResponseSchema = z.object({
+  ok: z.literal(true),
+  payment: PaymentSummarySchema
+});
+
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 export type PaymentPayer = z.infer<typeof PaymentPayerSchema>;
@@ -98,6 +103,7 @@ export type PaymentCheckout = z.infer<typeof PaymentCheckoutSchema>;
 export type PaymentSummary = z.infer<typeof PaymentSummarySchema>;
 export type CreatePaymentResponse = z.infer<typeof CreatePaymentResponseSchema>;
 export type GetPaymentResponse = z.infer<typeof GetPaymentResponseSchema>;
+export type DiscardPaymentResponse = z.infer<typeof DiscardPaymentResponseSchema>;
 export type CreatePaymentMessageRequest = z.infer<typeof CreatePaymentMessageRequestSchema>;
 export type PaymentMessage = z.infer<typeof PaymentMessageSchema>;
 export type CreatePaymentMessageResponse = z.infer<typeof CreatePaymentMessageResponseSchema>;
