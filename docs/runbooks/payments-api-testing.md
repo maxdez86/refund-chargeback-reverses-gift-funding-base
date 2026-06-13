@@ -10,7 +10,7 @@ Use this as the standard repeated validation flow after the environment is alrea
 2. If you need a fresh backend deploy, run:
 
    ```bash
-   pnpm deploy:backend
+   pnpm deploy:backend:with-webhook
    ```
 
 3. Load the payment test environment and verify the managed secrets contract:
@@ -114,7 +114,9 @@ For recurring production deploys, use [deploy.md](/home/maxreis86/consulting/bri
 
 For first-time certificate issuance, DNS wiring, or platform bring-up, use [bootstrapping.md](/home/maxreis86/consulting/brimax-life/docs/runbooks/bootstrapping.md:1).
 
-`ASAAS_API_KEY` and `ASAAS_WEBHOOK_TOKEN` must be present before `pnpm deploy:backend` because the backend deploy writes the managed payment secrets.
+`ASAAS_API_KEY` and `ASAAS_WEBHOOK_TOKEN` must be present before
+`pnpm deploy:backend:with-webhook`: the AWS deploy writes the managed payment secrets, then the
+command applies API DNS and synchronizes the Asaas webhook.
 
 ## Resolve Deployed Values
 

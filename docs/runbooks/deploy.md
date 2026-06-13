@@ -20,15 +20,19 @@ Run this only when Sentry-managed resources change, for example:
 - rotating the backend runtime key / DSN
 - adding future Sentry alerting resources
 
-### Deploy Backend
+### Deploy Complete Backend
 
 ```bash
-pnpm deploy:backend
+pnpm deploy:backend:with-webhook
 ```
 
-Updates the backend application stack and API.
+Updates the AWS backend, initializes and applies API DNS, then synchronizes and verifies the
+production Asaas webhook.
 
 `pnpm deploy:backend` resolves the backend `SENTRY_DSN` from `infra/opentofu/sentry` automatically. Routine application deploys do not require rerunning the Sentry OpenTofu module unless the Sentry resources themselves changed.
+
+Use `pnpm deploy:backend` only when you intentionally want an AWS-only backend deploy. It does not
+apply API DNS and does not update Asaas webhook subscriptions.
 
 If the deploy changes SES sender outputs or email deliverability configuration, also run:
 
@@ -126,6 +130,7 @@ Recurring production deploys are selective by changed live target:
 - backend changes deploy the data/app/observability stacks
 - landing-DNS changes apply only `opentofu:dns`
 - API-target changes apply only `opentofu:api-dns`
+- backend, API-target, or webhook-configuration changes synchronize and verify the Asaas webhook
 - Sentry changes apply `opentofu:sentry`, then redeploy the backend when the DSN/output glue changed
 - SES/DKIM deliverability changes apply `opentofu:ses-dns`
 
@@ -146,6 +151,8 @@ The normal managed deploy keeps these production settings aligned:
 - CloudFront adds the baseline security headers.
 - CloudFront only serves the canonical hosts and rejects the default `cloudfront.net` hostname.
 - OpenTofu keeps SES DKIM, MAIL FROM, SPF, and DMARC DNS records aligned when the sender config changes.
+- Asaas keeps the production webhook enabled and subscribed to the complete managed payment and
+  checkout event list.
 
 ## Outputs / What To Check
 
@@ -200,7 +207,7 @@ If backend deploy fails before or during CloudFormation, check these two cases f
    - After bootstrap finishes, rerun:
 
      ```bash
-     pnpm deploy:backend
+     pnpm deploy:backend:with-webhook
      ```
 
 2. **Another CDK CLI is already using an output directory**

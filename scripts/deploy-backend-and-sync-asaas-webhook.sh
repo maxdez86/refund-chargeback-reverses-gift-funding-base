@@ -10,5 +10,6 @@ if [[ "${STAGE}" != "prod" && "${STAGE}" != "dev" ]]; then
   exit 0
 fi
 
+pnpm opentofu:api-dns:init
 pnpm opentofu:api-dns:apply -auto-approve
 pnpm asaas:webhook:sync

@@ -54,15 +54,18 @@ being read and you would act on production.
 
 ## Quick Commands
 
-### Deploy Backend
+### Deploy Complete Backend
 
 ```bash
-BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
+BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend:with-webhook
 ```
 
-Updates the dev data, app, and observability stacks. It resolves the dev `SENTRY_DSN` from
-`infra/opentofu/sentry` automatically. Routine deploys do not require rerunning the Sentry OpenTofu
-module unless the Sentry resources themselves changed.
+Updates the dev data, app, and observability stacks, initializes and applies dev API DNS, then
+synchronizes and verifies the sandbox Asaas webhook. It resolves the dev `SENTRY_DSN` from
+`infra/opentofu/sentry` automatically.
+
+Use `BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend` only for an intentional AWS-only backend deploy.
+It does not apply API DNS and does not update Asaas webhook subscriptions.
 
 ### Deploy Frontend
 
@@ -95,6 +98,7 @@ Recurring `dev` deploys are selective by changed live target:
 - backend changes deploy the data/app/observability stacks
 - landing-DNS changes apply only `opentofu:dns`
 - API-target changes apply only `opentofu:api-dns`
+- backend, API-target, or webhook-configuration changes synchronize and verify the sandbox Asaas webhook
 - Sentry changes apply `opentofu:sentry`, then redeploy the backend when the DSN/output glue changed
 
 Shared live files can fan out to multiple targets. For example, a common CDK entrypoint change can
@@ -112,10 +116,7 @@ Use the quick commands above to run only the live target you intend to refresh l
 
 ## Asaas Sandbox
 
-The backend uses sandbox Asaas automatically in `dev`, and the webhook sync automation can manage the
-sandbox webhook once the dev API is reachable.
-
-If you want deploy + webhook sync in one step:
+The backend uses sandbox Asaas automatically in `dev`. The standard complete backend command is:
 
 ```bash
 BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend:with-webhook

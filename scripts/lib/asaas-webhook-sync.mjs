@@ -86,6 +86,36 @@ export function findManagedWebhook(webhooks, desiredWebhook) {
   return nameMatches[0] ?? null;
 }
 
+export function verifyManagedWebhook(webhook, desiredWebhook) {
+  const actualEvents = [...(Array.isArray(webhook.events) ? webhook.events : [])].sort();
+  const expectedEvents = [...desiredWebhook.events].sort();
+  const mismatches = [];
+
+  for (const field of ["name", "url", "email", "enabled", "interrupted", "apiVersion", "sendType"]) {
+    if (webhook[field] !== desiredWebhook[field]) {
+      mismatches.push(`${field}=${JSON.stringify(webhook[field])}`);
+    }
+  }
+
+  if (webhook.hasAuthToken !== true) {
+    mismatches.push(`hasAuthToken=${JSON.stringify(webhook.hasAuthToken)}`);
+  }
+
+  if (JSON.stringify(actualEvents) !== JSON.stringify(expectedEvents)) {
+    const missingEvents = expectedEvents.filter((event) => !actualEvents.includes(event));
+    const unexpectedEvents = actualEvents.filter((event) => !expectedEvents.includes(event));
+    mismatches.push(
+      `events missing=${JSON.stringify(missingEvents)} unexpected=${JSON.stringify(unexpectedEvents)}`
+    );
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(`Asaas webhook verification failed: ${mismatches.join(", ")}.`);
+  }
+
+  return webhook;
+}
+
 async function asaasRequest({ apiBaseUrl, apiKey, body, fetchImpl, method = "GET", path }) {
   const response = await fetchImpl(`${normalizeBaseUrl(apiBaseUrl)}${path}`, {
     method,
@@ -145,6 +175,8 @@ export async function syncAsaasWebhook({
   });
   const webhooks = Array.isArray(listResponse.data) ? listResponse.data : [];
   const existingWebhook = findManagedWebhook(webhooks, desiredWebhook);
+  let action;
+  let webhookId;
 
   if (!existingWebhook) {
     const createdWebhook = await asaasRequest({
@@ -157,25 +189,41 @@ export async function syncAsaasWebhook({
     });
 
     logger.info(`Created Asaas webhook for ${desiredWebhook.url}.`);
-    return {
-      action: "created",
-      webhook: createdWebhook
-    };
+    action = "created";
+    webhookId = createdWebhook.id;
+  } else {
+    const updatedWebhook = await asaasRequest({
+      apiBaseUrl,
+      apiKey,
+      body: desiredWebhook,
+      fetchImpl,
+      method: "PUT",
+      path: `/webhooks/${existingWebhook.id}`
+    });
+
+    logger.info(`Updated Asaas webhook ${existingWebhook.id} for ${desiredWebhook.url}.`);
+    action = "updated";
+    webhookId = updatedWebhook.id ?? existingWebhook.id;
   }
 
-  const updatedWebhook = await asaasRequest({
-    apiBaseUrl,
-    apiKey,
-    body: desiredWebhook,
-    fetchImpl,
-    method: "PUT",
-    path: `/webhooks/${existingWebhook.id}`
-  });
+  if (!webhookId) {
+    throw new Error("Asaas webhook synchronization did not return a webhook id.");
+  }
 
-  logger.info(`Updated Asaas webhook ${existingWebhook.id} for ${desiredWebhook.url}.`);
+  const verifiedWebhook = verifyManagedWebhook(
+    await asaasRequest({
+      apiBaseUrl,
+      apiKey,
+      fetchImpl,
+      path: `/webhooks/${webhookId}`
+    }),
+    desiredWebhook
+  );
+
+  logger.info(`Verified Asaas webhook ${webhookId} for ${desiredWebhook.url}.`);
   return {
-    action: "updated",
-    webhook: updatedWebhook
+    action,
+    webhook: verifiedWebhook
   };
 }
 

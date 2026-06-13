@@ -24,7 +24,7 @@ export function Fornecedores() {
   return (
     <section
       id="fornecedores"
-      className="fornecedores-v2 relative isolate overflow-hidden bg-[linear-gradient(180deg,#f2e5cf_0%,#f6eddf_38%,#fbf7f0_100%)] py-20 md:py-24"
+      className="fornecedores-v2 relative isolate overflow-hidden bg-[linear-gradient(180deg,#f2e5cf_0%,#f6eddf_45%,#ead3a8_100%)] py-20 md:py-24"
     >
       <div
         aria-hidden="true"

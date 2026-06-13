@@ -172,12 +172,15 @@ Then deploy the static site and CloudFront (this command rebuilds the web bundle
 BRIMAX_ENV_FILE=.env.dev pnpm deploy:landing:edge
 ```
 
-Deploy the backend with the API custom domain and IaC-managed payment secrets. It resolves the dev
+Deploy the AWS backend with the API custom domain and IaC-managed payment secrets. It resolves the dev
 `SENTRY_DSN` from the dev Sentry module applied in Terminal 1:
 
 ```bash
 BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
 ```
+
+`deploy:backend` is intentionally AWS-only. The dev payment backend is not fully bootstrapped until
+API DNS is applied and the sandbox Asaas webhook is synchronized.
 
 ## Final DNS Wiring (Terminal 2, After The Backend Is Up)
 
@@ -186,6 +189,7 @@ BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:init
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:apply
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:init
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply
+BRIMAX_ENV_FILE=.env.dev pnpm asaas:webhook:sync
 ```
 
 This creates the Cloudflare DNS records that point:
@@ -193,7 +197,7 @@ This creates the Cloudflare DNS records that point:
 - `dev.brimax.life` and `www.dev.brimax.life` to CloudFront (CloudFront redirects `www` to the apex)
 - `api.dev.brimax.life` to the API Gateway custom-domain regional target
 
-## Seed And Asaas Sandbox
+## Seed Dev Data
 
 Seed the dev table:
 
@@ -201,20 +205,20 @@ Seed the dev table:
 BRIMAX_ENV_FILE=.env.dev pnpm reset:wedding:fresh-start
 ```
 
-The backend uses sandbox Asaas automatically in `dev`. Once `api.dev.brimax.life` is reachable, sync
-the sandbox webhook:
-
-```bash
-BRIMAX_ENV_FILE=.env.dev pnpm asaas:webhook:sync
-```
-
-The managed dev webhook is:
+The backend uses sandbox Asaas automatically in `dev`. The API-DNS sequence above synchronizes and
+verifies the managed dev webhook:
 
 ```text
 https://api.dev.brimax.life/webhooks/asaas
 ```
 
 Never point sandbox traffic or credentials at production Asaas resources.
+
+For an already-bootstrapped dev environment, the equivalent complete local backend command is:
+
+```bash
+BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend:with-webhook
+```
 
 ## What Dev Intentionally Skips
 
@@ -238,7 +242,6 @@ BRIMAX_ENV_FILE=.env.dev pnpm wait:landing:cert
 BRIMAX_ENV_FILE=.env.dev pnpm deploy:landing:edge
 BRIMAX_ENV_FILE=.env.dev pnpm deploy:backend
 BRIMAX_ENV_FILE=.env.dev pnpm reset:wedding:fresh-start
-BRIMAX_ENV_FILE=.env.dev pnpm asaas:webhook:sync
 ```
 
 ### Terminal 2 (while Terminal 1 is paused at the cert step)
@@ -251,6 +254,7 @@ BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:init
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:apply
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:init
 BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply
+BRIMAX_ENV_FILE=.env.dev pnpm asaas:webhook:sync
 ```
 
 ## Verification
@@ -270,6 +274,8 @@ BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply
   resolver is stale
 - `https://api.dev.brimax.life/payments/not-found` reaches the dev API
 - the dev app stack outputs a dev webhook URL and dev API custom-domain URL
+- sandbox Asaas reports the dev webhook as enabled, uninterrupted, and subscribed to all managed
+  payment and checkout events
 - dev email notifications point at `dev.brimax.life`
 - dev media bucket and DynamoDB table names differ from prod
 - `BRIMAX_ENV_FILE=.env.dev pnpm opentofu:dns:plan` only targets `dev.brimax.life` and
