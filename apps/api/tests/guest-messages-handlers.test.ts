@@ -69,7 +69,7 @@ describe("guest message handlers", () => {
           createdAt: "2026-05-29T18:00:00.000Z"
         }
       },
-      notificationSent: true
+      notificationEnqueued: true
     });
 
     const response = await createHandler({

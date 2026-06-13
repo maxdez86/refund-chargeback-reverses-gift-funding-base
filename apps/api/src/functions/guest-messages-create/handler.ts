@@ -25,13 +25,13 @@ async function onCreateGuestMessage(event: APIGatewayProxyEventV2) {
     }
 
     const parsedRequest = CreateGuestMessageRequestSchema.parse(requestBody);
-    const { response, notificationSent } = await service.create(parsedRequest);
+    const { response, notificationEnqueued } = await service.create(parsedRequest);
 
     console.info(
       JSON.stringify({
         metric: "GUEST_MESSAGE_CREATED",
         messageId: response.message.messageId,
-        notificationSent
+        notificationEnqueued
       })
     );
 

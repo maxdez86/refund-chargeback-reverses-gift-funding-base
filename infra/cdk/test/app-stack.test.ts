@@ -35,8 +35,9 @@ describe("AppStack", () => {
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
-    // webhook queue + DLQ and checkout-expiry queue + DLQ.
-    template.resourceCountIs("AWS::SQS::Queue", 4);
+    // webhook queue + DLQ, checkout-expiry queue + DLQ, and guest-message
+    // notification queue + DLQ.
+    template.resourceCountIs("AWS::SQS::Queue", 6);
     template.resourceCountIs("AWS::SecretsManager::Secret", 1);
     template.resourceCountIs("AWS::SES::EmailIdentity", 0);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
@@ -439,6 +440,48 @@ describe("AppStack", () => {
     expect(workerPolicyJson).toContain("dynamodb:PutItem");
     expect(workerPolicyJson).toContain("dynamodb:DeleteItem");
     expect(workerPolicyJson).toContain("sqs:ReceiveMessage");
+
+    // The guest-message create handler enqueues the notification (send-only on
+    // the notification queue) and no longer holds SES send — that moved to the
+    // async notify worker.
+    const createGuestMessagesEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("CreateGuestMessagesFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(createGuestMessagesEntry).toBeDefined();
+    const createGuestMessagesRoleLogicalId = (
+      createGuestMessagesEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const createGuestMessagesPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(createGuestMessagesRoleLogicalId)
+    );
+    const createGuestMessagesPolicyJson = JSON.stringify(
+      createGuestMessagesPolicy?.Properties?.PolicyDocument
+    );
+    expect(createGuestMessagesPolicyJson).toContain("sqs:SendMessage");
+    expect(createGuestMessagesPolicyJson).not.toContain("ses:");
+
+    // The notify worker consumes the notification queue and owns the SES send.
+    const notifyFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("GuestMessageNotifyFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(notifyFunctionEntry).toBeDefined();
+    const notifyRoleLogicalId = (
+      notifyFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const notifyPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(notifyRoleLogicalId)
+    );
+    const notifyPolicyJson = JSON.stringify(notifyPolicy?.Properties?.PolicyDocument);
+    expect(notifyPolicyJson).toContain("ses:SendEmail");
+    expect(notifyPolicyJson).toContain("sqs:ReceiveMessage");
 
     for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
       expect(resource.Properties).not.toHaveProperty("FunctionName");

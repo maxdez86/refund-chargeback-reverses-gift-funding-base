@@ -8,6 +8,7 @@
     "./functions/checkout-expiry-worker/handler": "./src/functions/checkout-expiry-worker/handler.ts",
     "./functions/gifts-get/handler": "./src/functions/gifts-get/handler.ts",
     "./functions/guest-messages-create/handler": "./src/functions/guest-messages-create/handler.ts",
+    "./functions/guest-message-notify/handler": "./src/functions/guest-message-notify/handler.ts",
     "./functions/guest-messages-get/handler": "./src/functions/guest-messages-get/handler.ts",
     "./functions/invitation-get/handler": "./src/functions/invitation-get/handler.ts",
     "./functions/payments-create/handler": "./src/functions/payments-create/handler.ts",
