@@ -44,6 +44,8 @@ export class AppStack extends cdk.Stack {
   readonly checkoutExpiryWorkerFunction: lambda.IFunction;
   readonly checkoutExpiryDlq: sqs.IQueue;
   readonly checkoutExpiryQueue: sqs.IQueue;
+  readonly guestMessageNotificationDlq: sqs.IQueue;
+  readonly guestMessageNotificationQueue: sqs.IQueue;
   private readonly functionLogGroups = new Map<string, logs.LogGroup>();
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
@@ -110,6 +112,21 @@ export class AppStack extends cdk.Stack {
     });
     this.checkoutExpiryDlq = expiryDlq;
     this.checkoutExpiryQueue = expiryQueue;
+    // Off-request-path delivery of the couple's "novo recado" notification.
+    // Mirrors the webhook queue (redrive 5, 14-day DLQ). The notify worker
+    // timeout is 30s, so the visibility timeout sits comfortably above it.
+    const guestMessageNotificationDlq = new sqs.Queue(this, "GuestMessageNotificationDlq", {
+      retentionPeriod: cdk.Duration.days(14)
+    });
+    const guestMessageNotificationQueue = new sqs.Queue(this, "GuestMessageNotificationQueue", {
+      deadLetterQueue: {
+        queue: guestMessageNotificationDlq,
+        maxReceiveCount: 5
+      },
+      visibilityTimeout: cdk.Duration.seconds(90)
+    });
+    this.guestMessageNotificationDlq = guestMessageNotificationDlq;
+    this.guestMessageNotificationQueue = guestMessageNotificationQueue;
     const senderDomain =
       props.stage === "prod"
         ? new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
@@ -272,6 +289,7 @@ export class AppStack extends cdk.Stack {
       SITE_BASE_URL: siteBaseUrl,
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       EXPIRY_QUEUE_URL: expiryQueue.queueUrl,
+      GUEST_MESSAGE_NOTIFICATION_QUEUE_URL: guestMessageNotificationQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName
     };
@@ -372,6 +390,15 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(60)
     });
     this.checkoutExpiryWorkerFunction = checkoutExpiryWorkerFn;
+    const guestMessageNotifyFn = this.createTaggedNodejsFunction("GuestMessageNotifyFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/guest-message-notify/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      memorySize: 512,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(30)
+    });
     const invitationGetFn = this.createTaggedNodejsFunction("InvitationGetFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
@@ -399,7 +426,8 @@ export class AppStack extends cdk.Stack {
       rsvpFn,
       asaasWebhookFn,
       webhookProcessorFn,
-      checkoutExpiryWorkerFn
+      checkoutExpiryWorkerFn,
+      guestMessageNotifyFn
     ];
 
     // Keep the guest-facing functions warm (excludes the vendor webhook pair
@@ -422,6 +450,12 @@ export class AppStack extends cdk.Stack {
 
     webhookProcessorFn.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
+        batchSize: 10
+      })
+    );
+
+    guestMessageNotifyFn.addEventSource(
+      new lambdaEventSources.SqsEventSource(guestMessageNotificationQueue, {
         batchSize: 10
       })
     );
@@ -482,6 +516,8 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(rsvpFn);
     webhookQueue.grantSendMessages(asaasWebhookFn);
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
+    guestMessageNotificationQueue.grantSendMessages(createGuestMessagesFn);
+    guestMessageNotificationQueue.grantConsumeMessages(guestMessageNotifyFn);
     // grantRead is whole-secret only — each reader below can read every key in
     // the bucket. Union of the former per-secret readers (6 functions).
     appSecret.grantRead(createPaymentFn);
@@ -495,7 +531,9 @@ export class AppStack extends cdk.Stack {
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: ["*"]
     });
-    createGuestMessagesFn.addToRolePolicy(sesSendPolicy);
+    // createGuestMessagesFn no longer sends email — the guest-message-notify
+    // worker owns the SES send, off the request path.
+    guestMessageNotifyFn.addToRolePolicy(sesSendPolicy);
     paymentMessageFn.addToRolePolicy(sesSendPolicy);
     webhookProcessorFn.addToRolePolicy(sesSendPolicy);
     rsvpFn.addToRolePolicy(sesSendPolicy);

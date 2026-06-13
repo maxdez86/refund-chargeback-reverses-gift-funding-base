@@ -182,6 +182,7 @@ new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
   env,
   stage,
   distribution: edgeStack.distribution,
+  guestMessageNotificationDlq: appStack.guestMessageNotificationDlq,
   httpApi: appStack.httpApi,
   webhookDlq: appStack.webhookDlq,
   webhookProcessorFunction: appStack.webhookProcessorFunction,

@@ -170,29 +170,32 @@ export class WeddingRepository {
       createdAt
     };
 
-    await this.documentClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          ...feedKey,
-          entityType: "GuestMessage",
-          ...message
-        }
-      })
-    );
-
-    await this.documentClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: {
-          ...lookupKey,
-          entityType: "GuestMessageLookup",
-          messageId,
-          feedPK: feedKey.PK,
-          feedSK: feedKey.SK
-        }
-      })
-    );
+    // The feed item and lookup item are independent puts (no read-modify-write
+    // between them), so issue both concurrently to save a round trip.
+    await Promise.all([
+      this.documentClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            ...feedKey,
+            entityType: "GuestMessage",
+            ...message
+          }
+        })
+      ),
+      this.documentClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            ...lookupKey,
+            entityType: "GuestMessageLookup",
+            messageId,
+            feedPK: feedKey.PK,
+            feedSK: feedKey.SK
+          }
+        })
+      )
+    ]);
 
     return message;
   }

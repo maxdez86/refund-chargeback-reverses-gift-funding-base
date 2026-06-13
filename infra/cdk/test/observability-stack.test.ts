@@ -47,6 +47,7 @@ describe("ObservabilityStack", () => {
       checkoutExpiryWorkerFunction: appStack.checkoutExpiryWorkerFunction,
       createPaymentFunction: appStack.createPaymentFunction,
       distribution: edgeStack.distribution,
+      guestMessageNotificationDlq: appStack.guestMessageNotificationDlq,
       httpApi: appStack.httpApi,
       stage: "prod",
       table: dataStack.table,
@@ -59,8 +60,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    // 15 fixed alarms + one Lambda-throttle alarm per alarmed function (10).
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 25);
+    // 16 fixed alarms + one Lambda-throttle alarm per alarmed function (11).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 27);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
