@@ -3,6 +3,7 @@ import {
   TransactionCanceledException
 } from "@aws-sdk/client-dynamodb";
 import {
+  BatchGetCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
@@ -52,6 +53,14 @@ export type StoredPaymentReservationStatus =
   | "CONSUMED"
   | "RELEASED"
   | "RECOVERY_HOLD";
+
+// Per-item outcome of an orphan-reservation release, so the sweep can tally
+// metrics and decide what (if anything) is a retryable failure.
+//   released        — the reservation was moved to RELEASED and parts freed.
+//   race-lost       — another writer won (already released / condition failed).
+//   protected       — funded or deliberately held; must not be auto-released.
+//   missing-context — reservation/gift rows absent; nothing to release.
+export type ReservationReleaseOutcome = "released" | "race-lost" | "protected" | "missing-context";
 
 export type StoredPaymentReservation = {
   paymentId: string;
@@ -222,6 +231,10 @@ function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity
     unitAmountCents: uniqueValues.size === 1 ? quotaValuesCents[0] ?? null : null,
     mixedValues: uniqueValues.size > 1
   };
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // A transaction canceled purely by condition checks means another writer won a
@@ -620,6 +633,68 @@ export class PaymentRepository {
     return (response.Item as StoredGiftState | undefined) ?? null;
   }
 
+  // Fast read path for GET /gifts: one BatchGetItem over the metadata + state
+  // keys for every gift id (27 gifts -> 54 keys, well under the 100-key limit),
+  // replacing the two full-table Scans. Absent items are NORMAL and returned as
+  // gaps — STATE rows only exist once a gift has been reserved/funded, and the
+  // caller defaults them. Only genuine throttling (UnprocessedKeys that never
+  // drain) is treated as an error.
+  async batchGetGiftCatalog(
+    ids: string[]
+  ): Promise<{ metadata: StoredGiftMetadata[]; states: StoredGiftState[] }> {
+    const metadata: StoredGiftMetadata[] = [];
+    const states: StoredGiftState[] = [];
+
+    if (ids.length === 0) {
+      return { metadata, states };
+    }
+
+    const allKeys = ids.flatMap((id) => [giftMetadataKeys(id), giftStateKeys(id)]);
+    const MAX_BATCH_KEYS = 100;
+    const MAX_ATTEMPTS = 4;
+    const BASE_BACKOFF_MS = 50;
+
+    for (let offset = 0; offset < allKeys.length; offset += MAX_BATCH_KEYS) {
+      let pending: Record<string, unknown>[] = allKeys.slice(offset, offset + MAX_BATCH_KEYS);
+      let attempt = 0;
+
+      while (pending.length > 0) {
+        const response = await this.documentClient.send(
+          new BatchGetCommand({
+            RequestItems: {
+              [this.tableName]: { Keys: pending }
+            }
+          })
+        );
+
+        for (const item of response.Responses?.[this.tableName] ?? []) {
+          if (item.SK === "METADATA") {
+            metadata.push(item as StoredGiftMetadata);
+          } else if (item.SK === "STATE") {
+            states.push(item as StoredGiftState);
+          }
+        }
+
+        const unprocessed = response.UnprocessedKeys?.[this.tableName]?.Keys ?? [];
+        if (unprocessed.length === 0) {
+          break;
+        }
+
+        attempt += 1;
+        if (attempt >= MAX_ATTEMPTS) {
+          throw new Error(
+            `Gift catalog batch read left ${unprocessed.length} key(s) unprocessed after ${attempt} attempts.`
+          );
+        }
+
+        await delay(BASE_BACKOFF_MS * 2 ** (attempt - 1));
+        pending = unprocessed as Record<string, unknown>[];
+      }
+    }
+
+    return { metadata, states };
+  }
+
   async incrementGiftFunding(input: {
     giftId: string;
     paymentId: string;
@@ -862,14 +937,21 @@ export class PaymentRepository {
     );
   }
 
-  async releaseReservationAfterCheckoutFailure(paymentId: string) {
+  async releaseReservationAfterCheckoutFailure(paymentId: string): Promise<ReservationReleaseOutcome> {
     const reservation = await this.getPaymentReservation(paymentId);
     if (!reservation) {
-      return;
+      return "missing-context";
     }
 
-    if (reservation.status === "RELEASED" || reservation.status === "CONSUMED") {
-      return;
+    // Already released — nothing to free, another writer won this race.
+    if (reservation.status === "RELEASED") {
+      return "race-lost";
+    }
+
+    // CONSUMED (funded) or RECOVERY_HOLD (deliberate hold) must never be
+    // released by orphan cleanup; only open checkouts are eligible below.
+    if (reservation.status === "CONSUMED" || reservation.status === "RECOVERY_HOLD") {
+      return "protected";
     }
 
     const gift = await this.getGift(reservation.giftId);
@@ -878,10 +960,21 @@ export class PaymentRepository {
     const now = new Date().toISOString();
 
     if (!gift || !state) {
-      return;
+      return "missing-context";
     }
 
     const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
+      {
+        // Orphan-release guard: this path runs because the payment row was read
+        // as absent. If a payment was (re)created in the meantime it may yet
+        // confirm, so the whole transaction cancels unless the payment item
+        // still does not exist — never free parts out from under a live payment.
+        ConditionCheck: {
+          TableName: this.tableName,
+          Key: paymentKeys(paymentId),
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      },
       buildGiftReservationReleaseUpdate({
         amountCents: reservation.amountCents,
         gift,
@@ -895,18 +988,19 @@ export class PaymentRepository {
         Update: {
           TableName: this.tableName,
           Key: paymentReservationKeys(paymentId),
-          // Guard against a concurrent release/consume double-decrementing
-          // the gift counters: the whole transaction cancels if another
-          // writer already moved the reservation out of its held state.
+          // Guard against a concurrent release/consume double-decrementing the
+          // gift counters: only an open checkout (PENDING_CHECKOUT/ACTIVE) may
+          // be released here, so the transaction cancels if another writer
+          // already moved the reservation on.
           ConditionExpression:
-            "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
+            "attribute_exists(PK) AND (#status = :pendingCheckout OR #status = :active)",
           UpdateExpression: "SET #status = :status, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
           ExpressionAttributeNames: {
             "#status": "status"
           },
           ExpressionAttributeValues: {
-            ":consumed": "CONSUMED",
-            ":released": "RELEASED",
+            ":active": "ACTIVE",
+            ":pendingCheckout": "PENDING_CHECKOUT",
             ":status": "RELEASED",
             ":updatedAt": now
           }
@@ -935,6 +1029,7 @@ export class PaymentRepository {
 
     try {
       await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
+      return "released";
     } catch (error) {
       if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
         console.warn(
@@ -944,7 +1039,7 @@ export class PaymentRepository {
             cancellationReasons: error.CancellationReasons?.map((reason) => reason.Code)
           })
         );
-        return;
+        return "race-lost";
       }
 
       throw error;

@@ -3,6 +3,7 @@ import { GiftService } from "../../domain/gift-service";
 import { corsHeaders, jsonResponse, noContentResponse } from "../../lib/http";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 import { withWarmup } from "../../lib/warmup";
+import { enqueueExpiryTrigger } from "../../services/sqs/checkout-expiry-publisher";
 
 const service = new GiftService();
 
@@ -14,8 +15,20 @@ async function onGetGifts(event: APIGatewayProxyEventV2) {
   }
 
   try {
-    const response = await service.getGifts();
-    return jsonResponse(200, response, cors);
+    // Read the gifts and nudge the expiry worker concurrently. The response is
+    // built from the gift read alone; the enqueue is best-effort acceleration
+    // and never affects listing (it swallows its own failures, and allSettled
+    // isolates it even if that ever changes).
+    const [giftsResult] = await Promise.allSettled([
+      service.getGifts(),
+      enqueueExpiryTrigger("gifts")
+    ]);
+
+    if (giftsResult.status === "rejected") {
+      throw giftsResult.reason;
+    }
+
+    return jsonResponse(200, giftsResult.value, cors);
   } catch (error) {
     reportHandledError(error, {
       context: { requestId: event.requestContext.requestId },

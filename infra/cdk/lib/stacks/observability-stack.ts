@@ -17,6 +17,9 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   alarmedFunctions: lambda.IFunction[];
   alertEmail?: string;
   applicationLogGroups: logs.ILogGroup[];
+  checkoutExpiryDlq: sqs.IQueue;
+  checkoutExpiryQueue: sqs.IQueue;
+  checkoutExpiryWorkerFunction: lambda.IFunction;
   createPaymentFunction: lambda.IFunction;
   distribution: cloudfront.IDistribution;
   httpApi: apigwv2.IHttpApi;
@@ -119,18 +122,124 @@ export class ObservabilityStack extends cdk.Stack {
       threshold: 1,
       ...eventDrivenAlarmDefaults
     });
+    // Re-pointed from the (now removed) GET /gifts sweep to the background
+    // worker: cleanup moved off the request path, so this watches the worker's
+    // failure log instead.
     const checkoutExpirySweepFailureAlarm = new cloudwatch.Alarm(
       this,
       "CheckoutExpirySweepFailureAlarm",
       {
-        alarmDescription: "Alerts when GET /gifts cannot clean up stale checkout reservations.",
+        alarmDescription: "Alerts when the checkout-expiry worker cannot clean up stale reservations.",
         metric: new cloudwatch.Metric({
-          metricName: "get-gifts-checkout-expiry-sweep-failed",
+          metricName: "checkout-expiry-worker-sweep-failed",
           namespace: "Brimax/Payments",
           period: cdk.Duration.minutes(5),
           statistic: "Sum"
         }),
         threshold: 1,
+        ...eventDrivenAlarmDefaults
+      }
+    );
+
+    const checkoutExpiryDlqAlarm = new cloudwatch.Alarm(this, "CheckoutExpiryDlqAlarm", {
+      alarmDescription: "Alerts when the checkout-expiry dead-letter queue receives messages.",
+      metric: props.checkoutExpiryDlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: "Maximum"
+      }),
+      threshold: 1,
+      ...eventDrivenAlarmDefaults
+    });
+
+    const checkoutExpiryQueueBacklogAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpiryQueueBacklogAlarm",
+      {
+        alarmDescription: "Alerts when the checkout-expiry queue begins backing up.",
+        metric: props.checkoutExpiryQueue.metricApproximateNumberOfMessagesVisible({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum"
+        }),
+        threshold: 50,
+        ...eventDrivenAlarmDefaults
+      }
+    );
+
+    const checkoutExpiryQueueAgeAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpiryQueueAgeAlarm",
+      {
+        alarmDescription:
+          "Alerts when stale-checkout triggers stay queued too long (worker not keeping up).",
+        metric: props.checkoutExpiryQueue.metricApproximateAgeOfOldestMessage({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum"
+        }),
+        threshold: 300,
+        ...eventDrivenAlarmDefaults
+      }
+    );
+
+    const checkoutExpiryWorkerErrorsAlarm = createSparseTrafficRateAlarm(
+      "CheckoutExpiryWorkerErrorsAlarm",
+      "Alerts when the checkout-expiry worker throws errors under meaningful traffic.",
+      props.checkoutExpiryWorkerFunction.metricErrors({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      }),
+      props.checkoutExpiryWorkerFunction.metricInvocations({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
+
+    const checkoutExpiryWorkerDurationAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpiryWorkerDurationAlarm",
+      {
+        alarmDescription: "Alerts when the checkout-expiry sweep runs long (approaching its timeout).",
+        metric: props.checkoutExpiryWorkerFunction.metricDuration({
+          period: cdk.Duration.minutes(5),
+          statistic: "p95"
+        }),
+        // Worker timeout is 60s; warn well before it.
+        threshold: 45_000,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        ...eventDrivenAlarmDefaults
+      }
+    );
+
+    const checkoutExpiryTriggerEnqueueFailureAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpiryTriggerEnqueueFailureAlarm",
+      {
+        alarmDescription: "Alerts when GET /gifts cannot enqueue stale-checkout triggers.",
+        metric: new cloudwatch.Metric({
+          metricName: "checkout-expiry-trigger-enqueue-failed",
+          namespace: "Brimax/Payments",
+          period: cdk.Duration.minutes(5),
+          statistic: "Sum"
+        }),
+        threshold: 1,
+        ...eventDrivenAlarmDefaults
+      }
+    );
+
+    const checkoutExpiryProtectedStaleAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpiryProtectedStaleAlarm",
+      {
+        alarmDescription:
+          "Alerts when stale reservations sit under protected (processing/terminal) payments — likely drift.",
+        metric: new cloudwatch.Metric({
+          metricName: "checkout-expiry-protected-stale",
+          namespace: "Brimax/Payments",
+          period: cdk.Duration.minutes(15),
+          statistic: "Sum"
+        }),
+        // Tolerate the occasional in-flight PROCESSING reservation; alert only on
+        // a sustained cluster.
+        threshold: 5,
         ...eventDrivenAlarmDefaults
       }
     );
@@ -186,6 +295,13 @@ export class ObservabilityStack extends cdk.Stack {
       webhookProcessorErrorsAlarm,
       webhookPaymentNotFoundAlarm,
       checkoutExpirySweepFailureAlarm,
+      checkoutExpiryDlqAlarm,
+      checkoutExpiryQueueBacklogAlarm,
+      checkoutExpiryQueueAgeAlarm,
+      checkoutExpiryWorkerErrorsAlarm,
+      checkoutExpiryWorkerDurationAlarm,
+      checkoutExpiryTriggerEnqueueFailureAlarm,
+      checkoutExpiryProtectedStaleAlarm,
       api5xxAlarm,
       webhookQueueBacklogAlarm,
       webhookQueueAgeAlarm,
@@ -292,6 +408,48 @@ export class ObservabilityStack extends cdk.Stack {
             statistic: "Sum"
           }),
           props.webhookProcessorFunction.metricErrors({
+            period: cdk.Duration.minutes(5),
+            statistic: "Sum"
+          })
+        ],
+        width: 12
+      }),
+      new cloudwatch.GraphWidget({
+        title: "Checkout Expiry Queue / DLQ",
+        left: [
+          props.checkoutExpiryQueue.metricApproximateNumberOfMessagesVisible({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum"
+          }),
+          props.checkoutExpiryQueue.metricApproximateAgeOfOldestMessage({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum"
+          }),
+          props.checkoutExpiryDlq.metricApproximateNumberOfMessagesVisible({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum"
+          })
+        ],
+        width: 12
+      }),
+      new cloudwatch.GraphWidget({
+        title: "Checkout Expiry Worker / Triggers",
+        left: [
+          new cloudwatch.Metric({
+            metricName: "checkout-expiry-worker-sweep-failed",
+            namespace: "Brimax/Payments",
+            period: cdk.Duration.minutes(5),
+            statistic: "Sum"
+          }),
+          new cloudwatch.Metric({
+            metricName: "checkout-expiry-protected-stale",
+            namespace: "Brimax/Payments",
+            period: cdk.Duration.minutes(5),
+            statistic: "Sum"
+          }),
+          new cloudwatch.Metric({
+            metricName: "checkout-expiry-trigger-enqueue-failed",
+            namespace: "Brimax/Payments",
             period: cdk.Duration.minutes(5),
             statistic: "Sum"
           })

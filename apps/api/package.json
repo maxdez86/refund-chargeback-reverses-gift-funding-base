@@ -5,6 +5,7 @@
   "exports": {
     "./functions/asaas-webhook/handler": "./src/functions/asaas-webhook/handler.ts",
     "./functions/asaas-webhook-processor/handler": "./src/functions/asaas-webhook-processor/handler.ts",
+    "./functions/checkout-expiry-worker/handler": "./src/functions/checkout-expiry-worker/handler.ts",
     "./functions/gifts-get/handler": "./src/functions/gifts-get/handler.ts",
     "./functions/guest-messages-create/handler": "./src/functions/guest-messages-create/handler.ts",
     "./functions/guest-messages-get/handler": "./src/functions/guest-messages-get/handler.ts",
