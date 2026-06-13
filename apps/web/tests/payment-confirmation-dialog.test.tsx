@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
+import { PaymentApiError } from "@/lib/payments-api";
 import { giftsQueryKey } from "@/lib/gifts-api";
 import {
   LAST_PAYMENT_ID_STORAGE_KEY,
@@ -11,6 +12,8 @@ import {
 
 const getPaymentMock = vi.fn();
 const createPaymentMessageMock = vi.fn();
+const discardPaymentMock = vi.fn();
+const toastErrorMock = vi.fn();
 
 vi.mock("@/lib/payments-api", () => ({
   PaymentApiError: class PaymentApiError extends Error {
@@ -21,6 +24,14 @@ vi.mock("@/lib/payments-api", () => ({
   },
   getPayment: (...args: unknown[]) => getPaymentMock(...args),
   createPaymentMessage: (...args: unknown[]) => createPaymentMessageMock(...args),
+  discardPayment: (...args: unknown[]) => discardPaymentMock(...args),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    message: vi.fn(),
+  },
 }));
 
 describe("PaymentConfirmationDialog", () => {
@@ -52,6 +63,9 @@ describe("PaymentConfirmationDialog", () => {
   beforeEach(() => {
     getPaymentMock.mockReset();
     createPaymentMessageMock.mockReset();
+    discardPaymentMock.mockReset();
+    discardPaymentMock.mockResolvedValue(undefined);
+    toastErrorMock.mockReset();
     window.localStorage.clear();
     window.history.replaceState({}, "", "/");
     window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
@@ -368,5 +382,136 @@ describe("PaymentConfirmationDialog", () => {
     });
     expect(window.scrollTo).toHaveBeenCalled();
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: giftsQueryKey });
+  });
+
+  it("auto-discards the payment exactly once on the cancel variant", async () => {
+    window.history.replaceState({}, "", "/#paymentId=payment-1&paymentStatus=cancel");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(discardPaymentMock).toHaveBeenCalledTimes(1);
+    });
+    expect(discardPaymentMock).toHaveBeenCalledWith("payment-1");
+    // The url-cancel path never fetches the payment.
+    expect(getPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-discard on the success variant", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-success-nodiscard",
+      paymentMethod: "HOSTED",
+      status: "CONFIRMED",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:05.000Z",
+      customerProfileStatus: "READY",
+    });
+
+    window.history.replaceState(
+      {},
+      "",
+      "/#paymentId=payment-success-nodiscard&paymentStatus=success"
+    );
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Presente recebido!")).toBeInTheDocument();
+    });
+    expect(discardPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-discard on the pending variant", async () => {
+    getPaymentMock.mockResolvedValue({
+      paymentId: "payment-pending-nodiscard",
+      paymentMethod: "HOSTED",
+      status: "AWAITING_PAYMENT",
+      amountCents: 500,
+      currency: "BRL",
+      gift: {
+        id: "g-test-pix",
+        name: "PIX Teste",
+        fractional: false,
+        quantity: 1,
+        unitAmountCents: null,
+        amountCents: 500,
+      },
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+
+    window.history.replaceState(
+      {},
+      "",
+      "/#paymentId=payment-pending-nodiscard&paymentStatus=success"
+    );
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirmando seu pagamento…")).toBeInTheDocument();
+    });
+    expect(discardPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-discard again when the cancel dialog re-opens for the same payment", async () => {
+    window.history.replaceState({}, "", "/#paymentId=payment-reopen&paymentStatus=cancel");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(discardPaymentMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Re-trigger the dialog for the same id/hash via popstate and the open event.
+    act(() => {
+      window.dispatchEvent(new Event("popstate"));
+    });
+    act(() => {
+      openPaymentConfirmationDialog({
+        paymentId: "payment-reopen",
+        paymentStatus: "cancel",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+    });
+    expect(discardPaymentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows auto-discard failures without a toast and keeps the cancel screen", async () => {
+    discardPaymentMock.mockRejectedValueOnce(new PaymentApiError("conflict", 409));
+
+    window.history.replaceState({}, "", "/#paymentId=payment-discard-fail&paymentStatus=cancel");
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(discardPaymentMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Pagamento cancelado")).toBeInTheDocument();
   });
 });
