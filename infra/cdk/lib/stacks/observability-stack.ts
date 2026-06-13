@@ -119,6 +119,21 @@ export class ObservabilityStack extends cdk.Stack {
       threshold: 1,
       ...eventDrivenAlarmDefaults
     });
+    const checkoutExpirySweepFailureAlarm = new cloudwatch.Alarm(
+      this,
+      "CheckoutExpirySweepFailureAlarm",
+      {
+        alarmDescription: "Alerts when GET /gifts cannot clean up stale checkout reservations.",
+        metric: new cloudwatch.Metric({
+          metricName: "get-gifts-checkout-expiry-sweep-failed",
+          namespace: "Brimax/Payments",
+          period: cdk.Duration.minutes(5),
+          statistic: "Sum"
+        }),
+        threshold: 1,
+        ...eventDrivenAlarmDefaults
+      }
+    );
 
     const api5xxAlarm = createSparseTrafficRateAlarm(
       "HttpApi5xxAlarm",
@@ -170,6 +185,7 @@ export class ObservabilityStack extends cdk.Stack {
       createPaymentErrorsAlarm,
       webhookProcessorErrorsAlarm,
       webhookPaymentNotFoundAlarm,
+      checkoutExpirySweepFailureAlarm,
       api5xxAlarm,
       webhookQueueBacklogAlarm,
       webhookQueueAgeAlarm,

@@ -167,6 +167,20 @@ describe("AppStack", () => {
         })
       ])
     });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern:
+        '?"CHECKOUT_EXPIRY_SWEEP_FAILED" ?"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"',
+      LogGroupName: {
+        Ref: Match.stringLikeRegexp("^GetGiftsFunctionLogGroup")
+      },
+      MetricTransformations: [
+        {
+          MetricName: "get-gifts-checkout-expiry-sweep-failed",
+          MetricNamespace: "Brimax/Payments",
+          MetricValue: "1"
+        }
+      ]
+    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
@@ -263,6 +277,70 @@ describe("AppStack", () => {
         ])
       }
     });
+
+    const resources = template.toJSON().Resources as Record<
+      string,
+      { Properties?: Record<string, unknown>; Type: string }
+    >;
+    const getGiftsFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("GetGiftsFunction") && resource.Type === "AWS::Lambda::Function"
+    );
+    expect(getGiftsFunctionEntry).toBeDefined();
+
+    const getGiftsRoleLogicalId = (
+      getGiftsFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const getGiftsPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(getGiftsRoleLogicalId)
+    );
+    expect(getGiftsPolicy).toBeDefined();
+
+    const getGiftsPolicyActions = (
+      getGiftsPolicy?.Properties?.PolicyDocument as {
+        Statement: Array<{ Action: string | string[]; Resource: unknown }>;
+      }
+    ).Statement.flatMap((statement) =>
+      Array.isArray(statement.Action) ? statement.Action : [statement.Action]
+    );
+
+    expect(getGiftsPolicyActions).toEqual(
+      expect.arrayContaining([
+        "dynamodb:BatchGetItem",
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem"
+      ])
+    );
+    expect(getGiftsPolicyActions).not.toEqual(
+      expect.arrayContaining([
+        "dynamodb:BatchWriteItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:PutItem"
+      ])
+    );
+
+    const getGiftsPolicyStatements = (
+      getGiftsPolicy?.Properties?.PolicyDocument as {
+        Statement: Array<{ Action: string | string[]; Resource: unknown }>;
+      }
+    ).Statement;
+    const readStatement = getGiftsPolicyStatements.find((statement) =>
+      (Array.isArray(statement.Action) ? statement.Action : [statement.Action]).includes(
+        "dynamodb:Query"
+      )
+    );
+    const updateStatement = getGiftsPolicyStatements.find((statement) =>
+      (Array.isArray(statement.Action) ? statement.Action : [statement.Action]).includes(
+        "dynamodb:UpdateItem"
+      )
+    );
+
+    expect(JSON.stringify(readStatement?.Resource)).toContain("/index/*");
+    expect(JSON.stringify(updateStatement?.Resource)).not.toContain("/index/*");
 
     for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
       expect(resource.Properties).not.toHaveProperty("FunctionName");

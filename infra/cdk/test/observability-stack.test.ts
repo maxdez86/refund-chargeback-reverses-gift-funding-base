@@ -56,7 +56,7 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 15);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 16);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -75,6 +75,19 @@ describe("ObservabilityStack", () => {
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription: "Alerts when webhook events cannot be matched to local payments.",
       Threshold: 1
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmActions: Match.anyValue(),
+      AlarmDescription: "Alerts when GET /gifts cannot clean up stale checkout reservations.",
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      EvaluationPeriods: 1,
+      MetricName: "get-gifts-checkout-expiry-sweep-failed",
+      Namespace: "Brimax/Payments",
+      OKActions: Match.anyValue(),
+      Period: 300,
+      Statistic: "Sum",
+      Threshold: 1,
+      TreatMissingData: "notBreaching"
     });
 
     template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
