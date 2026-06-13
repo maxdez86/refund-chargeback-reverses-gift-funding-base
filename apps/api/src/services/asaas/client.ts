@@ -30,7 +30,7 @@ type AsaasCheckout = {
 
 type AsaasCheckoutSession = {
   id: string;
-  status?: string;
+  status?: "ACTIVE" | "CANCELED" | "EXPIRED" | "PAID";
   externalReference?: string;
   callback?: {
     successUrl?: string;
@@ -150,6 +150,14 @@ export class AsaasClient {
     });
   }
 
+  async cancelCheckout(checkoutId: string) {
+    return this.request<AsaasCheckoutSession>({
+      method: "POST",
+      path: `/checkouts/${encodeURIComponent(checkoutId)}/cancel`,
+      body: {}
+    });
+  }
+
   async listPaymentsByExternalReference(externalReference: string) {
     const response = await this.request<AsaasListResponse<AsaasPayment>>({
       path: "/payments",
@@ -248,7 +256,7 @@ export class AsaasClient {
 
       return parsed as T;
     } finally {
-      if (path === "/checkouts") {
+      if (path === "/checkouts" || path.endsWith("/cancel")) {
         console.info(
           JSON.stringify({
             metric: "ASAAS_REQUEST_TIMING",

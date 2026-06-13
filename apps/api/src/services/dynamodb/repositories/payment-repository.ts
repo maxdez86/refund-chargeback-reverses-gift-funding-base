@@ -235,6 +235,43 @@ function isConditionalCheckOnlyCancellation(error: TransactionCanceledException)
   );
 }
 
+function buildGiftReservationReleaseUpdate(input: {
+  amountCents: number;
+  gift: StoredGiftMetadata;
+  giftId: string;
+  now: string;
+  quantity: number;
+  state: StoredGiftState;
+  tableName: string;
+}) {
+  const fullyFundedThreshold = input.gift.fractional ? (input.gift.totalParts ?? 0) : 1;
+  const fullyFunded =
+    input.state.confirmedAmountCents >= input.gift.totalValueCents ||
+    input.state.partsFunded >= fullyFundedThreshold;
+
+  return {
+    Update: {
+      TableName: input.tableName,
+      Key: giftStateKeys(input.giftId),
+      ConditionExpression:
+        "attribute_exists(PK) AND partsReserved >= :partsDelta AND reservedAmountCents >= :amountDelta",
+      UpdateExpression:
+        "SET partsReserved = partsReserved - :partsDelta, " +
+        "reservedAmountCents = reservedAmountCents - :amountDelta, " +
+        "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, " +
+        "fullyFunded = :fullyFunded",
+      ExpressionAttributeValues: {
+        ":amountDelta": input.amountCents,
+        ":fullyFunded": fullyFunded,
+        ":partsDelta": input.quantity,
+        ":updatedAt": input.now,
+        ":versionIncrement": 1,
+        ":zero": 0
+      }
+    }
+  };
+}
+
 export class PaymentRepository {
   private readonly documentClient: DynamoDBDocumentClient;
   private readonly tableName: string;
@@ -845,25 +882,15 @@ export class PaymentRepository {
     }
 
     const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
-      {
-        Update: {
-          TableName: this.tableName,
-          Key: giftStateKeys(reservation.giftId),
-          ConditionExpression: "attribute_exists(PK)",
-          UpdateExpression:
-            "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsReservedDecrement, " +
-            "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDecrement, " +
-            "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
-          ExpressionAttributeValues: {
-            ":amountDecrement": reservation.amountCents,
-            ":fullyFunded": false,
-            ":partsReservedDecrement": reservation.quantity,
-            ":updatedAt": now,
-            ":versionIncrement": 1,
-            ":zero": 0
-          }
-        }
-      },
+      buildGiftReservationReleaseUpdate({
+        amountCents: reservation.amountCents,
+        gift,
+        giftId: reservation.giftId,
+        now,
+        quantity: reservation.quantity,
+        state,
+        tableName: this.tableName
+      }),
       {
         Update: {
           TableName: this.tableName,
@@ -918,6 +945,101 @@ export class PaymentRepository {
           })
         );
         return;
+      }
+
+      throw error;
+    }
+  }
+
+  async discardPendingPayment(input: {
+    paymentId: string;
+    expectedPaymentStatus: "CREATED" | "AWAITING_PAYMENT";
+    expectedReservationStatus: StoredPaymentReservationStatus;
+    expectedShellStatus: StoredPaymentShellStatus;
+  }): Promise<boolean> {
+    const reservation = await this.getPaymentReservation(input.paymentId);
+    const shell = await this.getPaymentShell(input.paymentId);
+
+    if (!reservation || !shell) {
+      throw new AppError("Payment checkout state is incomplete.", 409);
+    }
+
+    const gift = await this.getGift(reservation.giftId);
+    const state = gift
+      ? (await this.getGiftState(reservation.giftId)) ?? defaultGiftState(reservation.giftId)
+      : null;
+
+    if (!gift || !state) {
+      throw new AppError("Payment gift state is incomplete.", 409);
+    }
+
+    const now = new Date().toISOString();
+    try {
+      await this.documentClient.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: paymentKeys(input.paymentId),
+                ConditionExpression: "attribute_exists(PK) AND #status = :expectedStatus",
+                UpdateExpression: "SET #status = :status, updatedAt = :updatedAt",
+                ExpressionAttributeNames: {
+                  "#status": "status"
+                },
+                ExpressionAttributeValues: {
+                  ":expectedStatus": input.expectedPaymentStatus,
+                  ":status": "CANCELED",
+                  ":updatedAt": now
+                }
+              }
+            },
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: paymentReservationKeys(input.paymentId),
+                ConditionExpression: "attribute_exists(PK) AND #status = :expectedStatus",
+                UpdateExpression: "SET #status = :status, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
+                ExpressionAttributeNames: {
+                  "#status": "status"
+                },
+                ExpressionAttributeValues: {
+                  ":expectedStatus": input.expectedReservationStatus,
+                  ":status": "RELEASED",
+                  ":updatedAt": now
+                }
+              }
+            },
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: paymentShellKeys(input.paymentId),
+                ConditionExpression: "attribute_exists(PK) AND shellStatus = :expectedShellStatus",
+                UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
+                ExpressionAttributeValues: {
+                  ":expectedShellStatus": input.expectedShellStatus,
+                  ":shellStatus": "CHECKOUT_RELEASED",
+                  ":updatedAt": now
+                }
+              }
+            },
+            buildGiftReservationReleaseUpdate({
+              amountCents: reservation.amountCents,
+              gift,
+              giftId: reservation.giftId,
+              now,
+              quantity: reservation.quantity,
+              state,
+              tableName: this.tableName
+            })
+          ]
+        })
+      );
+
+      return true;
+    } catch (error) {
+      if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
+        return false;
       }
 
       throw error;
@@ -1473,25 +1595,15 @@ export class PaymentRepository {
             }
           }
         },
-        {
-          Update: {
-            TableName: this.tableName,
-            Key: giftStateKeys(giftId),
-            ConditionExpression: "attribute_exists(PK)",
-            UpdateExpression:
-              "SET partsReserved = if_not_exists(partsReserved, :zero) - :partsDelta, " +
-              "reservedAmountCents = if_not_exists(reservedAmountCents, :zero) - :amountDelta, " +
-              "updatedAt = :updatedAt, version = if_not_exists(version, :zero) + :versionIncrement, fullyFunded = :fullyFunded",
-            ExpressionAttributeValues: {
-              ":amountDelta": reservation.amountCents,
-              ":fullyFunded": state.confirmedAmountCents >= gift.totalValueCents,
-              ":partsDelta": quantity,
-              ":updatedAt": now,
-              ":versionIncrement": 1,
-              ":zero": 0
-            }
-          }
-        },
+        buildGiftReservationReleaseUpdate({
+          amountCents: reservation.amountCents,
+          gift,
+          giftId,
+          now,
+          quantity,
+          state,
+          tableName: this.tableName
+        }),
         {
           Update: {
             TableName: this.tableName,
