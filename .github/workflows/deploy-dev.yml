@@ -26,6 +26,7 @@ jobs:
       apply_dev_landing_dns: ${{ steps.filter.outputs.apply_dev_landing_dns }}
       apply_dev_api_dns: ${{ steps.filter.outputs.apply_dev_api_dns }}
       apply_dev_sentry: ${{ steps.filter.outputs.apply_dev_sentry }}
+      sync_asaas_webhook: ${{ steps.filter.outputs.sync_asaas_webhook }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -94,6 +95,14 @@ jobs:
               - 'scripts/landing-opentofu.sh'
               - 'scripts/export-sentry-config.sh'
               - 'scripts/landing-env.sh'
+            sync_asaas_webhook:
+              - '.github/workflows/deploy-dev.yml'
+              - 'scripts/asaas-webhook-sync.mjs'
+              - 'scripts/lib/asaas-webhook-sync.mjs'
+              - 'scripts/sync-asaas-webhook.sh'
+              - 'scripts/payments-env.sh'
+              - 'scripts/landing-env.sh'
+              - 'package.json'
 
       - name: Summarize routing
         run: |
@@ -105,6 +114,7 @@ jobs:
             echo "- apply_dev_landing_dns: ${{ steps.filter.outputs.apply_dev_landing_dns }}"
             echo "- apply_dev_api_dns: ${{ steps.filter.outputs.apply_dev_api_dns }}"
             echo "- apply_dev_sentry: ${{ steps.filter.outputs.apply_dev_sentry }}"
+            echo "- sync_asaas_webhook: ${{ steps.filter.outputs.sync_asaas_webhook }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-frontend:
@@ -494,6 +504,71 @@ jobs:
 
       - name: Apply dev API DNS
         run: BRIMAX_ENV_FILE=.env.dev pnpm opentofu:api-dns:apply -auto-approve
+
+      - name: Remove dev environment file
+        if: always()
+        run: rm -f .env.dev
+
+  sync-dev-asaas-webhook:
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - deploy-backend
+      - apply-dev-api-dns
+    if: |
+      !cancelled() &&
+      needs.detect-changes.result == 'success' &&
+      (
+        needs.detect-changes.outputs.deploy_backend == 'true' ||
+        needs.detect-changes.outputs.apply_dev_api_dns == 'true' ||
+        needs.detect-changes.outputs.sync_asaas_webhook == 'true'
+      ) &&
+      contains(fromJSON('["success","skipped"]'), needs.deploy-backend.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.apply-dev-api-dns.result)
+    environment: dev
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate dev environment file
+        shell: bash
+        env:
+          STAGE: ${{ vars.STAGE }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          ASAAS_ENV: ${{ vars.ASAAS_ENV }}
+          ASAAS_API_BASE_URL: ${{ vars.ASAAS_API_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+        run: |
+          bash scripts/write-github-env-file.sh .env.dev full-stage dev \
+            STAGE AWS_REGION ROOT_DOMAIN CONTACT_EMAIL API_DOMAIN \
+            ASAAS_ENV ASAAS_API_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN
+
+      - name: Synchronize and verify dev Asaas webhook
+        run: BRIMAX_ENV_FILE=.env.dev pnpm asaas:webhook:sync
+
+      - name: Summarize Asaas webhook synchronization
+        run: echo "- Dev Asaas webhook synchronized and verified." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove dev environment file
         if: always()

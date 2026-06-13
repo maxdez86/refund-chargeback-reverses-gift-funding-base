@@ -12,13 +12,45 @@ function jsonResponse(body: unknown) {
   };
 }
 
+const managedEvents = [
+  "CHECKOUT_CREATED",
+  "CHECKOUT_CANCELED",
+  "CHECKOUT_EXPIRED",
+  "CHECKOUT_PAID",
+  "PAYMENT_CONFIRMED",
+  "PAYMENT_RECEIVED",
+  "PAYMENT_OVERDUE",
+  "PAYMENT_REFUNDED",
+  "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED",
+  "PAYMENT_CHARGEBACK_REQUESTED",
+  "PAYMENT_CHARGEBACK_DISPUTE",
+  "PAYMENT_AWAITING_CHARGEBACK_REVERSAL"
+];
+
+function verifiedWebhook(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "wh_123",
+    name: "brimax-prod-asaas-webhook",
+    url: "https://api.brimax.life/webhooks/asaas",
+    email: "casamento@brimax.life",
+    enabled: true,
+    interrupted: false,
+    apiVersion: 3,
+    hasAuthToken: true,
+    sendType: "SEQUENTIALLY",
+    events: managedEvents,
+    ...overrides
+  };
+}
+
 describe("asaas webhook sync", () => {
   it("creates a webhook when none matches", async () => {
     const { syncAsaasWebhook } = await loadModule();
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
-      .mockResolvedValueOnce(jsonResponse({ id: "wh_new" }));
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_new" }))
+      .mockResolvedValueOnce(jsonResponse(verifiedWebhook({ id: "wh_new" })));
 
     const result = await syncAsaasWebhook({
       apiBaseUrl: "https://api.asaas.com/v3",
@@ -50,6 +82,12 @@ describe("asaas webhook sync", () => {
         sendType: "SEQUENTIALLY"
       })
     );
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).events).toEqual(managedEvents);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      "https://api.asaas.com/v3/webhooks/wh_new",
+      expect.objectContaining({ method: "GET" })
+    );
   });
 
   it("updates a webhook when the URL already exists", async () => {
@@ -61,7 +99,8 @@ describe("asaas webhook sync", () => {
           data: [{ id: "wh_123", name: "legacy", url: "https://api.brimax.life/webhooks/asaas" }]
         })
       )
-      .mockResolvedValueOnce(jsonResponse({ id: "wh_123" }));
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_123" }))
+      .mockResolvedValueOnce(jsonResponse(verifiedWebhook()));
 
     const result = await syncAsaasWebhook({
       apiBaseUrl: "https://api.asaas.com/v3",
@@ -86,6 +125,7 @@ describe("asaas webhook sync", () => {
         interrupted: false
       })
     );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it("fails when multiple webhook candidates share the same URL", async () => {
@@ -140,7 +180,17 @@ describe("asaas webhook sync", () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ data: [] }))
-      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev" }));
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          verifiedWebhook({
+            id: "wh_dev",
+            name: "brimax-dev-asaas-webhook",
+            url: "https://api.dev.brimax.life/webhooks/asaas",
+            email: "maxreis86@gmail.com"
+          })
+        )
+      );
 
     const result = await syncAsaasWebhook({
       apiBaseUrl: "https://api-sandbox.asaas.com/v3",
@@ -189,7 +239,17 @@ describe("asaas webhook sync", () => {
           ]
         })
       )
-      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev_name" }));
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_dev_name" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          verifiedWebhook({
+            id: "wh_dev_name",
+            name: "brimax-dev-asaas-webhook",
+            url: "https://api.dev.brimax.life/webhooks/asaas",
+            email: "maxreis86@gmail.com"
+          })
+        )
+      );
 
     const result = await syncAsaasWebhook({
       apiBaseUrl: "https://api-sandbox.asaas.com/v3",
@@ -226,7 +286,8 @@ describe("asaas webhook sync", () => {
           ]
         })
       )
-      .mockResolvedValueOnce(jsonResponse({ id: "wh_name" }));
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_name" }))
+      .mockResolvedValueOnce(jsonResponse(verifiedWebhook({ id: "wh_name" })));
 
     const result = await syncAsaasWebhook({
       apiBaseUrl: "https://api.asaas.com/v3",
@@ -246,5 +307,56 @@ describe("asaas webhook sync", () => {
         method: "PUT"
       })
     );
+  });
+
+  it("fails when Asaas omits a managed checkout event after update", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: "wh_123", name: "legacy", url: "https://api.brimax.life/webhooks/asaas" }]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_123" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          verifiedWebhook({
+            events: managedEvents.filter((event) => event !== "CHECKOUT_EXPIRED")
+          })
+        )
+      );
+
+    await expect(
+      syncAsaasWebhook({
+        apiBaseUrl: "https://api.asaas.com/v3",
+        apiDomain: "api.brimax.life",
+        apiKey: "asaas-key",
+        contactEmail: "casamento@brimax.life",
+        fetchImpl,
+        stage: "prod",
+        webhookToken: "whsec_test_token_123456789012345678901234567890"
+      })
+    ).rejects.toThrow('events missing=["CHECKOUT_EXPIRED"]');
+  });
+
+  it("fails when the verified webhook is disabled or interrupted", async () => {
+    const { verifyManagedWebhook, buildManagedWebhookConfig } = await loadModule();
+    const desiredWebhook = buildManagedWebhookConfig({
+      apiDomain: "api.brimax.life",
+      contactEmail: "casamento@brimax.life",
+      stage: "prod",
+      webhookToken: "whsec_test_token_123456789012345678901234567890"
+    });
+
+    expect(() =>
+      verifyManagedWebhook(
+        verifiedWebhook({
+          enabled: false,
+          interrupted: true
+        }),
+        desiredWebhook
+      )
+    ).toThrow("enabled=false, interrupted=true");
   });
 });

@@ -176,11 +176,14 @@ Then deploy the static site and CloudFront:
 pnpm deploy:landing:edge
 ```
 
-Deploy the backend with the API custom domain and IaC-managed payment secrets:
+Deploy the AWS backend with the API custom domain and IaC-managed payment secrets:
 
 ```bash
 pnpm deploy:backend
 ```
+
+`deploy:backend` is intentionally AWS-only. Do not consider the payment backend bootstrap complete
+until API DNS is applied and the Asaas webhook has been synchronized below.
 
 ## Final DNS Wiring
 
@@ -202,10 +205,25 @@ Apply the API DNS module:
 ```bash
 pnpm opentofu:api-dns:init
 pnpm opentofu:api-dns:apply
+pnpm asaas:webhook:sync
 ```
 
 This creates the Cloudflare DNS record that points:
 - `api.brimax.life` to the API Gateway custom-domain regional target
+
+After DNS is reachable, `asaas:webhook:sync` creates or updates the production Asaas webhook and
+performs a read-after-write verification. It fails unless the webhook is enabled, uninterrupted,
+uses `https://api.brimax.life/webhooks/asaas`, and contains the complete managed payment and checkout
+event list, including `CHECKOUT_CREATED`, `CHECKOUT_CANCELED`, `CHECKOUT_EXPIRED`, and
+`CHECKOUT_PAID`.
+
+For an already-bootstrapped environment, the equivalent complete local backend command is:
+
+```bash
+pnpm deploy:backend:with-webhook
+```
+
+That command runs backend deploy, API-DNS init/apply, and verified Asaas synchronization in order.
 
 The shared `zone-settings` module enforces:
 - `ssl = strict`
@@ -267,6 +285,7 @@ pnpm opentofu:dns:init
 pnpm opentofu:dns:apply
 pnpm opentofu:api-dns:init
 pnpm opentofu:api-dns:apply
+pnpm asaas:webhook:sync
 ```
 
 ## Verification
@@ -286,6 +305,8 @@ pnpm opentofu:api-dns:apply
 - `https://brimax.life` renders the landing page
 - `https://www.brimax.life` redirects to `https://brimax.life`
 - `https://api.brimax.life/payments/not-found` reaches API Gateway and returns an application response instead of DNS failure
+- `pnpm asaas:webhook:sync` reports that the production webhook was synchronized and verified
+- the production Asaas webhook includes all managed payment events and all four `CHECKOUT_*` events
 - `https://ds721j5fxkwu6.cloudfront.net` returns `403`
 - `brimax.life` and `www.brimax.life` Cloudflare records are proxied
 - `api.brimax.life` Cloudflare record is DNS-only
