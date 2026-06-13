@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, LoaderCircle, X } from "lucide-react";
 import type { PaymentStatus, PaymentSummary } from "@brimax/contracts";
@@ -17,7 +17,7 @@ import {
   clearStoredPendingPayment,
   readPaymentReturnFromHash,
 } from "@/lib/payment-flow";
-import { createPaymentMessage, getPayment, PaymentApiError } from "@/lib/payments-api";
+import { createPaymentMessage, discardPayment, getPayment, PaymentApiError } from "@/lib/payments-api";
 import { giftsQueryKey } from "@/lib/gifts-api";
 import { returnToPresentes } from "@/lib/presentes-return";
 
@@ -182,6 +182,8 @@ export function PaymentConfirmationDialog() {
   const [messageBody, setMessageBody] = useState("");
   const [messageSubmitting, setMessageSubmitting] = useState(false);
   const [messageSent, setMessageSent] = useState(false);
+  const discardOnCancelInFlightRef = useRef(false);
+  const lastDiscardedPaymentIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -353,6 +355,41 @@ export function PaymentConfirmationDialog() {
       clearStoredPendingPayment();
     }
   }, [visibleVariant]);
+
+  useEffect(() => {
+    if (visibleVariant !== "cancel" || !state.paymentId) {
+      return;
+    }
+
+    const paymentId = state.paymentId;
+
+    // Fire at most once per paymentId, and never re-enter while in flight.
+    if (
+      discardOnCancelInFlightRef.current ||
+      lastDiscardedPaymentIdRef.current === paymentId
+    ) {
+      return;
+    }
+
+    discardOnCancelInFlightRef.current = true;
+
+    void (async () => {
+      try {
+        await discardPayment(paymentId);
+      } catch (error) {
+        // Best-effort, non-blocking. A 409 (already terminal) is expected and
+        // ignored; never surface a toast on a screen that already says canceled.
+        if (!(error instanceof PaymentApiError && error.status === 409)) {
+          console.warn("Auto-discard on cancel failed", error);
+        }
+      } finally {
+        // Mark attempted on both success and failure → guarantees at-most-once,
+        // even across popstate / pageshow / PAYMENT_CONFIRMATION_OPEN_EVENT re-opens.
+        lastDiscardedPaymentIdRef.current = paymentId;
+        discardOnCancelInFlightRef.current = false;
+      }
+    })();
+  }, [visibleVariant, state.paymentId]);
 
   const handleOpenChange = (open: boolean) => {
     if (open) return;
