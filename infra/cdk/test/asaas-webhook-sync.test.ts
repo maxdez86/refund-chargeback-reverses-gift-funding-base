@@ -12,6 +12,14 @@ function jsonResponse(body: unknown) {
   };
 }
 
+function rawResponse({ ok, status, body }: { ok: boolean; status: number; body: string }) {
+  return {
+    ok,
+    status,
+    text: async () => body
+  };
+}
+
 const managedEvents = [
   "CHECKOUT_CREATED",
   "CHECKOUT_CANCELED",
@@ -338,6 +346,73 @@ describe("asaas webhook sync", () => {
         webhookToken: "whsec_test_token_123456789012345678901234567890"
       })
     ).rejects.toThrow('events missing=["CHECKOUT_EXPIRED"]');
+  });
+
+  it("surfaces the HTTP status and a body snippet when Asaas returns an HTML error page", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const html = "<!DOCTYPE html><html><body>Unauthorized</body></html>";
+    // 401 is not transient, so it must fail fast without retrying.
+    const fetchImpl = vi.fn().mockResolvedValue(rawResponse({ ok: false, status: 401, body: html }));
+
+    await expect(
+      syncAsaasWebhook({
+        apiBaseUrl: "https://api.asaas.com/v3",
+        apiDomain: "api.brimax.life",
+        apiKey: "asaas-key",
+        contactEmail: "casamento@brimax.life",
+        fetchImpl,
+        stage: "prod",
+        webhookToken: "whsec_test_token_123456789012345678901234567890"
+      })
+    ).rejects.toThrow(/failed with status 401: <!DOCTYPE/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a transient 5xx HTML response on a GET and recovers", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        rawResponse({ ok: false, status: 503, body: "<!DOCTYPE html><html>maintenance</html>" })
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: "wh_new" }))
+      .mockResolvedValueOnce(jsonResponse(verifiedWebhook({ id: "wh_new" })));
+
+    const result = await syncAsaasWebhook({
+      apiBaseUrl: "https://api.asaas.com/v3",
+      apiDomain: "api.brimax.life",
+      apiKey: "asaas-key",
+      contactEmail: "casamento@brimax.life",
+      fetchImpl,
+      stage: "prod",
+      webhookToken: "whsec_test_token_123456789012345678901234567890"
+    });
+
+    expect(result.action).toBe("created");
+    // One extra call: the retried list request.
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("throws an actionable non-JSON error when a 2xx body is not JSON after retries", async () => {
+    const { syncAsaasWebhook } = await loadModule();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(rawResponse({ ok: true, status: 200, body: "<!DOCTYPE html><html></html>" }));
+
+    await expect(
+      syncAsaasWebhook({
+        apiBaseUrl: "https://api.asaas.com/v3",
+        apiDomain: "api.brimax.life",
+        apiKey: "asaas-key",
+        contactEmail: "casamento@brimax.life",
+        fetchImpl,
+        stage: "prod",
+        webhookToken: "whsec_test_token_123456789012345678901234567890"
+      })
+    ).rejects.toThrow(/non-JSON 200 response/);
+    // The list GET is retried up to the GET attempt budget before giving up.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it("fails when the verified webhook is disabled or interrupted", async () => {
