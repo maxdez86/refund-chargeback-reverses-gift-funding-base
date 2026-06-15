@@ -150,4 +150,106 @@ describe("ObservabilityStack", () => {
 
     expect(template.toJSON()).toBeDefined();
   });
+
+  it("creates only the webhook DLQ alarm for dev", { timeout: 30000 }, () => {
+    const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
+    const dataStack = new DataStack(app, "DevObservabilityDataStack", { stage: "dev" });
+    const appStack = new AppStack(app, "DevObservabilityAppStack", {
+      apiCertificate: acm.Certificate.fromCertificateArn(
+        app,
+        "DevObservabilityImportedApiCertificate",
+        "arn:aws:acm:us-east-1:123456789012:certificate/test-dev-api"
+      ),
+      apiDomain: "api.dev.brimax.life",
+      asaasApiKey: "asaas-api-key-test",
+      asaasWebhookToken: "asaas-webhook-token-test",
+      contactEmail: "casamento@brimax.life",
+      rootDomain: "dev.brimax.life",
+      sentryDsn: "https://public@example.ingest.sentry.io/123456",
+      stage: "dev",
+      table: dataStack.table,
+      turnstileSecretKey: "0x4AAAA-test-secret",
+      wwwDomain: "www.dev.brimax.life",
+      xrayEnabled: false
+    });
+    const edgeStack = new EdgeStack(app, "DevObservabilityEdgeStack", {
+      rootDomain: "dev.brimax.life",
+      siteAssetPath: "test/fixtures/site",
+      stage: "dev",
+      wwwDomain: "www.dev.brimax.life"
+    });
+
+    const stack = new ObservabilityStack(app, "DevObservabilityStackUnderTest", {
+      alertEmail: "dev-alerts@example.com",
+      alarmedFunctions: appStack.alarmedFunctions,
+      applicationLogGroups: appStack.applicationLogGroups,
+      checkoutExpiryDlq: appStack.checkoutExpiryDlq,
+      checkoutExpiryQueue: appStack.checkoutExpiryQueue,
+      checkoutExpiryWorkerFunction: appStack.checkoutExpiryWorkerFunction,
+      createPaymentFunction: appStack.createPaymentFunction,
+      distribution: edgeStack.distribution,
+      guestMessageNotificationDlq: appStack.guestMessageNotificationDlq,
+      httpApi: appStack.httpApi,
+      stage: "dev",
+      table: dataStack.table,
+      webhookDlq: appStack.webhookDlq,
+      webhookProcessorFunction: appStack.webhookProcessorFunction,
+      webhookQueue: appStack.webhookQueue
+    });
+    const template = Template.fromStack(stack);
+
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 1);
+    template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
+    template.resourceCountIs("AWS::SNS::Topic", 1);
+    template.resourceCountIs("AWS::SNS::Subscription", 1);
+
+    const alarms = template.findResources("AWS::CloudWatch::Alarm");
+    expect(Object.keys(alarms)).toEqual([expect.stringMatching(/^WebhookDlqAlarm/)]);
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmActions: Match.anyValue(),
+      AlarmDescription: "Alerts when the webhook dead-letter queue receives messages.",
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      Dimensions: [
+        {
+          Name: "QueueName",
+          Value: Match.anyValue()
+        }
+      ],
+      EvaluationPeriods: 1,
+      MetricName: "ApproximateNumberOfMessagesVisible",
+      Namespace: "AWS/SQS",
+      OKActions: Match.anyValue(),
+      Period: 300,
+      Statistic: "Maximum",
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ]),
+      Threshold: 1,
+      TreatMissingData: "notBreaching"
+    });
+
+    template.hasResourceProperties("AWS::CloudWatch::Dashboard", {
+      DashboardName: "dev-brimax-observability"
+    });
+    template.hasResourceProperties("AWS::SNS::Topic", {
+      DisplayName: "Brimax DEV Observability Alerts",
+      TopicName: "dev-brimax-observability-alerts",
+      Tags: Match.arrayWith([
+        { Key: "project", Value: "brimax-life" },
+        { Key: "stage", Value: "dev" }
+      ])
+    });
+    template.hasResourceProperties("AWS::SNS::Subscription", {
+      Endpoint: "dev-alerts@example.com",
+      Protocol: "email"
+    });
+
+    template.hasOutput("AlarmTopicArn", {});
+    template.hasOutput("DashboardName", {});
+    template.hasOutput("DistributionId", {});
+    template.hasOutput("HttpApiId", {});
+    template.hasOutput("TableName", {});
+  });
 });

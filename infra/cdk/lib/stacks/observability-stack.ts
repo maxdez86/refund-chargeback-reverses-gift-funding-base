@@ -86,21 +86,24 @@ export class ObservabilityStack extends cdk.Stack {
       threshold: 1,
       ...eventDrivenAlarmDefaults
     });
+    webhookDlqAlarm.addAlarmAction(alarmAction);
+    webhookDlqAlarm.addOkAction(alarmAction);
 
-    const guestMessageNotificationDlqAlarm = new cloudwatch.Alarm(
-      this,
-      "GuestMessageNotificationDlqAlarm",
-      {
-        alarmDescription:
-          "Alerts when the guest-message notification dead-letter queue receives messages.",
-        metric: props.guestMessageNotificationDlq.metricApproximateNumberOfMessagesVisible({
-          period: cdk.Duration.minutes(5),
-          statistic: "Maximum"
-        }),
-        threshold: 1,
-        ...eventDrivenAlarmDefaults
-      }
-    );
+    if (props.stage === "prod") {
+      const guestMessageNotificationDlqAlarm = new cloudwatch.Alarm(
+        this,
+        "GuestMessageNotificationDlqAlarm",
+        {
+          alarmDescription:
+            "Alerts when the guest-message notification dead-letter queue receives messages.",
+          metric: props.guestMessageNotificationDlq.metricApproximateNumberOfMessagesVisible({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum"
+          }),
+          threshold: 1,
+          ...eventDrivenAlarmDefaults
+        }
+      );
 
     const createPaymentErrorsAlarm = createSparseTrafficRateAlarm(
       "CreatePaymentErrorsAlarm",
@@ -305,27 +308,27 @@ export class ObservabilityStack extends cdk.Stack {
       })
     );
 
-    for (const alarm of [
-      webhookDlqAlarm,
-      guestMessageNotificationDlqAlarm,
-      createPaymentErrorsAlarm,
-      webhookProcessorErrorsAlarm,
-      webhookPaymentNotFoundAlarm,
-      checkoutExpirySweepFailureAlarm,
-      checkoutExpiryDlqAlarm,
-      checkoutExpiryQueueBacklogAlarm,
-      checkoutExpiryQueueAgeAlarm,
-      checkoutExpiryWorkerErrorsAlarm,
-      checkoutExpiryWorkerDurationAlarm,
-      checkoutExpiryTriggerEnqueueFailureAlarm,
-      checkoutExpiryProtectedStaleAlarm,
-      api5xxAlarm,
-      webhookQueueBacklogAlarm,
-      webhookQueueAgeAlarm,
-      ...lambdaThrottleAlarms
-    ]) {
-      alarm.addAlarmAction(alarmAction);
-      alarm.addOkAction(alarmAction);
+      for (const alarm of [
+        guestMessageNotificationDlqAlarm,
+        createPaymentErrorsAlarm,
+        webhookProcessorErrorsAlarm,
+        webhookPaymentNotFoundAlarm,
+        checkoutExpirySweepFailureAlarm,
+        checkoutExpiryDlqAlarm,
+        checkoutExpiryQueueBacklogAlarm,
+        checkoutExpiryQueueAgeAlarm,
+        checkoutExpiryWorkerErrorsAlarm,
+        checkoutExpiryWorkerDurationAlarm,
+        checkoutExpiryTriggerEnqueueFailureAlarm,
+        checkoutExpiryProtectedStaleAlarm,
+        api5xxAlarm,
+        webhookQueueBacklogAlarm,
+        webhookQueueAgeAlarm,
+        ...lambdaThrottleAlarms
+      ]) {
+        alarm.addAlarmAction(alarmAction);
+        alarm.addOkAction(alarmAction);
+      }
     }
 
     const dashboard = new cloudwatch.Dashboard(this, "ObservabilityDashboard", {
