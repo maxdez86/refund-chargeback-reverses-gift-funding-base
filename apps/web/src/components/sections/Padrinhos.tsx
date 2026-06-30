@@ -26,7 +26,7 @@ const people: Person[] = [
   // { id: "amanda-chris", name: "Amanda e Christian", photoSlug: "amanda-chris" },
   { id: "ana-clara", name: "Ana Clara", role: "Dama de honra", photoSlug: "ana-clara" },
   { id: "carlinhos", name: "Carlos Henrique", role: "Pajem", photoSlug: "carlinhos" },
-  // { id: "carol-higor", name: "Carol e Higor", photoSlug: "carol-higor" },
+  { id: "carol-higor", name: "Carol e Higor", photoSlug: "carol-higor" },
   { id: "debora-nael", name: "Débora e Nael", photoSlug: "debora-nael" },
   { id: "drielly", name: "Drielly", role: "Madrinha", photoSlug: "drielly" },
   { id: "elis-son", name: "Elís e Emerson", photoSlug: "elis-son" },
