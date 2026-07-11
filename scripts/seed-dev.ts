@@ -693,6 +693,14 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "Patrícia Kanô", slot: 1 }
     ]
+  },
+  {
+    invitationCode: "JQ9472",
+    householdName: "Cristiane Lima e Aristides Cruz",
+    guests: [
+      { guestName: "Cristiane Lima", slot: 1 },
+      { guestName: "Aristides Cruz", slot: 2 }
+    ]
   }
 ] as const;
 
