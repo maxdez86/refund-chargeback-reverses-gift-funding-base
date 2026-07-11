@@ -8,8 +8,16 @@ import {
 
 describe("seed-dev", () => {
   it("uses only the production rows with guest names", () => {
-    expect(PRODUCTION_INVITATIONS).toHaveLength(88);
+    expect(PRODUCTION_INVITATIONS).toHaveLength(89);
     expect(PRODUCTION_INVITATIONS.every((invitation) => invitation.guests.length > 0)).toBe(true);
+    expect(PRODUCTION_INVITATIONS).toContainEqual({
+      invitationCode: "JQ9472",
+      householdName: "Cristiane Lima e Aristides Cruz",
+      guests: [
+        { guestName: "Cristiane Lima", slot: 1 },
+        { guestName: "Aristides Cruz", slot: 2 }
+      ]
+    });
   });
 
   it("rejects duplicate or invalid invitation codes", () => {
