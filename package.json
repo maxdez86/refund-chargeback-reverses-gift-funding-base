@@ -44,6 +44,7 @@
     "reset:gifts:catalog": "bash scripts/reset-gift-catalog.sh",
     "reset:wedding:fresh-start": "bash scripts/reset-wedding-fresh-start.sh --apply",
     "reset:wedding:fresh-start:dry-run": "bash scripts/reset-wedding-fresh-start.sh dry-run",
+    "import:new-invitations": "bash scripts/import-new-invitations.sh",
     "seed:gifts:catalog": "pnpm exec tsx scripts/lib/seed-gift-catalog.ts",
     "smoke:prod": "pnpm exec tsx scripts/smoke-prod-public.ts",
     "synth": "pnpm build:web && pnpm --filter @brimax/infra-cdk cdk synth",
