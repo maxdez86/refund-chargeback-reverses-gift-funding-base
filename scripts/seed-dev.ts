@@ -136,7 +136,8 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     guests: [
       { guestName: "José Filho", slot: 1 },
       { guestName: "Estela Soares", slot: 2, isChild: true },
-      { guestName: "Manuela Soares", slot: 3, isChild: true }
+      { guestName: "Manuela Soares", slot: 3, isChild: true },
+      { guestName: "Micheane Pereira", slot: 4 },
     ]
   },
   {
@@ -668,8 +669,9 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
     householdName: "Rafael Guimarães e família",
     guests: [
       { guestName: "Rafael Guimarães", slot: 1 },
-      { guestName: "Esposa", slot: 2 },
-      { guestName: "Filho", slot: 3, isChild: true }
+      { guestName: "Lívia Guimarães", slot: 2 },
+      { guestName: "Mayla", slot: 3, isChild: true }
+      { guestName: "Laura", slot: 4, isChild: true }
     ]
   },
   {
@@ -701,7 +703,23 @@ export const PRODUCTION_INVITATIONS: readonly SeedInvitation[] = [
       { guestName: "Cristiane Lima", slot: 1 },
       { guestName: "Aristides Cruz", slot: 2 }
     ]
-  }
+  },
+  {
+    invitationCode: "BL6782",
+    householdName: "Aline Mattes e Douglas Zampieri",
+    guests: [
+      { guestName: "Aline Mattes", slot: 1 },
+      { guestName: "Douglas Zampieri", slot: 2 },
+      { guestName: "Isabella", slot: 3, isChild: true }
+    ]
+  },
+  {
+    invitationCode: "LT7524",
+    householdName: "Nayare Seixas",
+    guests: [
+      { guestName: "Nayare Seixas", slot: 1 }
+    ]
+  },
 ] as const;
 
 const stage = process.env.STAGE === "dev" ? "dev" : "prod";
