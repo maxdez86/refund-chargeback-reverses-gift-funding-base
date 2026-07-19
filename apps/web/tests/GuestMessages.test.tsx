@@ -198,7 +198,7 @@ describe("GuestMessages section", () => {
     renderWithClient(<GuestMessages />);
 
     const cardMessage = await screen.findByText(longUnbrokenMessage);
-    expect(cardMessage).toHaveClass("w-full", "min-w-0", "break-all");
+    expect(cardMessage).toHaveClass("w-full", "min-w-0", "wrap-break-word");
 
     fireEvent.click(screen.getByRole("button", { name: "... mais" }));
 
@@ -206,7 +206,7 @@ describe("GuestMessages section", () => {
     expect(within(dialog).getByText(longUnbrokenMessage)).toHaveClass(
       "w-full",
       "min-w-0",
-      "break-all"
+      "wrap-break-word"
     );
   });
 
