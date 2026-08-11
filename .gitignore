@@ -73,6 +73,11 @@ id_ed25519.*
 .cursor/
 .continue/
 .windsurf/
+.serena/project.local.yml
+.serena/cache/
+.serena/logs/
+.serena/language_servers/
+.serena/*.log
 
 # === Lint / format caches ===
 .eslintcache

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-10",
+  "graphify": {
+    "distribution": "graphifyy[terraform,mcp]",
+    "version": "0.9.39",
+    "wheelSha256": "2e1d602677d90ba2e94472828a7ffbea288421bd809d8feb55bff827a21c32f7",
+    "release": "https://github.com/Graphify-Labs/graphify/releases/tag/v0.9.39",
+    "pypi": "https://pypi.org/project/graphifyy/0.9.39/"
+  },
+  "codex": {
+    "benchmarkModel": "gpt-5.6-luna",
+    "benchmarkReasoning": "low",
+    "judgeModel": "gpt-5.6-sol",
+    "judgeReasoning": "high",
+    "configReference": "https://developers.openai.com/codex/config-reference"
+  },
+  "pricing": {
+    "currency": "USD",
+    "unitTokens": 1000000,
+    "input": 0.2,
+    "cachedInput": 0.02,
+    "cacheWriteInput": 0.25,
+    "output": 1.2,
+    "longContextThreshold": 272000,
+    "longContextInputMultiplier": 2,
+    "longContextOutputMultiplier": 1.5,
+    "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+    "note": "Live official pricing captured on 2026-08-10; this replaces the superseded draft-plan figures."
+  },
+  "judgePricing": {
+    "currency": "USD",
+    "unitTokens": 1000000,
+    "input": 5,
+    "cachedInput": 0.5,
+    "cacheWriteInput": 6.25,
+    "output": 30,
+    "longContextThreshold": 272000,
+    "longContextInputMultiplier": 2,
+    "longContextOutputMultiplier": 1.5,
+    "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+  },
+  "expectedGraphCorpus": {
+    "total": 266,
+    "extensions": {
+      ".ts": 164,
+      ".tsx": 37,
+      ".sh": 32,
+      ".tf": 18,
+      ".json": 8,
+      ".mjs": 5,
+      ".mts": 2
+    },
+    "documentedZeroNodeFiles": ["cdk.json"]
+  },
+  "graphifyReferences": {
+    "cli": "https://graphify.com/docs/cli",
+    "mcp": "https://graphify.com/docs/mcp-tools",
+    "confidence": "https://graphify.com/concepts"
+  }
+}
