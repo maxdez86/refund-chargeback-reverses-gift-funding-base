@@ -62,11 +62,8 @@ pnpm test:payments:negative
 
 ## Context acquisition
 
-- Serena is opt-in because its tool context can exceed native-search cost. Start Codex with `codex -p serena` for unfamiliar cross-file flows, reference lookup, or structural refactors; use the default profile for small, exact, configuration-heavy, and single-file tasks.
-- When Serena is active, retrieve an overview before requesting only the symbol bodies needed for the task and batch independent lookups.
 - Use `rg` first for Markdown, JSON/YAML/TOML, shell scripts, Terraform attributes, generated metadata, and exact literals.
 - Read a complete source file only when initialization order, module-level behavior, or non-symbol content matters.
-- Treat Serena memories as optional descriptive maps, not authoritative instructions. Load only the relevant memory with `serena memories read <name>`; memory MCP tools stay disabled to reduce tool-schema context.
 - Verify semantic findings against source and tests before editing; fall back to native search when language-server coverage is incomplete.
 
 ## Where to read more

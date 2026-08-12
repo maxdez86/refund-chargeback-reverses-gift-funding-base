@@ -14,7 +14,8 @@ You are authorized to edit only the five agent guides and the Claude import shim
 - Root, API, web, and CDK `CLAUDE.md` files should import their colocated guide with `@AGENTS.md`; OpenTofu previously lacked its shim.
 - Claude Code supports imports in `CLAUDE.md`; confirm the current syntax against the [official Claude Code memory documentation](https://code.claude.com/docs/en/memory).
 - Kimi Code natively consumes hierarchical project `AGENTS.md` files; confirm current behavior against the [official Kimi Code documentation](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/agents). Do not create Kimi-specific duplicates.
-- Prompt 3 should have added working `graphify:doctor`, `graphify:build`, and `graphify:query` commands. Revalidate their exact interface from `package.json`, implementation, tests, and `--help` before documenting them.
+- Prompt 3 should have added working `graphify:doctor`, `graphify:build`, and `graphify:query` commands. Revalidate their exact interface from `package.json`, implementation, tests, and `--help` before documenting them — including the **calibrated default query budget**, which Prompt 3 selected empirically and which is deliberately not the pilot's 2,000-token figure.
+- Prompt 3 graphs documentation as well as code. Do not describe the graph as code-only, and do not cite the archived pilot's accuracy, token, or cost numbers as expected behaviour for the wrapper; those describe a code-only Graphify 0.9.39 configuration.
 - Serena and configured/runnable Graphify MCP should already be absent. Archived pilot reports may retain historical names.
 
 ## Preflight and safeguards
@@ -46,8 +47,8 @@ Replace obsolete context acquisition guidance with this policy:
 3. Graphify CLI is optional and experimental. Invoke it only through the repository's `pnpm graphify:*` wrapper commands, and only as a fast hypothesis generator for unfamiliar relationships spanning multiple layers.
 4. A graph is never evidence. Confirm every graph-derived file, symbol, edge, caller, consumer, owner, and behavior in exact native source before relying on or reporting it.
 5. Use native search—not Graphify—as the authoritative method for completeness/enumeration, exact ownership, security-sensitive flows, configuration values, contract consumers, reference/rename plans, and generated or unsupported formats.
-6. Immediately fall back to native search when a graph is stale, rebuilt unsuccessfully, truncated, missing expected results, or reports an `INFERRED` or `AMBIGUOUS` relationship. Never increase the budget merely to avoid verification.
-7. The normal experimental query budget is 2,000 tokens. Building/rebuilding is on demand through the wrapper and uses local extraction; do not register MCP or run upstream assistant-skill installers.
+6. Fall back to native search when a graph is stale, rebuilt unsuccessfully, or missing expected results. Treat truncation and any `INFERRED` or `AMBIGUOUS` relationship as a signal that the result is a partial hypothesis requiring native confirmation before use — not as a reason to discard the result outright. Never increase the budget merely to avoid verification.
+7. Document the wrapper's calibrated default query budget as the value Prompt 3 actually selected and recorded. **Do not write 2,000 tokens unless Prompt 3 selected 2,000**; read the value from the wrapper implementation, its help output, and Prompt 3's calibration report. The pilot's frozen calibration truncated at 2,000 on every calibrated query, so that figure is historical and must not be reintroduced as guidance. Building/rebuilding is on demand through the wrapper and uses local extraction; do not register MCP or run upstream assistant-skill installers.
 
 Remove all active Serena guidance, Serena memory/profile commands, Graphify MCP guidance, obsolete benchmark commands, and stale direct Graphify configuration. Do not remove historical names from the archived pilot reports, which are outside this prompt's edit scope.
 
@@ -85,6 +86,7 @@ Do not delete an existing guide or import shim. Create only the missing OpenTofu
 - Validate every relative Markdown link from the directory containing each guide and every documented package command against current files/scripts.
 - Search active guides and shims for Serena, Graphify MCP, obsolete benchmark commands, stale profile/configuration guidance, and contradictions. There should be no active occurrences.
 - Review Graphify wording for all required native-verification categories and fallback conditions: completeness, ownership, security, configuration, consumers, rename/reference tasks, stale, failure, truncation, missing output, `INFERRED`, and `AMBIGUOUS`.
+- Confirm every budget figure in the guides matches the wrapper's actual default, and that the string `2,000` does not appear as current guidance unless that is genuinely the calibrated value.
 - Compare before/after guides to ensure architecture, test, secrets, stage, ownership, code-style, pre-commit, development-log, and Git restrictions remain intact and consistent.
 - Run documentation/link checks available in the repository and `git diff --check`. Do not run the production-promotion integration suite or its preparation command.
 - Review the final diff for unrelated changes and confirm nothing was staged.
