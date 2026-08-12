@@ -14,11 +14,11 @@ The owner has decided, on the basis of a completed retrieval benchmark, that:
 
 - Native `rg` plus focused source reads guided by `AGENTS.md` is the **default** retrieval method.
 - **Serena is removed** entirely (executables, MCP registrations, memories, hooks, dedicated benchmark).
-- **Graphify MCP is removed** entirely (no configured or runnable MCP surface).
-- **Graphify CLI is retained** as an optional, experimental discovery aid for unfamiliar cross-layer relationships, invoked only through a repository wrapper, with every result verified in native source.
+- **The benchmarked dependency-graph MCP interface is removed** entirely (no configured or runnable MCP surface).
+- **Its CLI interface is retained** as an optional, experimental discovery aid for unfamiliar cross-layer relationships, invoked only through a repository wrapper, with every result verified in native source.
 - The graph is rebuilt after project changes.
 
-Do not argue against this decision, propose keeping Serena or Graphify MCP, re-run or re-score the benchmark, or relitigate the trade-off. Critique only whether the four prompts **correctly and safely implement** that decision. If you believe a piece of evidence contradicts the decision itself, note it in one short paragraph under "Observations outside scope" and move on.
+Do not argue against this decision, propose keeping Serena or the retired dependency-graph MCP interface, re-run or re-score the benchmark, or relitigate the trade-off. Critique only whether the four prompts **correctly and safely implement** that decision. If you believe a piece of evidence contradicts the decision itself, note it in one short paragraph under "Observations outside scope" and move on.
 
 ## Absolute constraints for this session
 
@@ -36,8 +36,8 @@ The four execution prompts and their index:
 
 - [docs/prompts/tooling/README.md](tooling/README.md)
 - [docs/prompts/tooling/01-remove-serena.md](tooling/01-remove-serena.md)
-- [docs/prompts/tooling/02-remove-graphify-mcp.md](tooling/02-remove-graphify-mcp.md)
-- [docs/prompts/tooling/03-install-configure-graphify-cli.md](tooling/03-install-configure-graphify-cli.md)
+- Prompt 2: remove the benchmarked MCP interface and archive the pilot.
+- Prompt 3: install and configure the retained CLI interface.
 - [docs/prompts/tooling/04-rewrite-agent-guides.md](tooling/04-rewrite-agent-guides.md)
 
 Read all five in full before forming any conclusion.
@@ -49,8 +49,8 @@ These were true when this review prompt was written. Confirm each against the li
 - Repository root `/home/maxreis86/consulting/brimax-life`, branch `improve-agents`, HEAD `a92536f93ee368527525b2cd00abf759d69b9f00`.
 - The working tree has substantial **staged and unstaged** work, including staged additions under `.serena/`, `.mcp.json`, `.claude/settings.json`, `benchmarks/`, and `scripts/`, plus modified `AGENTS.md` and `.gitignore`.
 - A Serena MCP server is currently **running and connected** to at least one live agent session on this machine.
-- A completed Graphify pilot lives in `benchmarks/graphify-context/` with an external cache at `${XDG_CACHE_HOME:-$HOME/.cache}/brimax-life-graphify-benchmark/`, including `current-state.env`, frozen workspaces, a graph, and the result root.
-- That external result root contains **two separate, independently produced scoring directories** that disagree on several reported numbers, judge counts, and one tool-overhead classification. `benchmarks/graphify-context/results.md` currently records only one of the two.
+- A completed dependency-graph pilot lives under its benchmark archive path with a dedicated external cache, including trusted state metadata, frozen workspaces, a graph, and the result root.
+- That external result root contains **two separate, independently produced scoring directories** that disagree on several reported numbers, judge counts, and one tool-overhead classification. The human-readable results file currently records only one of the two.
 - Host qualifications: Node 26.7.0 requires `NODE_OPTIONS=--no-experimental-webstorage` for the full web suite; Ruby is absent, so ten CDK environment-writer tests cannot spawn their validator.
 
 ## Correctness dimensions to examine
@@ -75,11 +75,11 @@ These are **suspicions to verify, not established findings**. Confirm or refute 
 - Prompt 1 requires deleting `.serena/` while also forbidding the reversal or overwriting of pre-existing changes; those files appear to be staged additions. Determine what actually happens to the Git index and whether the two instructions can both be satisfied.
 - Prompt 1 and Prompt 2 both authorize editing Codex, Claude Code, and Kimi Code user configuration. Verify which of those clients are actually installed here, and whether a session executing these prompts inside one of those clients would be mutating its own live configuration or a running MCP connection.
 - Prompt 2 deletes the dedicated external benchmark cache. Determine exactly what lives under that cache today, whether both independent scoring directories are captured into `pilot-audit.json` before deletion, and whether `results.md` and `pilot-audit.json` would end up telling different stories.
-- Prompt 2 retires `scripts/graphify-context-results.ts` and its test. Prompt 3 then asks for new wrapper tests "in the appropriate existing test location." Check whether the precedent Prompt 3 would imitate still exists at that point, and where a root-level `scripts/` test is supposed to live given this repository's workspace-scoped testing convention.
+- Prompt 2 retires the pilot results script and its test. Prompt 3 then asks for new wrapper tests "in the appropriate existing test location." Check whether the precedent Prompt 3 would imitate still exists at that point, and where a root-level `scripts/` test is supposed to live given this repository's workspace-scoped testing convention.
 - Prompt 3 installs "the newest stable release at execution time" with no version or hash pinning, whereas the pilot pinned an exact wheel by SHA-256. Assess what this means for reproducibility, for the graph-staleness rule keyed on installed version, and for supply-chain posture.
 - Prompt 3's ignore policy would graph documentation, while the validated pilot configuration was code-only with documentation excluded. Determine whether this is an intentional change and what it does to graph size, query truncation, and the meaning of the pilot evidence.
 - Prompt 3 sets a default query budget and requires truncation warnings. Check the pilot's frozen calibration to see how often queries truncated at that budget, and whether the default is coherent with the documented behavior.
-- Prompt 3 deletes the `graphify-mcp` shim after installation. Determine whether any ordinary future action would silently recreate it, and whether the stated `doctor` invariant is sufficient to catch that.
+- Prompt 3 deletes the retired MCP shim after installation. Determine whether any ordinary future action would silently recreate it, and whether the stated `doctor` invariant is sufficient to catch that.
 - Prompt 4 asserts which `AGENTS.md` and `CLAUDE.md` files exist. Verify each one, including the claim that the OpenTofu shim is missing.
 - The README says to run each prompt in a fresh **Codex** session, while the prompts themselves target Claude Code and Kimi Code as well. Determine whether the intended runner is consistent and whether it matters.
 - Check whether `.gitignore`, `package.json`, `.claude/settings.json`, `.mcp.json`, or any `AGENTS.md` would be left with stale entries pointing at files the prompts delete.
@@ -89,7 +89,7 @@ These are **suspicions to verify, not established findings**. Confirm or refute 
 You are expected to ask the user questions. Use the question tool for anything where the correct answer depends on the owner's intent rather than on evidence you can gather yourself, including:
 
 - which of two disagreeing scoring records should be treated as authoritative in the retained archive, or whether both must be preserved;
-- whether pinning the Graphify version is wanted, given the reproducibility trade-off;
+- whether pinning the dependency-graph CLI version is wanted, given the reproducibility trade-off;
 - whether documentation should be graphed at all;
 - which agent clients are actually in use and must be cleaned;
 - whether staged work should be committed, unstaged, or left alone before any deletion runs;

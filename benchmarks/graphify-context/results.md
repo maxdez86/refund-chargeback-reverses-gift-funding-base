@@ -1,104 +1,85 @@
-# Graphify context benchmark results
+# Graphify context pilot: final archive report
 
-Status: the 32-session pilot, independent technical audit, blind scoring, and pilot-level local selection are complete. The main matrix and full adoption analysis have not run.
+## Scope and provenance
 
-## Frozen preparation
+This is historical evidence from the code-only Graphify 0.9.39 pilot run on 2026-08-11. The pilot compared `control`, `serena`, `graphify-cli`, and `graphify-mcp` on `tool-overhead` and `api-flow`, with four repeats per arm and task. Graphify used the checksum-verified `graphifyy[terraform,mcp]==0.9.39` wheel, a deterministic `--code-only --no-cluster --force` extraction, source digest `839932946081a7fadab2db4b67bee00aab3b6af8a5ef4e388b9e1b38663357ab`, graph digest `277cb6a4920f50c4dafe1ce671cac960f6a34069d1770a67ea7c44cd563cae9b`, and wheel SHA-256 `2e1d602677d90ba2e94472828a7ffbea288421bd809d8feb55bff827a21c32f7`.
 
-On 2026-08-11 the harness installed the checksum-verified `graphifyy[terraform,mcp]==0.9.39` wheel in the external cache and completed a deterministic `--code-only --no-cluster --force` extraction. The valid TypeScript expression that Graphify previously rejected was rewritten through an erased local type alias, so the new extraction has no syntax-error or partial-extraction warning.
+Two independent scoring directories were preserved: `pilot-scoring` and `pilot-scoring-independent`. Both passed their final validation and found 32/32 technically valid representatives among 33 candidate attempts. Both preserve the invalid Serena repeat-1 `tool-overhead` primary, which failed before completion because Luna was at capacity, and use its first valid targeted retry. Neither scoring run is designated authoritative, and their values are not blended or reconciled.
 
-The corpus gate passed exactly: 266 code files consisting of 164 TypeScript, 37 TSX, 32 shell, 18 Terraform, 8 JSON, 5 MJS, and 2 MTS files. The raw graph has 1,665 nodes and 3,849 edges. The documented zero-node `cdk.json` warning remains; it is not a syntax or partial-extraction failure.
+This report does not specify the wrapper installed by a later prompt. That wrapper may use a different Graphify version, ignore policy, and query budget, so these pilot measurements must not be read as its expected behaviour.
 
-Graph validation distinguishes Graphify's unresolved `imports` and `imports_from` reference endpoints from path-backed nodes. Those import references are allowed because Graphify deliberately emits them without nodes. Missing source-file nodes, non-import dangling edges, external absolute paths, forbidden content, missing anchors, and source/graph drift still fail closed.
+## Independent scoring results
 
-- Source SHA-256: `4c62881f98c216bff449ab8662a3124fc8eea097edec2e737c428da302d23ba9`
-- Graph SHA-256: `277cb6a4920f50c4dafe1ce671cac960f6a34069d1770a67ea7c44cd563cae9b`
-- Serena corpus SHA-256: `05a3186c055b8ae4491099c41f3224a1561a34b01bf9cb94c4a2c02306ed1206`
-- Graph size: 1,861,896 bytes
-- Build wall time: 5.31 seconds
-- Build CPU: 7.85 seconds user, 1.90 seconds system, 183% utilization
-- Build peak RSS: 106,908 KiB
-- Indexing model tokens: zero
+The scoring runs disagree materially. The exact stored aggregate values are shown side by side below; recurring decimals and binary floating-point representations are retained where they appear in the source JSON.
 
-Raw workspaces, graph data, build logs, calibration output, and the experiment manifest remain outside the repository under the benchmark cache.
+### API-flow accuracy and quality
 
-## Frozen query calibration
+| Arm | `pilot-scoring` repeat accuracy | `pilot-scoring` median | `pilot-scoring-independent` repeat accuracy | `pilot-scoring-independent` median | Critical failures (both) |
+|---|---|---:|---|---:|---:|
+| `control` | 91.66666666666667, 89.66666666666667, 91.66666666666667, 89.66666666666667 | 90.66666666666667 | 91.67, 89.67, 91.67, 89.67 | 90.67 | 0 |
+| `serena` | 81.33333333333333, 83.33333333333334, 91.66666666666667, 91.66666666666667 | 87.5 | 81.33, 79.33, 90.67, 91.67 | 86 | 0 |
+| `graphify-cli` | 91.66666666666667, 81.33333333333334, 91.66666666666667, 81.33333333333333 | 86.5 | 83.33, 81.33, 82.33, 89.67 | 82.83 | 0 |
+| `graphify-mcp` | 83.33333333333334, 82.33333333333334, 83.33333333333334, 91.66666666666667 | 83.33333333333334 | 83.33, 81.33, 83.33, 89.67 | 83.33 | 0 |
 
-Every original 1,600-token multi-symbol query truncated. They were split into 25 per-symbol queries at 1,000 tokens as required by the methodology. Twenty-four still truncated and are frozen at the 2,000-token ceiling. `ApiCustomDomainRegionalTarget` completed at 1,000 tokens and remains at that budget.
+The first run records total unsupported material claims of `2`, `1`, `2`, and `0.5` for control, Serena, Graphify CLI, and Graphify MCP. The independent run instead records median unsupported claims of `0.5`, `0.75`, `0.75`, and `0.5`; these differently aggregated quality fields are retained under their original labels and are not treated as the same statistic.
 
-The 24 remaining truncations are recorded in `queries.tsv` as expected tool failures. Measured agents are instructed not to raise budgets or retry them. No query was tuned using a measured answer.
+### API-flow resource and retrieval metrics
 
-## Validation
+Each cell is `pilot-scoring / pilot-scoring-independent`.
 
-The shell syntax check, dry run, results-utility tests (16/16), lint, typecheck, and prepared-state `verify` gate pass. The API suite passes 201/201 tests, including all 21 webhook-processor tests.
-
-This host runs Node 26.7.0, whose experimental global Web Storage conflicts with Vitest 3/jsdom. An unqualified `pnpm test` therefore fails 43 web tests before their assertions because `window.localStorage` is unavailable. With Node's experimental Web Storage disabled (`NODE_OPTIONS=--no-experimental-webstorage`), the web suite passes 112/112 tests. This is an audited host-runtime qualification, not a Graphify or source regression.
-
-The host does not have Ruby installed, so the 10 existing `github-env-writer-validator.test.ts` cases cannot spawn `scripts/validate-github-env-writers.rb` (`ENOENT`). Every CDK test that does not require Ruby passes. Ruby is not used by benchmark preparation, verification, retrieval arms or scoring, so this host dependency does not block the pilot; it remains a qualification on the repository-wide `pnpm test` command.
-
-These pre-pilot host qualifications remained unchanged during execution.
-
-## Pilot execution status
-
-The pilot was executed on 2026-08-11. Its external result root is `/home/maxreis86/.cache/brimax-life-graphify-benchmark/results/839932946081a7fadab2db4b67bee00aab3b6af8a5ef4e388b9e1b38663357ab-277cb6a4920f50c4dafe1ce671cac960f6a34069d1770a67ea7c44cd563cae9b`.
-
-- Source SHA-256: `839932946081a7fadab2db4b67bee00aab3b6af8a5ef4e388b9e1b38663357ab`
-- Graph SHA-256: `277cb6a4920f50c4dafe1ce671cac960f6a34069d1770a67ea7c44cd563cae9b`
-- Serena corpus SHA-256: `00b32d7edc4191efe4b9227eb3789f02391a5ee9aa2b9314c2c967915b308aeb`
-- Query-table SHA-256: `0285c8a1ffc4f512fef574c97ed37bfa90b488d4912160a5e2720e821f8d171e`
-
-All 32 matrix coordinates have technically valid representatives. The run produced 32 primary attempts and one targeted technical retry. The invalid primary attempt, caused by transient Luna model capacity before completion, remains preserved; its first retry is valid. There are no unresolved case-level technical qualifications.
-
-Fresh preparation exposed two harness-stability issues that were corrected before resuming: nested workspace dependencies are now excluded from sanitized copies, and Serena's runtime cache is excluded from the Serena corpus digest while source, configuration, and memories remain protected. The Node 26 Web Storage qualification and missing-Ruby repository-test qualification described above remain unchanged and do not affect pilot validity.
-
-The scoring and pilot-level selection below use this frozen state. The main matrix and full adoption analysis remain unstarted.
-
-## Pilot scoring and local selection
-
-Scored on 2026-08-11. An independent raw-artifact revalidation confirmed that all 32 pilot coordinates have technically valid representatives. There are 33 preserved candidate attempts: the Serena repeat-1 `tool-overhead` primary is invalid because Luna was at capacity before completion, and its first targeted retry is valid. No other candidate attempt is invalid, and no coordinate has unresolved technical invalidity.
-
-Blind scoring used two fresh `gpt-5.6-sol`/high judges for each of the 16 `api-flow` answers. One answer met the frozen total-score disagreement threshold and received the required third judge. All 33 judge attempts are technically valid and schema-conforming; there were no judge retries. Median item and total scores and majority critical-failure decisions were used.
-
-### API-flow comparison
-
-| Setup | Repeat scores | Median accuracy | Critical failures | Unsupported claims | Median uncached input | Median cached input | Median output | Median total tokens | Median base cost | Median conservative cost | Median wall |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `control` | 91.67, 89.67, 91.67, 89.67 | **90.67** | 0 | 2 | 56,724.5 | 170,496 | 2,478.5 | 231,678 | $0.018125 | $0.018125 | 64.04 s |
-| `serena` | 81.33, 83.33, 91.67, 91.67 | **87.50** | 0 | 1 | 51,823 | 227,200 | 2,424 | 296,247.5 | $0.018207 | $0.035029 | 71.35 s |
-| `graphify-cli` | 91.67, 81.33, 91.67, 81.33 | **86.50** | 0 | 2 | 40,634.5 | 77,440 | 2,268 | 121,815 | $0.012203 | $0.012203 | 54.89 s |
-| `graphify-mcp` | 83.33, 82.33, 83.33, 91.67 | **83.33** | 0 | 0.5 | 49,830 | 126,464 | 2,085.5 | 186,009.5 | $0.015386 | $0.015386 | 59.11 s |
-
-The fractional unsupported-claim value is the frozen median of two judge counts for one answer. No `api-flow` checklist item is critical, so the zero critical-failure counts do not demonstrate critical-failure discrimination.
-
-| Setup | Native commands | MCP calls | Graphify calls | Source-verification calls | Whole-file reads | Retry heuristic | Failed tool calls |
+| Arm | Median uncached input tokens | Median total tokens | Median base USD | Median conservative USD | Median wall seconds | Median MCP calls | Median Graphify calls |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `control` | 6.5 | 0 | 0 | 5 | 0 | 1 | 0 |
-| `serena` | 4.5 | 16.5 | 0 | 4.5 | 0 | 1 | 0 |
-| `graphify-cli` | 10.5 | 0 | 4 | 2.5 | 0 | 0 | 0 |
-| `graphify-mcp` | 4 | 4 | 4 | 3 | 0 | 0.5 | 4 MCP calls |
+| `control` | 56724.5 / 56724.5 | 231678 / 231678 | 0.01812482 / 0.018125 | 0.01812482 / 0.018125 | 64.0415 / 64.0415 | 0 / 0 | 0 / 0 |
+| `serena` | 51823 / 51823 | 296247.5 / 296247.5 | 0.01820736 / 0.018207 | 0.03502902 / 0.035029 | 71.3515 / 71.3515 | 16.5 / 16.5 | 0 / 0 |
+| `graphify-cli` | 40634.5 / 40634.5 | 121815 / 121815 | 0.01220274 / 0.012203 | 0.01220274 / 0.012203 | 54.892 / 54.892 | 0 / 0 | 4 / 0 |
+| `graphify-mcp` | 49830 / 49830 | 186009.5 / 186009.5 | 0.01538576 / 0.015386 | 0.01538576 / 0.015386 | 59.108000000000004 / 59.108000000000004 | 4 / 4 | 4 / 4 |
 
-Values are medians across four repeats. The Graphify CLI produced a median of four truncated query results. Graphify MCP's four required calls per run failed in the measured event streams, including valid post-start cancellations; those are performance outcomes rather than technical invalidity. Graphify-call and source-verification counts were independently recomputed from raw completed events because quoted shell commands can evade the older summary heuristic.
+The Graphify CLI call-count disagreement is explicit: `pilot-scoring` independently recomputed a median of `4` Graphify CLI calls from completed events, while `pilot-scoring-independent` stored `0`. Both runs record four truncated CLI query results per repeat in their underlying observations. Both record all 16 measured Graphify MCP `query_graph` calls as cancelled after required startup, a valid performance outcome rather than technical invalidity; the MCP arm therefore relied on native fallback for its answers.
 
-### Tool-overhead comparison
+### Tool-overhead results
 
-| Setup | Correct and compliant | Avoided inspection | Median fixed tokens | Median cost | Median wall | Commands | MCP calls |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `control` | **4/4** | 4/4 | 10,720 | $0.002246 | 6.78 s | 0 | 0 |
-| `serena` | 0/4 | 4/4 | 10,874 | $0.002307 | 12.16 s | 0 | 0 |
-| `graphify-cli` | 0/4 | 4/4 | 10,733.5 | $0.002292 | 7.16 s | 0 | 0 |
-| `graphify-mcp` | 0/4 | 4/4 | 10,898 | $0.002337 | 7.86 s | 0 | 0 |
+| Arm | Correct report (`pilot-scoring`) | Correct report (`pilot-scoring-independent`) | Avoided inspection (both) | Median tokens (both) | Median USD: first / independent | Median wall seconds (both) |
+|---|---:|---:|---:|---:|---:|---:|
+| `control` | 4/4 | 4/4 | 4/4 | 10720 | 0.0022456999999999998 / 0.0022456999999999998 | 6.779999999999999 |
+| `serena` | 0/4 | 0/4 | 4/4 | 10874 | 0.0023072 / 0.0023071999999999997 | 12.155000000000001 |
+| `graphify-cli` | 0/4 | 4/4 | 4/4 | 10733.5 | 0.002292 / 0.002292 | 7.164 |
+| `graphify-mcp` | 0/4 | 0/4 | 4/4 | 10898 | 0.0023366000000000003 / 0.0023366 | 7.857 |
 
-Every run correctly avoided repository and graph inspection. Control reported its native navigation surface. Serena and both Graphify arms omitted or denied the retrieval surface configured for their arm, so they fail the frozen correctness/compliance check.
+The Graphify CLI tool-overhead disagreement differs in kind, not merely magnitude: `pilot-scoring` classifies all four answers as incorrect/noncompliant (`0/4`), while `pilot-scoring-independent` classifies all four as correct (`4/4`). Both agree that every arm avoided repository and graph inspection. Both classify Serena and Graphify MCP as `0/4`, and both classify control as `4/4`.
 
-### Selection
+The fixed token overheads over control are identical in both records: control `0`, Serena `154`, Graphify CLI `13.5`, and Graphify MCP `178`. On that frozen rule, both runs interface-disqualify Graphify MCP because its `178`-token overhead is not below Serena's `154`.
 
-The pilot-supported local default is **`control`**. The runner-up is **`serena`**. Control wins the first overall lexicographic criterion with 90.67 median blind accuracy versus Serena's 87.50; later cost, token, wall-time, and complexity criteria therefore do not overturn the result. No setup is disqualified from the overall comparison for unresolved invalidity or two critical failures.
+### Session and cost accounting
 
-The best Graphify interface is **`graphify-cli`**. It survives every frozen Graphify-interface disqualifier and has 86.50 median accuracy, $0.012203 median candidate cost, 40,634.5 median uncached input tokens, 121,815 median total tokens, and 54.89-second median wall time. `graphify-mcp` is interface-disqualified because its 10,898-token fixed overhead is not lower than Serena's 10,874 tokens. CLI also uses 52.58% of control's median total tokens and 67.33% of its median cost.
+| Quantity | `pilot-scoring` | `pilot-scoring-independent` |
+|---|---:|---:|
+| Candidate representatives | 32 | 32 |
+| Candidate attempts preserved | 33 | 33 |
+| Invalid candidate attempts | 1 | 1 |
+| Judge sessions/attempts | 33 | 36 |
+| Judge retries | 0 | 0 |
+| Judge cost USD | 2.514773 | 2.7954 |
+| Judge input tokens | 423421 | 457937 |
+| Judge output tokens | 20398 | 39474 |
+| Candidate retrieval base USD | 0.29527144000000005 | 0.2953 |
 
-Only accuracy differences below 0.01 point are treated as a practical tie, to absorb floating-point storage noise. No setups tie at that threshold, so the fewer-moving-parts fallback was not needed.
+`pilot-scoring` used 32 required judges plus one rule-triggered adjudicator. `pilot-scoring-independent` used 32 initial judges plus four adjudicators. Candidate retrieval and judge costs are separate in both records.
 
-Primary-only sensitivity, excluding the invalid Serena coordinate, and representative sensitivity, using its valid retry, both select `control`, `serena`, and `graphify-cli` in the same roles. The retry changes Serena's overhead sample count from three to four but leaves its 10,874-token median and failed compliance outcome unchanged.
+## Conclusions shared by both runs
 
-Representative candidate retrieval cost is $0.295271 base and $0.350964 under the conservative long-context calculation across all 32 coordinates. Blind-judge cost is separate: $2.514773 across 33 valid attempts. Judge use totaled 423,421 input tokens, 47,616 cached input tokens, 20,398 output tokens, and 443,819 input-plus-output tokens.
+The decision is robust to the disputed scores and classifications:
 
-This is a pilot-supported local-environment decision based only on `tool-overhead` and `api-flow`, with four repeated observations per setup and task. It is not evidence for full-repository adoption. The 126-session main matrix, six-useful-task acceptance analysis, production-promotion integration suite, and full adoption workflow have not run.
+- `control` is the recommended local default.
+- `serena` is the runner-up.
+- `graphify-cli` is the best Graphify interface.
+- `graphify-mcp` is interface-disqualified because its fixed overhead is not lower than Serena's.
+- Retry sensitivity changes neither the overall selection nor the best Graphify interface.
+- No arm has unresolved technical invalidity or two critical API-flow failures.
+
+These conclusions are intentionally separate from the disputed measurements. `pilot-scoring-independent` ranks Graphify MCP above Graphify CLI on blind accuracy, but still chooses Graphify CLI as the best Graphify interface under the frozen interface rule.
+
+## Limitations
+
+This was a local pilot with only two tasks and four repeats. The 126-session main matrix, the remaining useful tasks, the six-task adoption gates, and the full-repository adoption analysis did not run. Blind judging could not conceal arm-identifying phrases already present in candidate answers. Graphify MCP accuracy mostly measures native fallback because all measured graph calls were cancelled. Retry and error counts depend on frozen string-match heuristics. The two scoring operators produced materially different accuracy judgments, one tool-overhead classification, judge counts and costs, and retrieval-call accounting; the archive preserves that uncertainty instead of resolving it after the fact.
+
+The companion `pilot-audit.json` stores each run as a separately attributed record, retains exact source values and source-artifact hashes, and contains no raw model answers or machine-specific personal paths.
