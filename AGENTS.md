@@ -38,6 +38,9 @@ pnpm opentofu:api-dns:{init,plan,apply}
 pnpm test:payments:pix
 pnpm test:payments:webhook
 pnpm test:payments:negative
+pnpm graphify:doctor
+pnpm graphify:build
+pnpm graphify:query -- "<seed>" [--mode bfs|dfs] [--budget 1..32000]
 ```
 
 ## Conventions that matter
@@ -46,7 +49,7 @@ pnpm test:payments:negative
 
 **Git.** Never run `git push`, and never open or publish a branch or PR — pushing is always the user's action. Staging and committing are allowed only when the user explicitly asks; otherwise leave changes in the working tree.
 
-**Local guides.** Use the closest guide for path-specific conventions: [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [infra/cdk/AGENTS.md](infra/cdk/AGENTS.md), [infra/opentofu/AGENTS.md](infra/opentofu/AGENTS.md).
+**Local guides.** This guide applies repository-wide. The closest nested guide supplements it with path-specific conventions: [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [infra/cdk/AGENTS.md](infra/cdk/AGENTS.md), [infra/opentofu/AGENTS.md](infra/opentofu/AGENTS.md).
 
 **Stages.** `prod` is the default; `STAGE=dev` or CDK `-c stage=dev` adds `dev-`. Always use `resolveStage()` and `resourceName()` from `@brimax/config`.
 
@@ -62,9 +65,13 @@ pnpm test:payments:negative
 
 ## Context acquisition
 
-- Use `rg` first for Markdown, JSON/YAML/TOML, shell scripts, Terraform attributes, generated metadata, and exact literals.
-- Read a complete source file only when initialization order, module-level behavior, or non-symbol content matters.
-- Verify semantic findings against source and tests before editing; fall back to native search when language-server coverage is incomplete.
+1. Use native `rg`, `rg --files`, and focused file reads by default. Start from exact literals, symbols, routes, resources, or imports; broaden only when evidence requires it.
+2. Read complete files when initialization order, module-level behavior, configuration, or non-symbol content matters. Verify conclusions against source and tests before editing.
+3. Graphify CLI is optional and experimental. Invoke it only through the repository's `pnpm graphify:*` wrappers, and only as a fast hypothesis generator for unfamiliar relationships that span multiple layers of supported code.
+4. A graph is never evidence. Confirm every graph-derived file, symbol, edge, caller, consumer, owner, and behavior in exact native source before relying on it or reporting it.
+5. Native search is authoritative for completeness and enumeration, exact ownership, security-sensitive flows, configuration values, contract consumers, reference and rename plans, documentation, and generated, unsupported, or code-only-excluded formats. Use native search and focused reads for Markdown, YAML, HTML, CSS, images and media references, and every other input absent from the graph.
+6. Fall back to native search when the graph is stale, a rebuild fails, or expected results are missing. Missing output can mean an unextracted relationship or excluded format, not absence. Treat truncation and every `INFERRED` or `AMBIGUOUS` relationship as a useful partial hypothesis that requires native confirmation. Never increase the budget merely to avoid verification.
+7. `pnpm graphify:query` defaults to BFS and an empirically calibrated 12,000-token budget. Build or rebuild on demand through the wrappers only. Extraction is local and code-only, uses `--code-only --no-cluster`, and has no LLM backend; do not register an MCP server or run an upstream assistant-skill installer for this workflow.
 
 ## Where to read more
 

@@ -19,3 +19,7 @@ Common commands are `pnpm synth`, `pnpm deploy:platform`, `pnpm deploy:backend`,
 ```bash
 pnpm --filter @brimax/infra-cdk test
 ```
+
+## Context acquisition
+
+Follow the root native-search policy. Graphify is optional only for exploratory mapping across stacks, constructs, Lambda or application references, and deployment layers. Verify every hypothesis in native source. Exact AWS resource ownership, IAM and security, stage configuration, dependencies, and deployment order require native source plus synthesized evidence.

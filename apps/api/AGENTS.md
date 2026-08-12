@@ -19,3 +19,7 @@ pnpm --filter @brimax/api test
 ```
 
 Every new function gets a unit test here. Mirror existing tests such as key-builder, payment-service, payment-state, and RSVP-service tests. **Don't** add or edit prod-promotion integration tests as part of a feature — those live in a separate, dedicated task (see root [AGENTS.md](../../AGENTS.md)).
+
+## Context acquisition
+
+Follow the root native-search policy. Graphify is optional only for unfamiliar flows crossing handlers, domain services, persistence, vendors, contracts, or frontend boundaries. Verify every hypothesis in source and tests. Use native search for exact webhook and security behavior, configuration, consumers, completeness, YAML and documentation evidence, and all excluded or unsupported formats.
