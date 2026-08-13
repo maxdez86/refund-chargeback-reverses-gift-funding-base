@@ -1,0 +1,85 @@
+# Dependencies, virtual environments, and package-manager stores
+node_modules/
+.pnpm-store/
+.venv/
+venv/
+__pycache__/
+
+# Caches, coverage, logs, and temporary files
+.cache/
+.turbo/
+.vite/
+coverage/
+.nyc_output/
+.tmp/
+tmp/
+*.log
+*.tmp
+*.swp
+*.swo
+*.tsbuildinfo
+
+# Generated and build output
+dist/
+build/
+cdk.out/
+cdk.out.*/
+graphify-out/
+.graphify_build.json
+.graphify_extract.json
+.graphify_detect.json
+.graphify_analysis.json
+.graphify_labels.json
+*.generated.*
+
+# Terraform and OpenTofu working data
+.terraform/
+.opentofu/
+*.tfplan
+*.tfstate*
+.terraform.tfstate.lock.info
+crash.log
+
+# Media, binary assets, and archives
+images/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.pdf
+*.mp3
+*.mp4
+*.mov
+*.wav
+*.woff
+*.woff2
+*.ttf
+*.zip
+*.tar
+*.gz
+
+# Lockfiles and workspace metadata excluded from the graph corpus
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package-lock.json
+yarn.lock
+*.lock
+*.lock.*
+
+# Historical benchmarks and protected documentation
+benchmarks/
+docs/prompts/tooling/
+docs/experimentation/
+
+# Protected installer and agent/tool configuration surfaces
+install-opentofu.sh
+AGENTS.md
+CLAUDE.md
+.claude/
+.codex/
+.kimi*
+.mcp.json
+

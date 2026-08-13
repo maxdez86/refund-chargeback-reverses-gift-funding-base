@@ -1,5 +1,9 @@
 # apps/web — Agent guide
 
+Guest-facing React/Vite SPA served from S3 and CloudFront. The app uses React, Vite, TypeScript, Tailwind, shadcn/ui, Wouter, TanStack Query, React Hook Form, Zod, Framer Motion, Embla, Sonner, Vitest, and Testing Library.
+
+`src/` contains components, hooks, pages, assets, `index.css`, and `main.tsx`/`App.tsx`; generated shadcn primitives under `src/components/ui/` should not be hand-edited. Vitest uses jsdom and `tests/setup.ts`.
+
 ## Conventions
 
 - Use the `@/*` import alias for cross-folder imports.
@@ -16,4 +20,10 @@
 pnpm --filter @brimax/web test
 ```
 
-New functions and components ship with a Vitest unit test under `tests/`. **Don't** add prod-promotion integration tests as part of a feature — that's a separate, dedicated task (see root [CLAUDE.md](../../CLAUDE.md)).
+New functions and components ship with a Vitest unit test under `tests/`. **Don't** add prod-promotion integration tests as part of a feature — that's a separate, dedicated task (see root [AGENTS.md](../../AGENTS.md)).
+
+The dev server loads `.env.dev`, honors `PORT`, `BASE_PATH`, and `BUILD_OUT_DIR`, and provides read-only development proxies for deployed media and API reads. Local writes are blocked; these proxies are dev-only. Build output is `apps/web/dist/`.
+
+## Context acquisition
+
+Follow the root native-search policy. Graphify is optional only for unfamiliar flows crossing routes or components, hooks or services, contracts, API handlers, or deployment boundaries. Verify every hypothesis in source and tests. Use native search for exact UI behavior, accessibility, configuration, consumers, completeness, CSS, HTML and documentation, media references, and all excluded or unsupported formats.

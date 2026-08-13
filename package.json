@@ -17,6 +17,9 @@
     "dev:web": "bash scripts/dev-web.sh",
     "deploy:landing:cert": "bash scripts/deploy-landing-certificate.sh",
     "deploy:landing:edge": "bash scripts/deploy-landing-edge.sh",
+    "graphify:doctor": "pnpm exec tsx scripts/graphify.ts doctor",
+    "graphify:build": "pnpm exec tsx scripts/graphify.ts build",
+    "graphify:query": "pnpm exec tsx scripts/graphify.ts query",
     "lint": "eslint apps/api apps/web infra/cdk packages/config/src packages/contracts/src scripts eslint.config.mjs --ext .ts,.tsx,.js,.cjs,.mjs",
     "lint:fix": "eslint apps/api apps/web infra/cdk packages/config/src packages/contracts/src scripts eslint.config.mjs --ext .ts,.tsx,.js,.cjs,.mjs --fix",
     "media:convert": "pnpm exec tsx scripts/convert-responsive-media.ts",
@@ -52,7 +55,7 @@
     "test:payments:pix": "bash scripts/test-payments-pix.sh",
     "test:integration:prod-promotion": "pnpm exec tsx scripts/test-prod-promotion-integration.ts",
     "test:payments:webhook": "bash scripts/test-payments-webhook.sh",
-    "test": "pnpm exec tsx --test scripts/convert-responsive-media.test.ts scripts/prod-promotion-support.test.ts && pnpm -r test",
+    "test": "pnpm exec tsx --test scripts/convert-responsive-media.test.ts scripts/prod-promotion-support.test.ts scripts/graphify.test.ts && pnpm -r test",
     "test:coverage": "pnpm --filter @brimax/web test:coverage && pnpm --filter @brimax/api test:coverage && pnpm --filter @brimax/config test:coverage && pnpm --filter @brimax/infra-cdk test:coverage",
     "prepare:integration:prod-promotion": "pnpm exec tsx scripts/prepare-prod-promotion-dev-data.ts",
     "test:media:convert": "pnpm exec tsx --test scripts/convert-responsive-media.test.ts",
@@ -69,5 +72,26 @@
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.30.1"
-  }
+  },
+  "description": "AWS-first monorepo for the Brimax wedding platform on **December 6, 2026**.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "dependencies": {
+    "eslint-scope": "^8.4.0",
+    "eslint-visitor-keys": "^4.2.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxdez86/brimax-life.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/maxdez86/brimax-life/issues"
+  },
+  "homepage": "https://github.com/maxdez86/brimax-life#readme"
 }

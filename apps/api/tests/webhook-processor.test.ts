@@ -3,8 +3,10 @@ const { annotateTrace } = vi.hoisted(() => ({
   annotateTrace: vi.fn()
 }));
 
+type XrayModule = typeof import("../src/lib/xray");
+
 vi.mock("../src/lib/xray", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/xray")>()),
+  ...(await importOriginal<XrayModule>()),
   annotateTrace
 }));
 
