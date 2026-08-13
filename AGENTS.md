@@ -26,15 +26,22 @@ pnpm lint
 pnpm lint:fix
 pnpm typecheck
 pnpm test
+pnpm test:coverage
+pnpm precommit:check
 pnpm synth
+pnpm cdk:bootstrap
 pnpm deploy:platform
 pnpm deploy:backend
 pnpm deploy:landing:cert
 pnpm wait:landing:cert
 pnpm deploy:landing:edge
+# All six OpenTofu modules take {init,plan,apply}; only sentry also takes validate.
 pnpm opentofu:cert:{init,plan,apply}
 pnpm opentofu:dns:{init,plan,apply}
 pnpm opentofu:api-dns:{init,plan,apply}
+pnpm opentofu:ses-dns:{init,plan,apply}
+pnpm opentofu:zone-settings:{init,plan,apply}
+pnpm opentofu:sentry:{init,plan,apply,validate}
 pnpm test:payments:pix
 pnpm test:payments:webhook
 pnpm test:payments:negative
@@ -42,6 +49,8 @@ pnpm graphify:doctor
 pnpm graphify:build
 pnpm graphify:query -- "<seed>" [--mode bfs|dfs] [--budget 1..32000]
 ```
+
+This list is curated, not exhaustive. One-off operational scripts (`seed:*`, `reset:*`, `import:*`, `smoke:prod`, `media:convert`, `asaas:webhook:sync`, `deploy:github-oidc:*`) are deliberately omitted — read `package.json` for the full set rather than assuming a command does not exist.
 
 ## Conventions that matter
 
@@ -51,7 +60,7 @@ pnpm graphify:query -- "<seed>" [--mode bfs|dfs] [--budget 1..32000]
 
 **Local guides.** This guide applies repository-wide. The closest nested guide supplements it with path-specific conventions: [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [infra/cdk/AGENTS.md](infra/cdk/AGENTS.md), [infra/opentofu/AGENTS.md](infra/opentofu/AGENTS.md).
 
-**Stages.** `prod` is the default; `STAGE=dev` or CDK `-c stage=dev` adds `dev-`. Always use `resolveStage()` and `resourceName()` from `@brimax/config`.
+**Stages.** `prod` is the default; `STAGE=dev` or CDK `-c stage=dev` adds `dev-`. Always use `resolveStage()` and `resourceName()` from `@brimax/config`. The shell wrappers (every `deploy:*`, `opentofu:*`, `dev:*`, and `cdk:bootstrap` command above) resolve their stage from the env file that [scripts/landing-env.sh](scripts/landing-env.sh) loads, which defaults to `.env` — that is, **prod**. Prefix dev-stage invocations with `BRIMAX_ENV_FILE=.env.dev`, exactly as the dev workflows do; `STAGE=dev` alone does not redirect them.
 
 **Boundaries.** CDK owns AWS resources; OpenTofu owns Cloudflare DNS. Shared request/response schemas belong in `packages/contracts` first. DynamoDB remains a single-table design with keys built by the API key-builder.
 
@@ -77,7 +86,10 @@ pnpm graphify:query -- "<seed>" [--mode bfs|dfs] [--budget 1..32000]
 
 - [docs/architecture/overview.md](docs/architecture/overview.md)
 - [docs/runbooks/bootstrapping.md](docs/runbooks/bootstrapping.md)
+- [docs/runbooks/bootstrapping-dev.md](docs/runbooks/bootstrapping-dev.md)
+- [docs/runbooks/bootstrap-github-oidc.md](docs/runbooks/bootstrap-github-oidc.md)
 - [docs/runbooks/deploy.md](docs/runbooks/deploy.md)
+- [docs/runbooks/deploy-dev.md](docs/runbooks/deploy-dev.md)
 - [docs/runbooks/payments-api-testing.md](docs/runbooks/payments-api-testing.md)
 - [docs/vendors/](docs/vendors/)
 
