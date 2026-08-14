@@ -2,6 +2,8 @@
 
 The CDK app starts at `bin/app.ts`. It defines Platform, Certificate, Data, App, Edge, and Observability stacks; source is under `lib/stacks/` and reusable constructs under `lib/constructs/`.
 
+Node runtime requirements are defined in root [AGENTS.md](../../AGENTS.md).
+
 ## Conventions
 
 - Resolve stage with `resolveStage()` and wrap construct IDs in `resourceName(name, stage)`. Never hand-build a `dev-` prefix.

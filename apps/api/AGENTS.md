@@ -2,6 +2,8 @@
 
 Lambda handlers and domain logic use Node.js, TypeScript CommonJS output, AWS SDK v3, Zod, and Vitest. `src/functions/<name>/handler.ts` contains the Lambda entry points; `domain/` contains pure business rules; `services/` contains infrastructure adapters; `lib/` contains shared environment, error, HTTP, and security helpers.
 
+Node runtime requirements are defined in root [AGENTS.md](../../AGENTS.md).
+
 ## Conventions
 
 - HTTP responses always go through [src/lib/http.ts](src/lib/http.ts). `jsonResponse(statusCode, body)` and `noContentResponse()` bake in CORS headers — never hand-roll an `APIGatewayProxyStructuredResultV2`.

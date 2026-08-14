@@ -4,6 +4,8 @@ Guest-facing React/Vite SPA served from S3 and CloudFront. The app uses React, V
 
 `src/` contains components, hooks, pages, assets, `index.css`, and `main.tsx`/`App.tsx`; generated shadcn primitives under `src/components/ui/` should not be hand-edited. Vitest uses jsdom and `tests/setup.ts`.
 
+Node runtime requirements are defined in root [AGENTS.md](../../AGENTS.md).
+
 ## Conventions
 
 - Use the `@/*` import alias for cross-folder imports.

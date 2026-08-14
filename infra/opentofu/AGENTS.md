@@ -1,5 +1,7 @@
 # infra/opentofu — Agent guide
 
+Node runtime requirements are defined in root [AGENTS.md](../../AGENTS.md).
+
 ## Conventions
 
 - `infra/opentofu` owns Cloudflare DNS and zone settings plus the Sentry project configuration. AWS resources stay in [../cdk/](../cdk/).

@@ -238,7 +238,7 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
-      Runtime: "nodejs20.x",
+      Runtime: "nodejs24.x",
       TracingConfig: {
         Mode: "Active"
       },
@@ -250,7 +250,7 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 512,
-      Runtime: "nodejs20.x",
+      Runtime: "nodejs24.x",
       TracingConfig: {
         Mode: "Active"
       },

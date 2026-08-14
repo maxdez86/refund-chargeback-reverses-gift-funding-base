@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.12.1",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "asaas:webhook:sync": "bash scripts/sync-asaas-webhook.sh",
     "build": "pnpm -r build",
@@ -65,7 +68,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.4",
     "@eslint/js": "^9.25.0",
-    "@types/node": "^22.15.14",
+    "@types/node": "^24.0.0",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.0",
     "globals": "^16.0.0",

@@ -2,13 +2,11 @@ import { mergeConfig } from "vite";
 import { defineConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 
-// Node >= 25 enables the Web Storage API by default. Its `localStorage` global is a stub that
-// returns undefined without --localstorage-file, and it shadows jsdom's real implementation
-// (vitest-dev/vitest#8757). CI runs Node 20, which does not define the global or recognise the
-// flag, so detect the global and only disable it where it actually exists.
-const nodeWebStorageActive =
-  Object.getOwnPropertyDescriptor(globalThis, "localStorage") !== undefined;
-const workerExecArgv = nodeWebStorageActive ? ["--no-webstorage"] : [];
+// Node 25 and 26 enable the Web Storage API by default. Their `localStorage` getter on
+// globalThis shadows the jsdom implementation Vitest installs (vitest-dev/vitest#8757).
+const workerExecArgv = process.allowedNodeEnvironmentFlags.has("--no-experimental-webstorage")
+  ? ["--no-experimental-webstorage"]
+  : [];
 
 export default mergeConfig(
   viteConfig,

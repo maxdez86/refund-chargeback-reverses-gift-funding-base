@@ -300,7 +300,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 1024,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(15)
     });
     this.createPaymentFunction = createPaymentFn;
@@ -310,7 +310,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 1024,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(15)
     });
     const getPaymentFn = this.createTaggedNodejsFunction("GetPaymentFunction", {
@@ -318,7 +318,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const getGiftsFn = this.createTaggedNodejsFunction("GetGiftsFunction", {
@@ -327,7 +327,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 512,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const getGuestMessagesFn = this.createTaggedNodejsFunction("GetGuestMessagesFunction", {
@@ -335,7 +335,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const createGuestMessagesFn = this.createTaggedNodejsFunction("CreateGuestMessagesFunction", {
@@ -344,7 +344,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 512,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const deleteGuestMessageFn = this.createTaggedNodejsFunction("DeleteGuestMessageFunction", {
@@ -352,7 +352,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const paymentMessageFn = this.createTaggedNodejsFunction("PaymentMessageFunction", {
@@ -360,7 +360,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const asaasWebhookFn = this.createTaggedNodejsFunction("AsaasWebhookFunction", {
@@ -368,7 +368,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const webhookProcessorFn = this.createTaggedNodejsFunction("AsaasWebhookProcessorFunction", {
@@ -376,7 +376,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30)
     });
     this.webhookProcessorFunction = webhookProcessorFn;
@@ -386,7 +386,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 512,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(60)
     });
     this.checkoutExpiryWorkerFunction = checkoutExpiryWorkerFn;
@@ -396,7 +396,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 512,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30)
     });
     const invitationGetFn = this.createTaggedNodejsFunction("InvitationGetFunction", {
@@ -405,7 +405,7 @@ export class AppStack extends cdk.Stack {
       handler: "handler",
       memorySize: 1024,
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     const rsvpFn = this.createTaggedNodejsFunction("RsvpFunction", {
@@ -413,7 +413,7 @@ export class AppStack extends cdk.Stack {
       environment: commonEnvironment,
       handler: "handler",
       projectRoot,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
     this.alarmedFunctions = [

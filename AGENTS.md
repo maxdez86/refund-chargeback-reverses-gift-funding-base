@@ -2,6 +2,12 @@
 
 AWS-first pnpm monorepo for the Brimax wedding platform. Target date: 2026-12-06.
 
+## Node runtime
+
+Node 24 LTS is required for repository commands, tests, builds, typechecking, and coding-agent sessions. Node 26 may remain installed on the machine, but it is only an optional compatibility runtime.
+
+The root [.nvmrc](.nvmrc) and [package.json](package.json) are the local runtime sources of truth. The `engines.node` value of `24.x` is intentional and defines the supported project runtime. Node 26 checks in later migration steps are out-of-contract compatibility checks, not an additional supported runtime.
+
 ## Workspaces
 
 | Path | Role |
@@ -58,11 +64,15 @@ This list is curated, not exhaustive. One-off operational scripts (`seed:*`, `re
 
 **Git.** Never run `git push`, and never open or publish a branch or PR — pushing is always the user's action. Staging and committing are allowed only when the user explicitly asks; otherwise leave changes in the working tree.
 
+**GitHub CLI.** Before running any `gh` command, source `.env` (`set -a; source .env; set +a`) so `GITHUB_TOKEN` is exported, then run `gh` in the same shell invocation — `gh` picks up `GITHUB_TOKEN` from the environment automatically. Never print or echo the token value; it must not appear in command output, logs, or committed files.
+
 **Local guides.** This guide applies repository-wide. The closest nested guide supplements it with path-specific conventions: [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [infra/cdk/AGENTS.md](infra/cdk/AGENTS.md), [infra/opentofu/AGENTS.md](infra/opentofu/AGENTS.md).
 
 **Stages.** `prod` is the default; `STAGE=dev` or CDK `-c stage=dev` adds `dev-`. Always use `resolveStage()` and `resourceName()` from `@brimax/config`. The shell wrappers (every `deploy:*`, `opentofu:*`, `dev:*`, and `cdk:bootstrap` command above) resolve their stage from the env file that [scripts/landing-env.sh](scripts/landing-env.sh) loads, which defaults to `.env` — that is, **prod**. Prefix dev-stage invocations with `BRIMAX_ENV_FILE=.env.dev`, exactly as the dev workflows do; `STAGE=dev` alone does not redirect them.
 
 **Boundaries.** CDK owns AWS resources; OpenTofu owns Cloudflare DNS. Shared request/response schemas belong in `packages/contracts` first. DynamoDB remains a single-table design with keys built by the API key-builder.
+
+**AWS CLI.** To confirm deployed cloud resources match the code, or to read CloudWatch Logs while diagnosing behavior, query AWS directly with `AWS_PROFILE=personal-stg aws <command>` — the same profile every `deploy:*`/`opentofu:*`/`cdk:bootstrap` wrapper already uses, authorized against account `183286346090` in `us-east-1`. Both `prod` and `dev` stages live in this one account; use the `dev-` resource-name prefix (or its absence) to target the right log group, table, or stack. Stick to read-only calls (`aws logs tail`, `aws logs filter-log-events`, `aws cloudformation describe-stacks`, `aws dynamodb describe-table`, etc.) — never run a mutating AWS CLI command outside the repo's existing deploy or reset scripts without explicit user confirmation.
 
 **Secrets.** Never echo `.env`. Runtime secrets use `getAppSecret(key)` from the per-stage JSON bucket secret. Vendor credentials, Turnstile behavior, and lookup-proof rotation follow the existing CDK/Secrets Manager design documented in the repository.
 
