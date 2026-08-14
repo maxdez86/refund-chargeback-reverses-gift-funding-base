@@ -18,7 +18,6 @@ The root [.nvmrc](.nvmrc) and [package.json](package.json) are the local runtime
 | [packages/config](packages/config/src/) | Stage helpers |
 | [infra/cdk](infra/cdk/) | AWS CDK stacks |
 | [infra/opentofu](infra/opentofu/) | Cloudflare DNS |
-| [tests/e2e](tests/e2e/) | End-to-end coverage (planned) |
 
 ## Command cheatsheet
 
@@ -105,4 +104,4 @@ This list is curated, not exhaustive. One-off operational scripts (`seed:*`, `re
 
 ## Don't read / don't touch
 
-Avoid [docs/experimentation/](docs/experimentation/), [install-opentofu.sh](install-opentofu.sh), `pnpm-lock.yaml`, and generated/state paths including `cdk.out/`, `.terraform/`, `.opentofu/`, `*.tfstate*`, `dist/`, and `node_modules/`.
+Avoid [docs/experimentation/](docs/experimentation/), `pnpm-lock.yaml`, and generated/state paths including `cdk.out/`, `.terraform/`, `.opentofu/`, `*.tfstate*`, `dist/`, and `node_modules/`.
