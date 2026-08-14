@@ -133,7 +133,7 @@ export class ObservabilityStack extends cdk.Stack {
     const webhookPaymentNotFoundAlarm = new cloudwatch.Alarm(this, "WebhookPaymentNotFoundAlarm", {
       alarmDescription: "Alerts when webhook events cannot be matched to local payments.",
       metric: new cloudwatch.Metric({
-        metricName: "asaas-webhook-processor-webhook-payment-not-found",
+        metricName: `asaas-webhook-processor-webhook-payment-not-found-${props.stage}`,
         namespace: "Brimax/Payments",
         period: cdk.Duration.minutes(5),
         statistic: "Sum"
@@ -422,7 +422,7 @@ export class ObservabilityStack extends cdk.Stack {
         title: "Webhook Unmatched / Processor Errors",
         left: [
           new cloudwatch.Metric({
-            metricName: "asaas-webhook-processor-webhook-payment-not-found",
+            metricName: `asaas-webhook-processor-webhook-payment-not-found-${props.stage}`,
             namespace: "Brimax/Payments",
             period: cdk.Duration.minutes(5),
             statistic: "Sum"

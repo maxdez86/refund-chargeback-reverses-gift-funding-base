@@ -18,6 +18,10 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { resourceName, type AppStage } from "@brimax/config";
 import { Construct } from "constructs";
 
+function stageMetricName(metricName: string, stage: AppStage) {
+  return `${metricName}-${stage}`;
+}
+
 export interface AppStackProps extends cdk.StackProps {
   apiCertificate: acm.ICertificate;
   apiDomain: string;
@@ -627,15 +631,24 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, discardPaymentRoutes);
     }
 
-    this.addMetricFilters(this.getFunctionLogGroup("CreatePaymentFunction"), "create-payment");
+    this.addMetricFilters(
+      this.getFunctionLogGroup("CreatePaymentFunction"),
+      "create-payment",
+      props.stage
+    );
     this.addCheckoutExpiryWorkerMetricFilters(
       this.getFunctionLogGroup("CheckoutExpiryWorkerFunction")
     );
     this.addCheckoutExpiryTriggerMetricFilter(this.getFunctionLogGroup("GetGiftsFunction"));
-    this.addMetricFilters(this.getFunctionLogGroup("AsaasWebhookFunction"), "asaas-webhook");
+    this.addMetricFilters(
+      this.getFunctionLogGroup("AsaasWebhookFunction"),
+      "asaas-webhook",
+      props.stage
+    );
     this.addMetricFilters(
       this.getFunctionLogGroup("AsaasWebhookProcessorFunction"),
-      "asaas-webhook-processor"
+      "asaas-webhook-processor",
+      props.stage
     );
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
@@ -797,7 +810,11 @@ export class AppStack extends cdk.Stack {
     return logGroup;
   }
 
-  private addMetricFilters(logGroup: logs.ILogGroup, metricNamespaceSuffix: string) {
+  private addMetricFilters(
+    logGroup: logs.ILogGroup,
+    metricNamespaceSuffix: string,
+    stage: AppStage
+  ) {
     new logs.MetricFilter(this, `${metricNamespaceSuffix}CreateFailuresMetric`, {
       logGroup,
       metricNamespace: "Brimax/Payments",
@@ -829,7 +846,7 @@ export class AppStack extends cdk.Stack {
     new logs.MetricFilter(this, `${metricNamespaceSuffix}WebhookPaymentNotFoundMetric`, {
       logGroup,
       metricNamespace: "Brimax/Payments",
-      metricName: `${metricNamespaceSuffix}-webhook-payment-not-found`,
+      metricName: stageMetricName(`${metricNamespaceSuffix}-webhook-payment-not-found`, stage),
       filterPattern: logs.FilterPattern.literal('"WEBHOOK_PAYMENT_NOT_FOUND"'),
       metricValue: "1"
     });

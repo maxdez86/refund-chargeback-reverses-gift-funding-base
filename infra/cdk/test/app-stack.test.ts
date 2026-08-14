@@ -180,7 +180,7 @@ describe("AppStack", () => {
       FilterPattern: '"WEBHOOK_PAYMENT_NOT_FOUND"',
       MetricTransformations: Match.arrayWith([
         Match.objectLike({
-          MetricName: "asaas-webhook-processor-webhook-payment-not-found",
+          MetricName: "asaas-webhook-processor-webhook-payment-not-found-dev",
           MetricNamespace: "Brimax/Payments"
         })
       ])

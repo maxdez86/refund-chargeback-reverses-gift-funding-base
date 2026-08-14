@@ -56,6 +56,17 @@ describe("ObservabilityStack", () => {
       webhookQueue: appStack.webhookQueue
     });
     const template = Template.fromStack(stack);
+    const appTemplate = Template.fromStack(appStack);
+
+    appTemplate.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '"WEBHOOK_PAYMENT_NOT_FOUND"',
+      MetricTransformations: Match.arrayWith([
+        Match.objectLike({
+          MetricName: "asaas-webhook-processor-webhook-payment-not-found-prod",
+          MetricNamespace: "Brimax/Payments"
+        })
+      ])
+    });
 
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
@@ -79,6 +90,8 @@ describe("ObservabilityStack", () => {
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription: "Alerts when webhook events cannot be matched to local payments.",
+      MetricName: "asaas-webhook-processor-webhook-payment-not-found-prod",
+      Namespace: "Brimax/Payments",
       Threshold: 1
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
@@ -126,7 +139,9 @@ describe("ObservabilityStack", () => {
     expect(dashboardBody).toContain("filter @message like /\\\\\\\\t(WARN|ERROR)\\\\\\\\t/");
     expect(dashboardBody).toContain("limit 50");
     expect(dashboardBody).toContain("Webhook Unmatched / Processor Errors");
-    expect(dashboardBody).toContain("asaas-webhook-processor-webhook-payment-not-found");
+    expect(dashboardBody).toContain(
+      "asaas-webhook-processor-webhook-payment-not-found-prod"
+    );
     expect(dashboardBody).toContain("Checkout Expiry Queue / DLQ");
     expect(dashboardBody).toContain("checkout-expiry-worker-sweep-failed");
     expect(dashboardBody).not.toContain("cloudwatch/home");
@@ -198,6 +213,11 @@ describe("ObservabilityStack", () => {
       webhookQueue: appStack.webhookQueue
     });
     const template = Template.fromStack(stack);
+
+    const dashboards = template.findResources("AWS::CloudWatch::Dashboard");
+    const dashboardBody = JSON.stringify(Object.values(dashboards)[0]?.Properties?.DashboardBody);
+    expect(dashboardBody).toContain("asaas-webhook-processor-webhook-payment-not-found-dev");
+    expect(template.toJSON()).not.toContain("WebhookPaymentNotFoundAlarm");
 
     template.resourceCountIs("AWS::CloudWatch::Alarm", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
