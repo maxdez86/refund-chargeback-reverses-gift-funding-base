@@ -1,5 +1,5 @@
-import type { Handler } from "aws-lambda";
 import { Tracer } from "@aws-lambda-powertools/tracer";
+import type { AsyncLambdaHandler } from "./lambda";
 
 type TraceValue = string | number | boolean | undefined;
 
@@ -73,15 +73,17 @@ export async function withTracedSubsegment<T>(
   }
 }
 
-export function wrapLambdaTracing<TEvent, TResult>(handler: Handler<TEvent, TResult>): Handler<TEvent, TResult> {
-  return async (event, context, callback) => {
+export function wrapLambdaTracing<TEvent, TResult>(
+  handler: AsyncLambdaHandler<TEvent, TResult>
+): AsyncLambdaHandler<TEvent, TResult> {
+  return async (event, context) => {
     const segment = xrayEnabled ? tracer.getSegment() : undefined;
 
     // X-Ray forbids annotating the Lambda facade/main segment, so without a
     // segment to open a subsegment on we run untraced (annotations would be
     // dropped with a warning otherwise).
     if (!segment) {
-      return (await handler(event, context, callback)) as TResult;
+      return handler(event, context);
     }
 
     // Open a handler subsegment and make it active for the whole invocation:
@@ -98,7 +100,7 @@ export function wrapLambdaTracing<TEvent, TResult>(handler: Handler<TEvent, TRes
     });
 
     try {
-      return (await handler(event, context, callback)) as TResult;
+      return await handler(event, context);
     } finally {
       subsegment.close();
       tracer.setSegment(segment);

@@ -1,6 +1,6 @@
-import type { Handler } from "aws-lambda";
 import * as Sentry from "@sentry/aws-serverless";
 import { AppError } from "./errors";
+import type { AsyncLambdaHandler } from "./lambda";
 import { wrapLambdaTracing } from "./xray";
 
 const stage = process.env.STAGE;
@@ -30,7 +30,9 @@ type HandledErrorOptions = {
   statusCode?: number;
 };
 
-export function wrapLambdaHandler<TEvent, TResult>(handler: Handler<TEvent, TResult>): Handler<TEvent, TResult> {
+export function wrapLambdaHandler<TEvent, TResult>(
+  handler: AsyncLambdaHandler<TEvent, TResult>
+): AsyncLambdaHandler<TEvent, TResult> {
   const tracedHandler = wrapLambdaTracing(handler);
 
   if (!sentryEnabled) {
@@ -41,7 +43,7 @@ export function wrapLambdaHandler<TEvent, TResult>(handler: Handler<TEvent, TRes
     captureAllSettledReasons: false,
     captureTimeoutWarning: false,
     flushTimeout: 2000
-  });
+  }) as AsyncLambdaHandler<TEvent, TResult>;
 }
 
 export function reportHandledError(error: unknown, options: HandledErrorOptions) {

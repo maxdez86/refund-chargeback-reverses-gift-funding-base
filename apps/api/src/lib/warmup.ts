@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import type { AsyncLambdaHandler } from "./lambda";
 
 /**
  * EventBridge keep-warm pings carry `{ warmer: true }` — we fully control the
@@ -17,10 +17,10 @@ export function isWarmupEvent(event: unknown): boolean {
  * a failed prime must never fail the ping.
  */
 export function withWarmup<TEvent, TResult>(
-  handler: Handler<TEvent, TResult>,
+  handler: AsyncLambdaHandler<TEvent, TResult>,
   onWarm?: () => Promise<unknown>
-): Handler<TEvent, TResult> {
-  return async (event, context, callback) => {
+): AsyncLambdaHandler<TEvent, TResult> {
+  return async (event, context) => {
     if (isWarmupEvent(event)) {
       try {
         await onWarm?.();
@@ -30,6 +30,6 @@ export function withWarmup<TEvent, TResult>(
       return { statusCode: 200, body: "warm" } as TResult;
     }
 
-    return (await handler(event, context, callback)) as TResult;
+    return handler(event, context);
   };
 }

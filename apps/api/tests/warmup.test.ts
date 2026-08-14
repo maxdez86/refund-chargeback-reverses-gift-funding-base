@@ -3,7 +3,6 @@ import type { Context } from "aws-lambda";
 import { isWarmupEvent, withWarmup } from "../src/lib/warmup";
 
 const context = {} as Context;
-const callback = () => undefined;
 
 describe("isWarmupEvent", () => {
   it("matches the EventBridge keep-warm payload", () => {
@@ -25,8 +24,9 @@ describe("withWarmup", () => {
     const onWarm = vi.fn().mockResolvedValue(undefined);
     const handler = withWarmup(inner, onWarm);
 
-    const response = await handler({ warmer: true }, context, callback);
+    const response = await handler({ warmer: true }, context);
 
+    expect(handler).toHaveLength(2);
     expect(inner).not.toHaveBeenCalled();
     expect(onWarm).toHaveBeenCalledTimes(1);
     expect(response).toEqual({ statusCode: 200, body: "warm" });
@@ -37,7 +37,7 @@ describe("withWarmup", () => {
     const onWarm = vi.fn().mockRejectedValue(new Error("prime failed"));
     const handler = withWarmup(inner, onWarm);
 
-    const response = await handler({ warmer: true }, context, callback);
+    const response = await handler({ warmer: true }, context);
 
     expect(inner).not.toHaveBeenCalled();
     expect(response).toEqual({ statusCode: 200, body: "warm" });
@@ -47,7 +47,7 @@ describe("withWarmup", () => {
     const inner = vi.fn();
     const handler = withWarmup(inner);
 
-    const response = await handler({ warmer: true }, context, callback);
+    const response = await handler({ warmer: true }, context);
 
     expect(inner).not.toHaveBeenCalled();
     expect(response).toEqual({ statusCode: 200, body: "warm" });
@@ -59,10 +59,11 @@ describe("withWarmup", () => {
     const handler = withWarmup(inner, onWarm);
     const event = { headers: {}, pathParameters: { code: "ABC" } };
 
-    const response = await handler(event, context, callback);
+    const response = await handler(event, context);
 
+    expect(handler).toHaveLength(2);
     expect(onWarm).not.toHaveBeenCalled();
-    expect(inner).toHaveBeenCalledWith(event, context, callback);
+    expect(inner).toHaveBeenCalledWith(event, context);
     expect(response).toEqual({ statusCode: 204 });
   });
 });
