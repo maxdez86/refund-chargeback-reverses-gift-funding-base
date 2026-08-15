@@ -17,13 +17,15 @@ if [[ ! -d "${MODULE_DIR}/.terraform" ]]; then
   exit 1
 fi
 
-export SENTRY_DSN="$(
+SENTRY_DSN="$(
   tofu -chdir="${MODULE_DIR}" output -raw backend_dsn_public
 )"
+export SENTRY_DSN
 
-export SENTRY_BACKEND_PROJECT_SLUG="$(
+SENTRY_BACKEND_PROJECT_SLUG="$(
   tofu -chdir="${MODULE_DIR}" output -raw backend_project_slug
 )"
+export SENTRY_BACKEND_PROJECT_SLUG
 
 printf 'export SENTRY_DSN=%q\n' "${SENTRY_DSN}"
 printf 'export SENTRY_BACKEND_PROJECT_SLUG=%q\n' "${SENTRY_BACKEND_PROJECT_SLUG}"

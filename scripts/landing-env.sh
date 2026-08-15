@@ -216,29 +216,32 @@ load_platform_backend_config() {
     aws_args+=(--profile "${AWS_PROFILE}")
   fi
 
-  export TOFU_STATE_BUCKET="$(
+  TOFU_STATE_BUCKET="$(
     aws cloudformation describe-stacks \
       --stack-name "${platform_stack_name}" \
       "${aws_args[@]}" \
       --query "Stacks[0].Outputs[?OutputKey=='TofuStateBucketName'].OutputValue | [0]" \
       --output text
   )"
+  export TOFU_STATE_BUCKET
 
-  export TOFU_LOCK_TABLE="$(
+  TOFU_LOCK_TABLE="$(
     aws cloudformation describe-stacks \
       --stack-name "${platform_stack_name}" \
       "${aws_args[@]}" \
       --query "Stacks[0].Outputs[?OutputKey=='TofuLockTableName'].OutputValue | [0]" \
       --output text
   )"
+  export TOFU_LOCK_TABLE
 
-  export TOFU_STATE_REGION="$(
+  TOFU_STATE_REGION="$(
     aws cloudformation describe-stacks \
       --stack-name "${platform_stack_name}" \
       "${aws_args[@]}" \
       --query "Stacks[0].Outputs[?OutputKey=='TofuBackendRegion'].OutputValue | [0]" \
       --output text
   )"
+  export TOFU_STATE_REGION
 
   require_env TOFU_STATE_BUCKET TOFU_LOCK_TABLE TOFU_STATE_REGION
 }

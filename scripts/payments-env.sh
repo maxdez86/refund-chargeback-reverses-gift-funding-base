@@ -88,16 +88,22 @@ app_secret_key() {
 }
 
 load_payments_stack_outputs() {
-  export PAYMENTS_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "ApiCustomDomainUrl")"
+  PAYMENTS_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "ApiCustomDomainUrl")"
+  export PAYMENTS_API_URL
   if PAYMENTS_EXECUTE_API_URL_RAW="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "RawExecuteApiUrl" 2>/dev/null)"; then
     export PAYMENTS_EXECUTE_API_URL="${PAYMENTS_EXECUTE_API_URL_RAW}"
   else
-    export PAYMENTS_EXECUTE_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "PublicHttpApiUrl")"
+    PAYMENTS_EXECUTE_API_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "PublicHttpApiUrl")"
+    export PAYMENTS_EXECUTE_API_URL
   fi
-  export PAYMENTS_WEBHOOK_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasWebhookUrl")"
-  export PAYMENTS_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
-  export PAYMENTS_WEBHOOK_QUEUE_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WebhookQueueUrl")"
-  export PAYMENTS_APP_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AppSecretArn")"
+  PAYMENTS_WEBHOOK_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AsaasWebhookUrl")"
+  export PAYMENTS_WEBHOOK_URL
+  PAYMENTS_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
+  export PAYMENTS_TABLE_NAME
+  PAYMENTS_WEBHOOK_QUEUE_URL="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WebhookQueueUrl")"
+  export PAYMENTS_WEBHOOK_QUEUE_URL
+  PAYMENTS_APP_SECRET_ARN="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "AppSecretArn")"
+  export PAYMENTS_APP_SECRET_ARN
 }
 
 load_payments_webhook_token() {
@@ -112,9 +118,10 @@ load_payments_webhook_token() {
     load_payments_stack_outputs
   fi
 
-  export ASAAS_WEBHOOK_TOKEN="$(
+  ASAAS_WEBHOOK_TOKEN="$(
     app_secret_key "$(secret_string "${PAYMENTS_APP_SECRET_ARN}")" "asaasWebhookToken"
   )"
+  export ASAAS_WEBHOOK_TOKEN
 
   require_env ASAAS_WEBHOOK_TOKEN
 }

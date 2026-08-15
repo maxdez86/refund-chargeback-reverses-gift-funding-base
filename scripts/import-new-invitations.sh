@@ -32,7 +32,8 @@ if [[ -z "${WEDDING_TABLE_NAME:-}" ]]; then
   if [[ -n "${PAYMENTS_TABLE_NAME:-}" ]]; then
     export WEDDING_TABLE_NAME="${PAYMENTS_TABLE_NAME}"
   else
-    export WEDDING_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
+    WEDDING_TABLE_NAME="$(cloudformation_output "${PAYMENTS_STACK_NAME}" "WeddingTableName")"
+    export WEDDING_TABLE_NAME
   fi
 fi
 
