@@ -27,6 +27,8 @@ const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
+const rawWhatsappAppSecret = process.env.WHATSAPP_APP_SECRET;
+const rawWhatsappVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
 const rawSentryDsn = process.env.SENTRY_DSN?.trim();
 const rawObservabilityAlertEmail = process.env.OBSERVABILITY_ALERT_EMAIL?.trim();
@@ -67,6 +69,14 @@ function requirePaymentDeploySecrets() {
     missing.push("ASAAS_WEBHOOK_TOKEN");
   }
 
+  if (!rawWhatsappAppSecret) {
+    missing.push("WHATSAPP_APP_SECRET");
+  }
+
+  if (!rawWhatsappVerifyToken) {
+    missing.push("WHATSAPP_VERIFY_TOKEN");
+  }
+
   if (stage === "prod" && !rawTurnstileSecretKey) {
     missing.push("TURNSTILE_SECRET_KEY");
   }
@@ -93,6 +103,8 @@ if (requiresPaymentSecretsForThisInvocation()) {
 
 const asaasApiKey = rawAsaasApiKey ?? "cdk-placeholder-asaas-api-key";
 const asaasWebhookToken = rawAsaasWebhookToken ?? "cdk-placeholder-asaas-webhook-token";
+const whatsappAppSecret = rawWhatsappAppSecret ?? "cdk-placeholder-whatsapp-app-secret";
+const whatsappVerifyToken = rawWhatsappVerifyToken ?? "cdk-placeholder-whatsapp-verify-token";
 const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 const sentryDsn = rawSentryDsn ?? "";
 
@@ -158,6 +170,8 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   sentryDsn,
   table: dataStack.table,
   turnstileSecretKey,
+  whatsappAppSecret,
+  whatsappVerifyToken,
   wwwDomain,
   xrayEnabled
 });
@@ -187,6 +201,7 @@ new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
   webhookDlq: appStack.webhookDlq,
   webhookProcessorFunction: appStack.webhookProcessorFunction,
   webhookQueue: appStack.webhookQueue,
+  whatsappWebhookFunction: appStack.whatsappWebhookFunction,
   table: dataStack.table
 });
 

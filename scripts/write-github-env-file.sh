@@ -39,6 +39,8 @@ write_full_stage() {
     printf 'ASAAS_API_BASE_URL=%q\n' "${ASAAS_API_BASE_URL:-}"
     printf 'ASAAS_API_KEY=%q\n' "${ASAAS_API_KEY:-}"
     printf 'ASAAS_WEBHOOK_TOKEN=%q\n' "${ASAAS_WEBHOOK_TOKEN:-}"
+    printf 'WHATSAPP_APP_SECRET=%q\n' "${WHATSAPP_APP_SECRET:-}"
+    printf 'WHATSAPP_VERIFY_TOKEN=%q\n' "${WHATSAPP_VERIFY_TOKEN:-}"
     printf 'TURNSTILE_SECRET_KEY=%q\n' "${TURNSTILE_SECRET_KEY:-}"
     printf 'TURNSTILE_SITE_KEY=%q\n' "${TURNSTILE_SITE_KEY:-}"
     printf 'PAYMENTS_TEST_GIFT_ID=%q\n' "${PAYMENTS_TEST_GIFT_ID:-}"

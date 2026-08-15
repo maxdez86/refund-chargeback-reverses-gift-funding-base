@@ -28,6 +28,8 @@ describe("ObservabilityStack", () => {
       stage: "prod",
       table: dataStack.table,
       turnstileSecretKey: "0x4AAAA-test-secret",
+      whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.brimax.life",
       xrayEnabled: true
     });
@@ -53,7 +55,8 @@ describe("ObservabilityStack", () => {
       table: dataStack.table,
       webhookDlq: appStack.webhookDlq,
       webhookProcessorFunction: appStack.webhookProcessorFunction,
-      webhookQueue: appStack.webhookQueue
+      webhookQueue: appStack.webhookQueue,
+      whatsappWebhookFunction: appStack.whatsappWebhookFunction
     });
     const template = Template.fromStack(stack);
     const appTemplate = Template.fromStack(appStack);
@@ -71,8 +74,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    // 16 fixed alarms + one Lambda-throttle alarm per alarmed function (11).
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 27);
+    // 17 fixed alarms + one Lambda-throttle alarm per alarmed function (12).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 29);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -87,6 +90,11 @@ describe("ObservabilityStack", () => {
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription: "Alerts when the webhook queue begins backing up.",
       Threshold: 5
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription:
+        "Alerts when a meaningful share of WhatsApp webhook requests fail verification or signature checks (likely a misconfigured or rotated secret).",
+      Threshold: 20
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription: "Alerts when webhook events cannot be matched to local payments.",
@@ -185,6 +193,8 @@ describe("ObservabilityStack", () => {
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "0x4AAAA-test-secret",
+      whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.dev.brimax.life",
       xrayEnabled: false
     });
@@ -210,7 +220,8 @@ describe("ObservabilityStack", () => {
       table: dataStack.table,
       webhookDlq: appStack.webhookDlq,
       webhookProcessorFunction: appStack.webhookProcessorFunction,
-      webhookQueue: appStack.webhookQueue
+      webhookQueue: appStack.webhookQueue,
+      whatsappWebhookFunction: appStack.whatsappWebhookFunction
     });
     const template = Template.fromStack(stack);
 

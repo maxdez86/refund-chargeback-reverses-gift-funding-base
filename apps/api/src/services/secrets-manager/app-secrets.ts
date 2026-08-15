@@ -5,7 +5,9 @@ export type AppSecretKey =
   | "asaasApiKey"
   | "asaasWebhookToken"
   | "turnstileSecretKey"
-  | "lookupProofSecret";
+  | "lookupProofSecret"
+  | "whatsappVerifyToken"
+  | "whatsappAppSecret";
 
 function parseBucket(raw: string): Partial<Record<AppSecretKey, string>> {
   if (!raw) {

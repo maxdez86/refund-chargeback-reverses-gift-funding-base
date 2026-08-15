@@ -28,6 +28,8 @@ export interface AppStackProps extends cdk.StackProps {
   asaasApiKey: string;
   asaasWebhookToken: string;
   contactEmail: string;
+  whatsappAppSecret: string;
+  whatsappVerifyToken: string;
   rootDomain: string;
   sentryDsn: string;
   stage: AppStage;
@@ -43,6 +45,7 @@ export class AppStack extends cdk.Stack {
   readonly createPaymentFunction: lambda.IFunction;
   readonly httpApi: apigwv2.HttpApi;
   readonly webhookProcessorFunction: lambda.IFunction;
+  readonly whatsappWebhookFunction: lambda.IFunction;
   readonly webhookDlq: sqs.IQueue;
   readonly webhookQueue: sqs.IQueue;
   readonly checkoutExpiryWorkerFunction: lambda.IFunction;
@@ -64,8 +67,9 @@ export class AppStack extends cdk.Stack {
     const siteBaseUrl = `https://${props.rootDomain}`;
     const allowedOrigins = [`https://${props.rootDomain}`, `https://${props.wwwDomain}`];
     // One JSON "bucket" secret per stage holds every credential the API needs.
-    // The 3 vendor values are injected via secretStringTemplate; lookupProofSecret
-    // is auto-generated so it is never present in `.env`. Secrets Manager has no
+    // Vendor and webhook values are injected via secretStringTemplate;
+    // lookupProofSecret is auto-generated so it is never present in `.env`.
+    // Secrets Manager has no
     // per-JSON-key IAM, so every reader granted below can read ALL four values
     // (e.g. the internet-facing AsaasWebhook Lambda also holds the Asaas API key).
     // This is a deliberate least-privilege reduction in exchange for one secret.
@@ -85,7 +89,9 @@ export class AppStack extends cdk.Stack {
         secretStringTemplate: JSON.stringify({
           asaasApiKey: props.asaasApiKey,
           asaasWebhookToken: props.asaasWebhookToken,
-          turnstileSecretKey: props.turnstileSecretKey
+          turnstileSecretKey: props.turnstileSecretKey,
+          whatsappAppSecret: props.whatsappAppSecret,
+          whatsappVerifyToken: props.whatsappVerifyToken
         })
       }
     });
@@ -375,6 +381,15 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
+    const whatsappWebhookFn = this.createTaggedNodejsFunction("WhatsAppWebhookFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-webhook/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    this.whatsappWebhookFunction = whatsappWebhookFn;
     const webhookProcessorFn = this.createTaggedNodejsFunction("AsaasWebhookProcessorFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/asaas-webhook-processor/handler.ts"),
       environment: commonEnvironment,
@@ -429,6 +444,7 @@ export class AppStack extends cdk.Stack {
       invitationGetFn,
       rsvpFn,
       asaasWebhookFn,
+      whatsappWebhookFn,
       webhookProcessorFn,
       checkoutExpiryWorkerFn,
       guestMessageNotifyFn
@@ -523,11 +539,12 @@ export class AppStack extends cdk.Stack {
     guestMessageNotificationQueue.grantSendMessages(createGuestMessagesFn);
     guestMessageNotificationQueue.grantConsumeMessages(guestMessageNotifyFn);
     // grantRead is whole-secret only — each reader below can read every key in
-    // the bucket. Union of the former per-secret readers (6 functions).
+    // the bucket. This is deliberate because Secrets Manager has no per-key IAM.
     appSecret.grantRead(createPaymentFn);
     appSecret.grantRead(discardPaymentFn);
     appSecret.grantRead(webhookProcessorFn);
     appSecret.grantRead(asaasWebhookFn);
+    appSecret.grantRead(whatsappWebhookFn);
     appSecret.grantRead(invitationGetFn);
     appSecret.grantRead(rsvpFn);
     appSecret.grantRead(createGuestMessagesFn);
@@ -608,6 +625,14 @@ export class AppStack extends cdk.Stack {
         asaasWebhookFn
       )
     });
+    this.httpApi.addRoutes({
+      path: "/webhooks/whatsapp",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration(
+        "WhatsAppWebhookIntegration",
+        whatsappWebhookFn
+      )
+    });
     const invitationRoutes = this.httpApi.addRoutes({
       path: "/invitation/{code}",
       methods: [apigwv2.HttpMethod.GET],
@@ -650,6 +675,16 @@ export class AppStack extends cdk.Stack {
       "asaas-webhook-processor",
       props.stage
     );
+    new logs.MetricFilter(this, "WhatsAppWebhookAuthFailedMetric", {
+      logGroup: this.getFunctionLogGroup("WhatsAppWebhookFunction"),
+      metricNamespace: "Brimax/Payments",
+      metricName: stageMetricName("whatsapp-webhook-auth-failed", props.stage),
+      filterPattern: logs.FilterPattern.anyTerm(
+        "WHATSAPP_WEBHOOK_AUTH_FAILED",
+        "WHATSAPP_WEBHOOK_VERIFY_FAILED"
+      ),
+      metricValue: "1"
+    });
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
       description: "Raw API Gateway execute-api endpoint for fallback diagnostics only.",
@@ -663,6 +698,10 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "AsaasWebhookUrl", {
       value: `https://${props.apiDomain}/webhooks/asaas`
+    });
+
+    new cdk.CfnOutput(this, "WhatsAppWebhookUrl", {
+      value: `https://${props.apiDomain}/webhooks/whatsapp`
     });
 
     new cdk.CfnOutput(this, "ApiCustomDomainName", {

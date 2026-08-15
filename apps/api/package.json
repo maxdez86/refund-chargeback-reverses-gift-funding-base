@@ -16,7 +16,8 @@
     "./functions/payments-get/handler": "./src/functions/payments-get/handler.ts",
     "./functions/payments-message/handler": "./src/functions/payments-message/handler.ts",
     "./functions/rsvp/handler": "./src/functions/rsvp/handler.ts",
-    "./functions/admin-guest-message-delete/handler": "./src/functions/admin-guest-message-delete/handler.ts"
+    "./functions/admin-guest-message-delete/handler": "./src/functions/admin-guest-message-delete/handler.ts",
+    "./functions/whatsapp-webhook/handler": "./src/functions/whatsapp-webhook/handler.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

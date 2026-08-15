@@ -28,6 +28,8 @@ describe("AppStack", () => {
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "1x0000000000000000000000000000000AA",
+      whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.dev.brimax.life",
       xrayEnabled: true
     });
@@ -71,6 +73,12 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /webhooks/asaas"
     });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /webhooks/whatsapp"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /webhooks/whatsapp"
+    });
     template.hasResourceProperties("AWS::ApiGatewayV2::DomainName", {
       DomainName: "api.dev.brimax.life",
       Tags: {
@@ -95,9 +103,14 @@ describe("AppStack", () => {
         SecretStringTemplate: Match.serializedJson({
           asaasApiKey: "asaas-api-key-test",
           asaasWebhookToken: "asaas-webhook-token-test",
-          turnstileSecretKey: "1x0000000000000000000000000000000AA"
+          turnstileSecretKey: "1x0000000000000000000000000000000AA",
+          whatsappAppSecret: "whatsapp-app-secret-test",
+          whatsappVerifyToken: "whatsapp-verify-token-test"
         })
       })
+    });
+    template.hasOutput("WhatsAppWebhookUrl", {
+      Value: "https://api.dev.brimax.life/webhooks/whatsapp"
     });
     // Non-prod secret is disposable for clean pre-launch teardown.
     template.hasResource("AWS::SecretsManager::Secret", {
@@ -222,6 +235,19 @@ describe("AppStack", () => {
       MetricTransformations: [
         {
           MetricName: "checkout-expiry-trigger-enqueue-failed",
+          MetricNamespace: "Brimax/Payments",
+          MetricValue: "1"
+        }
+      ]
+    });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '?"WHATSAPP_WEBHOOK_AUTH_FAILED" ?"WHATSAPP_WEBHOOK_VERIFY_FAILED"',
+      LogGroupName: {
+        Ref: Match.stringLikeRegexp("^WhatsAppWebhookFunctionLogGroup")
+      },
+      MetricTransformations: [
+        {
+          MetricName: "whatsapp-webhook-auth-failed-dev",
           MetricNamespace: "Brimax/Payments",
           MetricValue: "1"
         }

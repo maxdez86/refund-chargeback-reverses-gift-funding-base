@@ -29,6 +29,7 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   webhookDlq: sqs.IQueue;
   webhookProcessorFunction: lambda.IFunction;
   webhookQueue: sqs.IQueue;
+  whatsappWebhookFunction: lambda.IFunction;
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -130,6 +131,21 @@ export class ObservabilityStack extends cdk.Stack {
         statistic: "Sum"
       })
     );
+    const whatsappWebhookAuthErrorsAlarm = createSparseTrafficRateAlarm(
+      "WhatsAppWebhookAuthErrorsAlarm",
+      "Alerts when a meaningful share of WhatsApp webhook requests fail verification or signature checks (likely a misconfigured or rotated secret).",
+      new cloudwatch.Metric({
+        metricName: `whatsapp-webhook-auth-failed-${props.stage}`,
+        namespace: "Brimax/Payments",
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      }),
+      props.whatsappWebhookFunction.metricInvocations({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
+
     const webhookPaymentNotFoundAlarm = new cloudwatch.Alarm(this, "WebhookPaymentNotFoundAlarm", {
       alarmDescription: "Alerts when webhook events cannot be matched to local payments.",
       metric: new cloudwatch.Metric({
@@ -312,6 +328,7 @@ export class ObservabilityStack extends cdk.Stack {
         guestMessageNotificationDlqAlarm,
         createPaymentErrorsAlarm,
         webhookProcessorErrorsAlarm,
+        whatsappWebhookAuthErrorsAlarm,
         webhookPaymentNotFoundAlarm,
         checkoutExpirySweepFailureAlarm,
         checkoutExpiryDlqAlarm,

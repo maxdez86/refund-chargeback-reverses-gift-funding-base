@@ -11,7 +11,7 @@ export PAYMENTS_DATA_STACK_NAME="${PAYMENTS_DATA_STACK_NAME:-${STAGE_PREFIX}Brim
 export PAYMENTS_STACK_NAME="${PAYMENTS_STACK_NAME:-${STAGE_PREFIX}BrimaxAppStack}"
 export PAYMENTS_OBSERVABILITY_STACK_NAME="${PAYMENTS_OBSERVABILITY_STACK_NAME:-${STAGE_PREFIX}BrimaxObservabilityStack}"
 
-require_env ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN
+require_env ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN WHATSAPP_APP_SECRET WHATSAPP_VERIFY_TOKEN
 require_env SENTRY_DSN
 
 # Turnstile secret is only enforced for prod. Dev/test deploys fall back to
@@ -61,7 +61,7 @@ printf 'Deploying backend stacks in %s (%s)\n' "${AWS_REGION}" "${STAGE}"
 printf '  - %s\n' "${PAYMENTS_DATA_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_STACK_NAME}"
 printf '  - %s\n' "${PAYMENTS_OBSERVABILITY_STACK_NAME}"
-printf '  - using CDK-managed Secrets Manager values from ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, TURNSTILE_SECRET_KEY\n'
+printf '  - using CDK-managed Secrets Manager values from ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN, TURNSTILE_SECRET_KEY\n'
 printf '  - using Sentry project %s from infra/opentofu/sentry\n' "${SENTRY_BACKEND_PROJECT_SLUG}"
 printf '  - using CDK output directory %s\n' "${CDK_OUTPUT_DIR}"
 
