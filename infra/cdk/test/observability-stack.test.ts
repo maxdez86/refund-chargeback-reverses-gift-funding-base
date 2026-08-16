@@ -28,7 +28,9 @@ describe("ObservabilityStack", () => {
       stage: "prod",
       table: dataStack.table,
       turnstileSecretKey: "0x4AAAA-test-secret",
+      whatsappAccessToken: "whatsapp-access-token-test",
       whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappPhoneNumberId: "123456789",
       whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.brimax.life",
       xrayEnabled: true
@@ -193,7 +195,9 @@ describe("ObservabilityStack", () => {
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "0x4AAAA-test-secret",
+      whatsappAccessToken: "whatsapp-access-token-test",
       whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappPhoneNumberId: "123456789",
       whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.dev.brimax.life",
       xrayEnabled: false

@@ -27,7 +27,9 @@ const contactEmail = process.env.CONTACT_EMAIL ?? "casamento@brimax.life";
 const siteAssetPath = path.resolve(__dirname, "../../../apps/web/dist");
 const rawAsaasApiKey = process.env.ASAAS_API_KEY;
 const rawAsaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
+const rawWhatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 const rawWhatsappAppSecret = process.env.WHATSAPP_APP_SECRET;
+const rawWhatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const rawWhatsappVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
 const rawSentryDsn = process.env.SENTRY_DSN?.trim();
@@ -73,6 +75,14 @@ function requirePaymentDeploySecrets() {
     missing.push("WHATSAPP_APP_SECRET");
   }
 
+  if (!rawWhatsappAccessToken) {
+    missing.push("WHATSAPP_ACCESS_TOKEN");
+  }
+
+  if (!rawWhatsappPhoneNumberId) {
+    missing.push("WHATSAPP_PHONE_NUMBER_ID");
+  }
+
   if (!rawWhatsappVerifyToken) {
     missing.push("WHATSAPP_VERIFY_TOKEN");
   }
@@ -92,7 +102,7 @@ function requirePaymentDeploySecrets() {
   if (missing.length > 0) {
     throw new Error(
       `Missing required deployment env vars for stage "${stage}": ${missing.join(", ")}. ` +
-        "CDK manages the Asaas + Turnstile Secrets Manager entries from these raw values, and the backend Sentry DSN must come from the OpenTofu Sentry module."
+        "CDK manages the vendor and Turnstile Secrets Manager entries from these raw values, and the backend Sentry DSN must come from the OpenTofu Sentry module."
     );
   }
 }
@@ -103,7 +113,9 @@ if (requiresPaymentSecretsForThisInvocation()) {
 
 const asaasApiKey = rawAsaasApiKey ?? "cdk-placeholder-asaas-api-key";
 const asaasWebhookToken = rawAsaasWebhookToken ?? "cdk-placeholder-asaas-webhook-token";
+const whatsappAccessToken = rawWhatsappAccessToken ?? "cdk-placeholder-whatsapp-access-token";
 const whatsappAppSecret = rawWhatsappAppSecret ?? "cdk-placeholder-whatsapp-app-secret";
+const whatsappPhoneNumberId = rawWhatsappPhoneNumberId ?? "cdk-placeholder-whatsapp-phone-number-id";
 const whatsappVerifyToken = rawWhatsappVerifyToken ?? "cdk-placeholder-whatsapp-verify-token";
 const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 const sentryDsn = rawSentryDsn ?? "";
@@ -170,7 +182,9 @@ const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
   sentryDsn,
   table: dataStack.table,
   turnstileSecretKey,
+  whatsappAccessToken,
   whatsappAppSecret,
+  whatsappPhoneNumberId,
   whatsappVerifyToken,
   wwwDomain,
   xrayEnabled

@@ -6,7 +6,10 @@ import {
   invitationKeys,
   paymentKeys,
   reservationOpenIndex,
-  webhookKeys
+  webhookKeys,
+  whatsappTemplateActivationKeys,
+  whatsappTemplateActiveKeys,
+  whatsappTemplateVersionKeys
 } from "../src/services/dynamodb/key-builder";
 
 describe("DynamoDB key builders", () => {
@@ -52,6 +55,27 @@ describe("DynamoDB key builders", () => {
     expect(reservationOpenIndex("2026-06-12T20:00:00.000Z")).toEqual({
       GSI1PK: "RESERVATION#OPEN",
       GSI1SK: "2026-06-12T20:00:00.000Z"
+    });
+  });
+
+  it("creates versioned WhatsApp template registry keys", () => {
+    expect(whatsappTemplateVersionKeys("wedding_invitation", 12)).toEqual({
+      PK: "WHATSAPP_TEMPLATE#wedding_invitation",
+      SK: "VERSION#000012"
+    });
+    expect(whatsappTemplateActiveKeys("wedding_invitation")).toEqual({
+      PK: "WHATSAPP_TEMPLATE#wedding_invitation",
+      SK: "ACTIVE"
+    });
+    expect(
+      whatsappTemplateActivationKeys(
+        "wedding_invitation",
+        "2026-08-15T12:00:00.000Z",
+        "activation-1"
+      )
+    ).toEqual({
+      PK: "WHATSAPP_TEMPLATE#wedding_invitation",
+      SK: "ACTIVATION#2026-08-15T12:00:00.000Z#activation-1"
     });
   });
 });

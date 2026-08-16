@@ -28,7 +28,9 @@ describe("AppStack", () => {
       stage: "dev",
       table: dataStack.table,
       turnstileSecretKey: "1x0000000000000000000000000000000AA",
+      whatsappAccessToken: "whatsapp-access-token-test",
       whatsappAppSecret: "whatsapp-app-secret-test",
+      whatsappPhoneNumberId: "123456789",
       whatsappVerifyToken: "whatsapp-verify-token-test",
       wwwDomain: "www.dev.brimax.life",
       xrayEnabled: true
@@ -104,6 +106,7 @@ describe("AppStack", () => {
           asaasApiKey: "asaas-api-key-test",
           asaasWebhookToken: "asaas-webhook-token-test",
           turnstileSecretKey: "1x0000000000000000000000000000000AA",
+          whatsappAccessToken: "whatsapp-access-token-test",
           whatsappAppSecret: "whatsapp-app-secret-test",
           whatsappVerifyToken: "whatsapp-verify-token-test"
         })
@@ -328,7 +331,8 @@ describe("AppStack", () => {
           SENTRY_DSN: "https://public@example.ingest.sentry.io/123456",
           SITE_BASE_URL: "https://dev.brimax.life",
           XRAY_ENABLED: "true",
-          RSVP_NOTIFICATION_TO: "casamento-dev@brimax.life"
+          RSVP_NOTIFICATION_TO: "casamento-dev@brimax.life",
+          WHATSAPP_PHONE_NUMBER_ID: "123456789"
         })
       }
     });

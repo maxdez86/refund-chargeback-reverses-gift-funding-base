@@ -126,6 +126,27 @@ export function conversationKeys(phoneNumber: string) {
   };
 }
 
+export function whatsappTemplateVersionKeys(purpose: string, version: number) {
+  return {
+    PK: `WHATSAPP_TEMPLATE#${purpose}`,
+    SK: `VERSION#${String(version).padStart(6, "0")}`
+  };
+}
+
+export function whatsappTemplateActiveKeys(purpose: string) {
+  return {
+    PK: `WHATSAPP_TEMPLATE#${purpose}`,
+    SK: "ACTIVE"
+  };
+}
+
+export function whatsappTemplateActivationKeys(purpose: string, activatedAt: string, activationId: string) {
+  return {
+    PK: `WHATSAPP_TEMPLATE#${purpose}`,
+    SK: `ACTIVATION#${activatedAt}#${activationId}`
+  };
+}
+
 export function phoneLookupIndex(phoneNumber: string) {
   return {
     GSI1PK: `PHONE#${phoneNumber}`,

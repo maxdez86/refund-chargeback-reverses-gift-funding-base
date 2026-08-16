@@ -21,7 +21,8 @@ describe("app secrets accessor", () => {
         asaasApiKey: "api-key",
         asaasWebhookToken: "webhook-token",
         turnstileSecretKey: "turnstile-key",
-        lookupProofSecret: "lookup-secret"
+        lookupProofSecret: "lookup-secret",
+        whatsappAccessToken: "whatsapp-access-token"
       })
     });
 
@@ -29,6 +30,7 @@ describe("app secrets accessor", () => {
 
     await expect(getAppSecret("asaasApiKey")).resolves.toBe("api-key");
     await expect(getAppSecret("turnstileSecretKey")).resolves.toBe("turnstile-key");
+    await expect(getAppSecret("whatsappAccessToken")).resolves.toBe("whatsapp-access-token");
   });
 
   it("preserves the cacheHit flag from the underlying cache", async () => {

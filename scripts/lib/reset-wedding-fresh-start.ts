@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
@@ -20,6 +21,7 @@ type Inventory = {
   pkPrefixCounts: Map<string, number>;
   entityTypeCounts: Map<string, number>;
   deletableItems: Required<Pick<ItemRecord, "PK" | "SK">>[];
+  retainedItems: Required<Pick<ItemRecord, "PK" | "SK">>[];
   unexpectedItems: Required<Pick<ItemRecord, "PK" | "SK">>[];
 };
 
@@ -34,6 +36,11 @@ const ALLOWED_DELETION_PREFIXES = [
   "IDEMPOTENCY#",
   "WEBHOOK#",
 ] as const;
+
+// Operator configuration, not guest data. The fresh start wipes and re-seeds the
+// wedding rows; approved WhatsApp template versions and their activation history
+// must survive it, or the next send fails with no active template.
+const RETAINED_PREFIXES = ["WHATSAPP_TEMPLATE#"] as const;
 
 const REQUIRED_EMPTY_PREFIXES_AFTER_RESET = [
   "PAYMENT#",
@@ -73,7 +80,17 @@ function requiredEnv(name: string) {
   return value;
 }
 
-function classifyPk(pk: string): string {
+function isRetainedPrefix(prefix: string) {
+  return (RETAINED_PREFIXES as readonly string[]).includes(prefix);
+}
+
+export function classifyPk(pk: string): string {
+  for (const prefix of RETAINED_PREFIXES) {
+    if (pk.startsWith(prefix)) {
+      return prefix;
+    }
+  }
+
   for (const prefix of ALLOWED_DELETION_PREFIXES) {
     if (prefix === "GUEST_MESSAGES") {
       if (pk === prefix) {
@@ -106,11 +123,11 @@ async function scanAllItems(tableName: string) {
   return items;
 }
 
-async function buildInventory(tableName: string): Promise<Inventory> {
-  const items = await scanAllItems(tableName);
+export function partitionItems(items: ItemRecord[]): Inventory {
   const pkPrefixCounts = new Map<string, number>();
   const entityTypeCounts = new Map<string, number>();
   const deletableItems: Required<Pick<ItemRecord, "PK" | "SK">>[] = [];
+  const retainedItems: Required<Pick<ItemRecord, "PK" | "SK">>[] = [];
   const unexpectedItems: Required<Pick<ItemRecord, "PK" | "SK">>[] = [];
 
   for (const item of items) {
@@ -129,6 +146,11 @@ async function buildInventory(tableName: string): Promise<Inventory> {
       continue;
     }
 
+    if (isRetainedPrefix(prefix)) {
+      retainedItems.push({ PK: item.PK, SK: item.SK });
+      continue;
+    }
+
     deletableItems.push({ PK: item.PK, SK: item.SK });
   }
 
@@ -136,8 +158,13 @@ async function buildInventory(tableName: string): Promise<Inventory> {
     pkPrefixCounts,
     entityTypeCounts,
     deletableItems,
+    retainedItems,
     unexpectedItems,
   };
+}
+
+async function buildInventory(tableName: string): Promise<Inventory> {
+  return partitionItems(await scanAllItems(tableName));
 }
 
 function sortedEntries(map: Map<string, number>) {
@@ -154,6 +181,8 @@ function printInventory(inventory: Inventory) {
   for (const [key, count] of sortedEntries(inventory.entityTypeCounts)) {
     console.log(`  ${key}: ${count}`);
   }
+
+  console.log(`Retained rows (never deleted): ${inventory.retainedItems.length}`);
 }
 
 function assertNoUnexpectedFamilies(inventory: Inventory) {
@@ -253,7 +282,9 @@ async function main() {
   console.log(`Deleted ${inventory.deletableItems.length} rows from ${tableName}.`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

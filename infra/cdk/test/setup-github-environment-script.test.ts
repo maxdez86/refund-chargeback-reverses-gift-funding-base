@@ -44,7 +44,9 @@ function createHarness(stage: "dev" | "prod") {
       "ASAAS_API_BASE_URL=https://api-sandbox.asaas.com/v3",
       "ASAAS_API_KEY=test-asaas-key",
       "ASAAS_WEBHOOK_TOKEN=test-asaas-webhook-token",
+      "WHATSAPP_ACCESS_TOKEN=test-whatsapp-access-token",
       "WHATSAPP_APP_SECRET=test-whatsapp-app-secret",
+      "WHATSAPP_PHONE_NUMBER_ID=123456789",
       "WHATSAPP_VERIFY_TOKEN=test-whatsapp-verify-token",
       "TURNSTILE_SECRET_KEY=test-turnstile-secret",
       "TURNSTILE_SITE_KEY=test-turnstile-site",
@@ -126,7 +128,9 @@ describe("setup-github-environment.sh", () => {
         expect.stringContaining("api --method PUT --header Accept: application/vnd.github+json repos/maxdez86/brimax-life/environments/dev"),
         expect.stringContaining(
           "secret set AWS_ROLE_TO_ASSUME_DEV --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/stage-deploy-role"
-        )
+        ),
+        expect.stringContaining("variable set WHATSAPP_PHONE_NUMBER_ID --env dev"),
+        expect.stringContaining("secret set WHATSAPP_ACCESS_TOKEN --env dev")
       ])
     );
   });

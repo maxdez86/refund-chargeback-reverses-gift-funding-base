@@ -18,7 +18,8 @@ export default defineConfig({
         "src/services/dynamodb/key-builder.ts",
         "src/services/dynamodb/mappers.ts",
         "src/services/email/**/*.ts",
-        "src/services/secrets-manager/app-secrets.ts"
+        "src/services/secrets-manager/app-secrets.ts",
+        "src/services/whatsapp/**/*.ts"
       ],
       exclude: [
         "tests/**",

@@ -28,7 +28,9 @@ export interface AppStackProps extends cdk.StackProps {
   asaasApiKey: string;
   asaasWebhookToken: string;
   contactEmail: string;
+  whatsappAccessToken: string;
   whatsappAppSecret: string;
+  whatsappPhoneNumberId: string;
   whatsappVerifyToken: string;
   rootDomain: string;
   sentryDsn: string;
@@ -70,7 +72,7 @@ export class AppStack extends cdk.Stack {
     // Vendor and webhook values are injected via secretStringTemplate;
     // lookupProofSecret is auto-generated so it is never present in `.env`.
     // Secrets Manager has no
-    // per-JSON-key IAM, so every reader granted below can read ALL four values
+    // per-JSON-key IAM, so every reader granted below can read every value
     // (e.g. the internet-facing AsaasWebhook Lambda also holds the Asaas API key).
     // This is a deliberate least-privilege reduction in exchange for one secret.
     // Footgun: changing a vendor credential changes the template, which regenerates
@@ -90,6 +92,7 @@ export class AppStack extends cdk.Stack {
           asaasApiKey: props.asaasApiKey,
           asaasWebhookToken: props.asaasWebhookToken,
           turnstileSecretKey: props.turnstileSecretKey,
+          whatsappAccessToken: props.whatsappAccessToken,
           whatsappAppSecret: props.whatsappAppSecret,
           whatsappVerifyToken: props.whatsappVerifyToken
         })
@@ -301,7 +304,8 @@ export class AppStack extends cdk.Stack {
       EXPIRY_QUEUE_URL: expiryQueue.queueUrl,
       GUEST_MESSAGE_NOTIFICATION_QUEUE_URL: guestMessageNotificationQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
-      WEDDING_TABLE_NAME: props.table.tableName
+      WEDDING_TABLE_NAME: props.table.tableName,
+      WHATSAPP_PHONE_NUMBER_ID: props.whatsappPhoneNumberId
     };
 
     const createPaymentFn = this.createTaggedNodejsFunction("CreatePaymentFunction", {

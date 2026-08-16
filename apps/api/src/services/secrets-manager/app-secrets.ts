@@ -7,7 +7,8 @@ export type AppSecretKey =
   | "turnstileSecretKey"
   | "lookupProofSecret"
   | "whatsappVerifyToken"
-  | "whatsappAppSecret";
+  | "whatsappAppSecret"
+  | "whatsappAccessToken";
 
 function parseBucket(raw: string): Partial<Record<AppSecretKey, string>> {
   if (!raw) {
