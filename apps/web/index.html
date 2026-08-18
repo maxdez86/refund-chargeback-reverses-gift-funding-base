@@ -19,16 +19,18 @@
       // settled. The captured value is restored and scrolled to by
       // useInitialHashScroll in src/App.tsx once the page is stable.
       (function () {
-        if (window.history && 'scrollRestoration' in window.history) {
-          window.history.scrollRestoration = 'manual';
-        }
-        if (window.location.hash) {
-          window.__brimaxInitialHash = window.location.hash;
-          window.history.replaceState(
-            null,
-            '',
-            window.location.pathname + window.location.search
-          );
+        if (window.location.pathname === '/') {
+          if (window.history && 'scrollRestoration' in window.history) {
+            window.history.scrollRestoration = 'manual';
+          }
+          if (window.location.hash) {
+            window.__brimaxInitialHash = window.location.hash;
+            window.history.replaceState(
+              null,
+              '',
+              window.location.pathname + window.location.search
+            );
+          }
         }
       })();
     </script>

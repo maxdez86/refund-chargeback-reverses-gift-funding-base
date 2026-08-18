@@ -56,10 +56,8 @@ function handler(event) {
         })
       : undefined;
 
-    const redirectFunction =
-      props.rootDomain && props.wwwDomain
-        ? new cloudfront.Function(this, "CanonicalHostRedirect", {
-            code: cloudfront.FunctionCode.fromInline(`
+    const redirectFunction = new cloudfront.Function(this, "CanonicalHostRedirect", {
+      code: cloudfront.FunctionCode.fromInline(`
 function serializeQuerystring(querystring) {
   var parts = [];
   for (var key in querystring) {
@@ -83,7 +81,7 @@ function handler(event) {
   var request = event.request;
   var host = request.headers.host && request.headers.host.value;
 
-  if (host === "${props.wwwDomain}") {
+  ${props.rootDomain && props.wwwDomain ? `if (host === "${props.wwwDomain}") {
     return {
       statusCode: 301,
       statusDescription: "Moved Permanently",
@@ -107,12 +105,19 @@ function handler(event) {
       body: "Forbidden"
     };
   }
+` : ""}
+
+  // S3 stores the compiled SPA as index.html. Rewrite client-side routes
+  // before the origin lookup, while leaving extension-bearing asset paths
+  // unchanged so missing assets still fail normally.
+  if (request.uri !== "/" && request.uri.indexOf(".") === -1) {
+    request.uri = "/index.html";
+  }
 
   return request;
 }
 `)
-          })
-        : undefined;
+    });
 
     const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
       this,
@@ -161,14 +166,12 @@ function handler(event) {
         : undefined,
       certificate: props.certificate,
       defaultBehavior: {
-        functionAssociations: redirectFunction
-          ? [
-              {
-                eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
-                function: redirectFunction
-              }
-            ]
-          : undefined,
+        functionAssociations: [
+          {
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+            function: redirectFunction
+          }
+        ],
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         responseHeadersPolicy,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS

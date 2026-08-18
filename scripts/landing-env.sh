@@ -76,6 +76,10 @@ load_local_env_file() {
     VITE_CONTACT_EMAIL
     VITE_API_URL
     VITE_TURNSTILE_SITE_KEY
+    VITE_APP_STAGE
+    VITE_GOOGLE_WEB_CLIENT_ID
+    VITE_ADMIN_GOOGLE_HOSTED_DOMAIN
+    VITE_ADMIN_SESSION_MODE
   )
   local key
   local output
@@ -167,6 +171,15 @@ validate_stage_configuration() {
 export_public_web_env() {
   export VITE_CONTACT_EMAIL="${VITE_CONTACT_EMAIL:-${CONTACT_EMAIL}}"
   export VITE_API_URL="${VITE_API_URL:-https://${API_DOMAIN}}"
+  export VITE_APP_STAGE="${STAGE}"
+  export VITE_GOOGLE_WEB_CLIENT_ID="${VITE_GOOGLE_WEB_CLIENT_ID:-}"
+  export VITE_ADMIN_GOOGLE_HOSTED_DOMAIN="${VITE_ADMIN_GOOGLE_HOSTED_DOMAIN:-brimax.life}"
+
+  if [[ "${STAGE}" == "dev" ]]; then
+    export VITE_ADMIN_SESSION_MODE="${VITE_ADMIN_SESSION_MODE:-fixture}"
+  else
+    export VITE_ADMIN_SESSION_MODE="live"
+  fi
 
   if [[ "${STAGE}" == "dev" ]]; then
     export VITE_TURNSTILE_SITE_KEY="${VITE_TURNSTILE_SITE_KEY:-${TURNSTILE_SITE_KEY:-1x00000000000000000000AA}}"

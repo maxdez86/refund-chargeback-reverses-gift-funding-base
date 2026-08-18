@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import Dashboard from "@/pages/Dashboard";
 
 import { Navigation } from "@/components/Navigation";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
@@ -101,6 +102,7 @@ function Home() {
         <FAQ />
       </main>
       <Footer />
+      <PaymentConfirmationDialog />
     </div>
   );
 }
@@ -109,6 +111,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -121,7 +124,6 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
-        <PaymentConfirmationDialog />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

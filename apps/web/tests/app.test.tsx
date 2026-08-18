@@ -123,6 +123,14 @@ describe("official web app", () => {
     ).toBeInTheDocument();
   });
 
+  it("routes /dashboard to the administrative frontend without rendering the landing page", () => {
+    window.history.replaceState({}, "", "/dashboard");
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Configuração pendente" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Brida/i })).not.toBeInTheDocument();
+  });
+
   it("opens the gift dialog flow", async () => {
     render(<App />);
 

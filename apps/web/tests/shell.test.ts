@@ -10,4 +10,11 @@ describe("index.html", () => {
     expect(html).toContain("https://brimax.life/opengraph.jpg");
     expect(html).toContain("fonts.googleapis.com");
   });
+
+  it("limits the landing-page hash interception to the root route", () => {
+    const html = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
+
+    expect(html).toContain("window.location.pathname === '/'");
+    expect(html).toContain("window.__brimaxInitialHash = window.location.hash");
+  });
 });

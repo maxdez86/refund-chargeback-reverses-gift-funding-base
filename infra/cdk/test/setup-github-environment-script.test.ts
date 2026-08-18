@@ -50,6 +50,7 @@ function createHarness(stage: "dev" | "prod") {
       "WHATSAPP_VERIFY_TOKEN=test-whatsapp-verify-token",
       "TURNSTILE_SECRET_KEY=test-turnstile-secret",
       "TURNSTILE_SITE_KEY=test-turnstile-site",
+      "VITE_GOOGLE_WEB_CLIENT_ID=test-google-web-client-id",
       "PAYMENTS_TEST_GIFT_ID=g-test",
       "PAYMENTS_TEST_GIFT_QUANTITY=1",
       'PAYMENTS_TEST_PAYER_NAME="Test User"',

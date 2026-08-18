@@ -26,14 +26,21 @@ export default mergeConfig(
           "src/App.tsx",
           "src/components/PaymentConfirmationDialog.tsx",
           "src/components/ResponsivePhoto.tsx",
+          "src/components/dashboard/**/*.tsx",
           "src/components/sections/**/*.tsx",
+          "src/hooks/use-admin-session.ts",
+          "src/lib/admin-api.ts",
+          "src/lib/admin-auth.ts",
+          "src/lib/admin-fixtures.ts",
           "src/lib/gifts-api.ts",
+          "src/lib/google-identity.ts",
           "src/lib/media-policy.ts",
           "src/lib/media.ts",
           "src/lib/payment-flow.ts",
           "src/lib/presentes-return.ts",
           "src/lib/rsvp-api.ts",
-          "src/lib/scroll-to-anchor.ts"
+          "src/lib/scroll-to-anchor.ts",
+          "src/pages/Dashboard.tsx"
         ],
         exclude: [
           "tests/**",

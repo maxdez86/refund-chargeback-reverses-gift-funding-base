@@ -15,3 +15,21 @@ export const AdminGuestExportRowSchema = z.object({
 });
 
 export type AdminGuestExportRow = z.infer<typeof AdminGuestExportRowSchema>;
+
+export const AdminSessionResponseSchema = z
+  .object({
+    authenticated: z.literal(true),
+    stage: z.enum(["dev", "prod"]),
+    admin: z
+      .object({
+        subject: z.string().min(1),
+        email: z.string().email(),
+        hostedDomain: z.literal("brimax.life"),
+        name: z.string().min(1).optional(),
+        pictureUrl: z.string().url().optional()
+      })
+      .strict()
+  })
+  .strict();
+
+export type AdminSessionResponse = z.infer<typeof AdminSessionResponseSchema>;

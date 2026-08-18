@@ -155,6 +155,22 @@ section[id] {
   scroll-margin-top: 80px;
 }
 
+.dashboard-page,
+.dashboard-canvas {
+  background:
+    radial-gradient(circle at top right, rgb(214 174 100 / 0.11), transparent 32rem),
+    hsl(var(--background));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page *,
+  .dashboard-page *::before,
+  .dashboard-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .hero-v2 {
   --hero-v2-ivory: #fbf7f0;
   --hero-v2-champagne: #d6ae64;

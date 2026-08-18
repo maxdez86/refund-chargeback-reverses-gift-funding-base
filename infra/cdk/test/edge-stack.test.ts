@@ -88,11 +88,31 @@ describe("EdgeStack", () => {
       FunctionCode: Match.stringLikeRegexp('statusCode: 403')
     });
     const functionResources = template.findResources("AWS::CloudFront::Function");
-    const functionCode = Object.values(functionResources)[0]?.Properties?.FunctionCode as string;
+    const functionCode = Object.values(functionResources)
+      .map((resource) => resource.Properties?.FunctionCode as string)
+      .find((code) => code.includes('host === "www.brimax.life"'));
 
+    expect(functionCode).toBeDefined();
     expect(functionCode).not.toContain("rewriteVersionedLandingPath");
     expect(functionCode).not.toContain("v[234]");
-    expect(functionCode).not.toContain("/index.html");
+    expect(functionCode).toContain('request.uri = "/index.html"');
+  });
+
+  it("rewrites extensionless SPA routes to index.html", () => {
+    const app = new cdk.App();
+    applyCostAllocationTags(app, "dev");
+    const stack = new EdgeStack(app, "TestEdgeSpaRoutingStack", {
+      siteAssetPath: fixtureSiteAssetPath,
+      stage: "dev"
+    });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('request\\.uri !== "/"')
+    });
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: Match.stringLikeRegexp('request\\.uri = "/index\\.html"')
+    });
   });
 
   it("configures the bucket deployment custom resource with higher Lambda resources", () => {
