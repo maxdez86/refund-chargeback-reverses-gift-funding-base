@@ -39,9 +39,20 @@ describe("AppStack", () => {
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::DomainName", 1);
-    // webhook queue + DLQ, checkout-expiry queue + DLQ, and guest-message
-    // notification queue + DLQ.
-    template.resourceCountIs("AWS::SQS::Queue", 6);
+    // webhook, checkout-expiry, guest-message notification, and WhatsApp RSVP
+    // queues each have a primary queue and DLQ.
+    template.resourceCountIs("AWS::SQS::Queue", 10);
+    template.hasResourceProperties("AWS::SQS::Queue", {
+      VisibilityTimeout: 120,
+      RedrivePolicy: {
+        deadLetterTargetArn: Match.anyValue(),
+        maxReceiveCount: 5
+      }
+    });
+    template.hasResourceProperties("AWS::Lambda::EventSourceMapping", {
+      FunctionResponseTypes: ["ReportBatchItemFailures"],
+      BatchSize: 5
+    });
     template.resourceCountIs("AWS::SecretsManager::Secret", 1);
     template.resourceCountIs("AWS::SES::EmailIdentity", 0);
     template.resourceCountIs("AWS::SES::ConfigurationSet", 1);
@@ -81,6 +92,35 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /webhooks/whatsapp"
     });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/whatsapp/messages",
+      AuthorizationType: "AWS_IAM"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /admin/whatsapp/invitations/{invitationCode}",
+      AuthorizationType: "AWS_IAM"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /admin/whatsapp/messages/{commandId}",
+      AuthorizationType: "AWS_IAM"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "PUT /admin/whatsapp/invitations/{invitationCode}/phone",
+      AuthorizationType: "AWS_IAM"
+    });
+    for (const [, metricName] of [
+      ['"WHATSAPP_RSVP_SEND"', "whatsapp-rsvp-send-dev"],
+      ['"WHATSAPP_RSVP_SEND_FAILURE"', "whatsapp-rsvp-send-failure-dev"],
+      ['"WHATSAPP_RSVP_WORKER_OUTCOME"', "whatsapp-rsvp-worker-outcome-dev"],
+      ['"WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED"', "whatsapp-rsvp-reconciliation-required-dev"],
+      ['"WHATSAPP_RSVP_BRANCH"', "whatsapp-rsvp-branch-dev"],
+      ['"WHATSAPP_RSVP_INBOUND_CORRELATION"', "whatsapp-rsvp-inbound-correlation-dev"],
+      ['"WHATSAPP_WEBHOOK_WORKER_OUTCOME"', "whatsapp-webhook-worker-outcome-dev"]
+    ] as const) {
+      template.hasResourceProperties("AWS::Logs::MetricFilter", {
+        MetricTransformations: Match.arrayWith([Match.objectLike({ MetricName: metricName, MetricNamespace: "Brimax/Payments" })])
+      });
+    }
     template.hasResourceProperties("AWS::ApiGatewayV2::DomainName", {
       DomainName: "api.dev.brimax.life",
       Tags: {
@@ -114,6 +154,9 @@ describe("AppStack", () => {
     });
     template.hasOutput("WhatsAppWebhookUrl", {
       Value: "https://api.dev.brimax.life/webhooks/whatsapp"
+    });
+    template.hasOutput("WhatsappQueueUrl", {
+      Value: Match.anyValue()
     });
     // Non-prod secret is disposable for clean pre-launch teardown.
     template.hasResource("AWS::SecretsManager::Secret", {
@@ -263,6 +306,11 @@ describe("AppStack", () => {
       ScalingConfig: {
         MaximumConcurrency: 2
       }
+    });
+    template.hasResourceProperties("AWS::Lambda::EventSourceMapping", {
+      BatchSize: 5,
+      ScalingConfig: { MaximumConcurrency: 2 },
+      FunctionResponseTypes: ["ReportBatchItemFailures"]
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
@@ -512,6 +560,27 @@ describe("AppStack", () => {
     const notifyPolicyJson = JSON.stringify(notifyPolicy?.Properties?.PolicyDocument);
     expect(notifyPolicyJson).toContain("ses:SendEmail");
     expect(notifyPolicyJson).toContain("sqs:ReceiveMessage");
+
+    // The WhatsApp webhook worker consumes the webhook queue and enqueues automated replies to the RSVP queue.
+    const whatsappWebhookWorkerEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("WhatsappWebhookWorkerFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(whatsappWebhookWorkerEntry).toBeDefined();
+    const whatsappWebhookWorkerRoleLogicalId = (
+      whatsappWebhookWorkerEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const whatsappWebhookWorkerPolicy = Object.values(resources).find(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(whatsappWebhookWorkerRoleLogicalId)
+    );
+    const whatsappWebhookWorkerPolicyJson = JSON.stringify(
+      whatsappWebhookWorkerPolicy?.Properties?.PolicyDocument
+    );
+    expect(whatsappWebhookWorkerPolicyJson).toContain("sqs:ReceiveMessage");
+    expect(whatsappWebhookWorkerPolicyJson).toContain("sqs:SendMessage");
 
     for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
       expect(resource.Properties).not.toHaveProperty("FunctionName");

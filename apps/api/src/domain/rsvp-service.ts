@@ -9,6 +9,8 @@ import { getEnv } from "../lib/env";
 import { deriveOverallRsvpStatus, deriveRsvpCounts } from "../services/dynamodb/mappers";
 import { WeddingRepository } from "../services/dynamodb/repositories/wedding-repository";
 import { EmailService } from "../services/email/client";
+import { canTransition, isTerminalFlowStatus, transitionCondition } from "./whatsapp-flow-state";
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import {
   escapeHtml,
   renderDetailLine,
@@ -51,6 +53,24 @@ export class RsvpService {
 
     const status: GuestProfile["rsvpStatus"] = deriveOverallRsvpStatus(parsed);
     const updatedAt = await this.repository.upsertRsvp(parsed, status);
+    const currentWhatsappStatus = invitation.whatsappFlowStatus;
+    if (
+      currentWhatsappStatus &&
+      currentWhatsappStatus !== "idle" &&
+      !isTerminalFlowStatus(currentWhatsappStatus) &&
+      canTransition(currentWhatsappStatus, "website_update_required") &&
+      "updateWhatsappFlow" in this.repository
+    ) {
+      try {
+        await this.repository.updateWhatsappFlow(parsed.invitationCode, {
+          whatsappFlowStatus: "website_update_required",
+          whatsappFlowCompletedAt: updatedAt,
+          whatsappFlowUpdatedAt: updatedAt
+        }, transitionCondition(currentWhatsappStatus));
+      } catch (error) {
+        if (!(error instanceof ConditionalCheckFailedException)) throw error;
+      }
+    }
     let notificationSent = false;
 
     try {

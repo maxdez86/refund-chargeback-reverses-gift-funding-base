@@ -7,3 +7,4 @@ export * from "./payments";
 export * from "./registry";
 export * from "./rsvp";
 export * from "./webhooks";
+export * from "./whatsapp-rsvp";

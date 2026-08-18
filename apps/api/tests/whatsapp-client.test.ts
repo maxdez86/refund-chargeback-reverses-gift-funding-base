@@ -11,6 +11,15 @@ const baseInput = {
   template: { name: "wedding", language: "en" }
 };
 
+it("sends a text message through the WhatsApp Cloud API", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    messaging_product: "whatsapp", messages: [{ id: "wamid.text" }]
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  const result = await client(fetchMock).sendText({ to: baseInput.to, text: { body: "hello" } }, { requestId: "text-request" });
+  expect(result.messageId).toBe("wamid.text");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).type).toBe("text");
+});
+
 function client(fetchImpl: typeof fetch, overrides: { token?: string; phoneId?: string; timeoutMs?: number } = {}) {
   return new WhatsappCloudApiClient({
     fetch: fetchImpl,

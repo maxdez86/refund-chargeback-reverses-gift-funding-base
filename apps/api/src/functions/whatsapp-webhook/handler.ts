@@ -6,6 +6,8 @@ import { safeEqual } from "../../lib/security";
 import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 import { getAppSecret } from "../../services/secrets-manager/app-secrets";
 import { parseWhatsappWebhook } from "../../services/whatsapp/webhook-parser";
+import { WeddingRepository } from "../../services/dynamodb/repositories/wedding-repository";
+import { enqueueWhatsappWebhook } from "../../services/sqs/whatsapp-webhook-publisher";
 
 function headerValue(headers: Record<string, string | undefined>, name: string) {
   const expected = name.toLowerCase();
@@ -72,7 +74,19 @@ function logReceipt(event: WhatsappWebhookEvent, requestId: string) {
   );
 }
 
-async function onWhatsappWebhook(event: APIGatewayProxyEventV2) {
+export type WhatsappWebhookDependencies = {
+  repository?: Pick<WeddingRepository, "recordWebhookEventIfNew" | "getWebhookEvent">;
+  enqueue?: (eventId: string) => Promise<unknown>;
+};
+
+function defaultDependencies(): WhatsappWebhookDependencies {
+  return process.env.WEDDING_TABLE_NAME
+    ? { repository: new WeddingRepository(), enqueue: enqueueWhatsappWebhook }
+    : {};
+}
+
+export function createWhatsappWebhookHandler(dependencies: WhatsappWebhookDependencies = defaultDependencies()) {
+  return async function onWhatsappWebhook(event: APIGatewayProxyEventV2) {
   const method = event.requestContext.http.method;
 
   if (method === "GET") {
@@ -156,10 +170,29 @@ async function onWhatsappWebhook(event: APIGatewayProxyEventV2) {
       duplicateEventCount: result.duplicateEventIds.length
     })
   );
+  const queuedEventIds = new Set<string>();
   for (const parsedEvent of result.events) {
     logReceipt(parsedEvent, event.requestContext.requestId);
+    if (!dependencies.repository || !dependencies.enqueue) continue;
+    if (queuedEventIds.has(parsedEvent.eventId)) continue;
+    queuedEventIds.add(parsedEvent.eventId);
+    const accepted = await dependencies.repository.recordWebhookEventIfNew(
+      "whatsapp", parsedEvent.eventId, 30 * 86_400,
+      {
+        eventType: parsedEvent.type,
+        providerMessageId: "messageId" in parsedEvent ? parsedEvent.messageId : undefined,
+        replayEvent: JSON.stringify(parsedEvent)
+      }
+    );
+    if (!accepted) {
+      const existing = await dependencies.repository.getWebhookEvent("whatsapp", parsedEvent.eventId);
+      if (existing?.processingStatus !== "pending" && existing?.processingStatus !== "failed") continue;
+    }
+    await dependencies.enqueue(parsedEvent.eventId);
+    console.info(JSON.stringify({ metric: "WHATSAPP_WEBHOOK_QUEUED", requestId: event.requestContext.requestId, eventType: parsedEvent.type, duplicate: !accepted }));
   }
   return jsonResponse(200, { ok: true, received: true });
+  };
 }
 
-export const handler = wrapLambdaHandler(onWhatsappWebhook);
+export const handler = wrapLambdaHandler(createWhatsappWebhookHandler());

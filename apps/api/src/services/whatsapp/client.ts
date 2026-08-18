@@ -6,6 +6,7 @@ import {
   WhatsappErrorResponseSchema,
   WhatsappPhoneNumberIdSchema,
   WhatsappSendTemplateInputSchema,
+  WhatsappSendTextInputSchema,
   WhatsappSuccessResponseSchema,
   type WhatsappSendTemplateInput
 } from "./schemas";
@@ -243,6 +244,40 @@ export class WhatsappCloudApiClient {
           ...logFields
         })
       );
+    }
+  }
+
+  async sendText(input: { to: string; text: { body: string } }, context: { requestId: string }) {
+    const validated = WhatsappSendTextInputSchema.parse(input);
+    const phoneNumberId = WhatsappPhoneNumberIdSchema.parse(this.getPhoneNumberId().trim());
+    const accessToken = (await this.getAccessToken()).trim();
+    if (!accessToken) throw new WhatsappConfigurationError("WhatsApp access token is missing.");
+    const url = `${GRAPH_API_BASE_URL}/${WHATSAPP_GRAPH_API_VERSION}/${encodeURIComponent(phoneNumberId)}/messages`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "POST",
+        headers: { accept: "application/json", authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: validated.to, type: "text", text: validated.text }),
+        signal: controller.signal
+      });
+      const parsed = safeJson(await response.text());
+      if (!response.ok) {
+        const error = WhatsappErrorResponseSchema.safeParse(parsed).success ? WhatsappErrorResponseSchema.parse(parsed).error : undefined;
+        const classification = statusCategory(response.status);
+        throw new WhatsappApiError(`WhatsApp text request failed with status ${response.status}.`, classification.category, response.status, classification.retryable, error?.code, error?.error_subcode, error?.type, error?.fbtrace_id);
+      }
+      const success = WhatsappSuccessResponseSchema.safeParse(parsed);
+      if (!success.success) throw new WhatsappApiError("WhatsApp returned an invalid text response.", "invalid_response", response.status, false);
+      return { messageId: success.data.messages[0].id, recipientWaId: success.data.contacts?.[0]?.wa_id };
+    } catch (error) {
+      if (error instanceof WhatsappApiError) throw error;
+      if (error instanceof AppError) throw error;
+      throw new WhatsappApiError("WhatsApp text request failed; the delivery outcome is unknown.", "network", undefined, false);
+    } finally {
+      clearTimeout(timeout);
+      console.info(JSON.stringify({ metric: "WHATSAPP_TEXT_REQUEST", requestId: context.requestId }));
     }
   }
 }

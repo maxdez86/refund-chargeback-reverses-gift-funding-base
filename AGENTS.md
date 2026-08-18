@@ -100,6 +100,7 @@ This list is curated, not exhaustive. One-off operational scripts (`seed:*`, `re
 - [docs/runbooks/deploy.md](docs/runbooks/deploy.md)
 - [docs/runbooks/deploy-dev.md](docs/runbooks/deploy-dev.md)
 - [docs/runbooks/payments-api-testing.md](docs/runbooks/payments-api-testing.md)
+- [docs/runbooks/whatsapp-rsvp.md](docs/runbooks/whatsapp-rsvp.md)
 - [docs/vendors/](docs/vendors/)
 
 ## Don't read / don't touch

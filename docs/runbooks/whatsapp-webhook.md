@@ -28,8 +28,8 @@ include a valid `X-Hub-Signature-256` header and a WhatsApp Business Account
 payload; accepted deliveries return HTTP 200 with `{ "ok": true, "received":
 true }`. Logs contain only allowlisted correlation metadata; message text,
 sender identifiers, profile names, media details, and raw payloads are not
-logged. Webhook payloads are not persisted and no durable duplicate protection
-exists yet.
+logged. Webhook events are durably recorded with a processing state and
+deduplicated by provider/event ID before the worker processes them.
 
 ## Outbound template configuration
 

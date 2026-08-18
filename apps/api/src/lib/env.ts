@@ -16,6 +16,8 @@ type Env = {
   siteLabel: string;
   siteOrigin: string;
   webhookQueueUrl: string;
+  whatsappWebhookQueueUrl: string;
+  whatsappQueueUrl: string;
   whatsappPhoneNumberId: string;
   weddingTableName: string;
 };
@@ -119,6 +121,8 @@ export function getEnv(): Env {
     siteLabel,
     siteOrigin,
     webhookQueueUrl: process.env.WEBHOOK_QUEUE_URL ?? "",
+    whatsappWebhookQueueUrl: process.env.WHATSAPP_WEBHOOK_QUEUE_URL ?? "",
+    whatsappQueueUrl: process.env.WHATSAPP_QUEUE_URL ?? "",
     whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() ?? "",
     weddingTableName: required("WEDDING_TABLE_NAME")
   };

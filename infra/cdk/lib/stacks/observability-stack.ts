@@ -26,6 +26,9 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   httpApi: apigwv2.IHttpApi;
   stage: AppStage;
   table: dynamodb.ITable;
+  whatsappRsvpDlq: sqs.IQueue;
+  whatsappRsvpQueue: sqs.IQueue;
+  whatsappRsvpWorkerFunction: lambda.IFunction;
   webhookDlq: sqs.IQueue;
   webhookProcessorFunction: lambda.IFunction;
   webhookQueue: sqs.IQueue;
@@ -312,6 +315,73 @@ export class ObservabilityStack extends cdk.Stack {
       ...eventDrivenAlarmDefaults
     });
 
+    const whatsappRsvpDlqAlarm = new cloudwatch.Alarm(this, "WhatsappRsvpDlqAlarm", {
+      alarmDescription: "Alerts when the WhatsApp RSVP dead-letter queue receives messages.",
+      metric: props.whatsappRsvpDlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: "Maximum"
+      }),
+      threshold: 1,
+      ...eventDrivenAlarmDefaults
+    });
+
+    const whatsappRsvpQueueBacklogAlarm = new cloudwatch.Alarm(this, "WhatsappRsvpQueueBacklogAlarm", {
+      alarmDescription: "Alerts when the WhatsApp RSVP queue begins backing up.",
+      metric: props.whatsappRsvpQueue.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: "Maximum"
+      }),
+      threshold: 5,
+      ...eventDrivenAlarmDefaults
+    });
+
+    const whatsappRsvpQueueAgeAlarm = new cloudwatch.Alarm(this, "WhatsappRsvpQueueAgeAlarm", {
+      alarmDescription: "Alerts when WhatsApp RSVP commands stay queued for too long.",
+      metric: props.whatsappRsvpQueue.metricApproximateAgeOfOldestMessage({
+        period: cdk.Duration.minutes(5),
+        statistic: "Maximum"
+      }),
+      threshold: 300,
+      ...eventDrivenAlarmDefaults
+    });
+
+    const whatsappRsvpWorkerErrorsAlarm = createSparseTrafficRateAlarm(
+      "WhatsappRsvpWorkerErrorsAlarm",
+      "Alerts when the WhatsApp RSVP worker throws errors under meaningful traffic.",
+      props.whatsappRsvpWorkerFunction.metricErrors({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      }),
+      props.whatsappRsvpWorkerFunction.metricInvocations({
+        period: sparseAlarmPeriod,
+        statistic: "Sum"
+      })
+    );
+
+    const whatsappRsvpSendFailureAlarm = new cloudwatch.Alarm(this, "WhatsappRsvpSendFailureAlarm", {
+      alarmDescription: "Alerts when the WhatsApp RSVP send service records a failure.",
+      metric: new cloudwatch.Metric({
+        metricName: `whatsapp-rsvp-send-failure-${props.stage}`,
+        namespace: "Brimax/Payments",
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum"
+      }),
+      threshold: 1,
+      ...eventDrivenAlarmDefaults
+    });
+
+    const whatsappRsvpWorkerFailureAlarm = new cloudwatch.Alarm(this, "WhatsappRsvpWorkerFailureAlarm", {
+      alarmDescription: "Alerts when the WhatsApp RSVP worker records a permanent provider failure.",
+      metric: new cloudwatch.Metric({
+        metricName: `whatsapp-rsvp-worker-failure-${props.stage}`,
+        namespace: "Brimax/Payments",
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum"
+      }),
+      threshold: 1,
+      ...eventDrivenAlarmDefaults
+    });
+
     const lambdaThrottleAlarms = props.alarmedFunctions.map((fn, index) =>
       new cloudwatch.Alarm(this, `LambdaThrottleAlarm${index}`, {
         alarmDescription: `Alerts when Lambda throttles occur for ${fn.functionName}.`,
@@ -341,6 +411,12 @@ export class ObservabilityStack extends cdk.Stack {
         api5xxAlarm,
         webhookQueueBacklogAlarm,
         webhookQueueAgeAlarm,
+        whatsappRsvpDlqAlarm,
+        whatsappRsvpQueueBacklogAlarm,
+        whatsappRsvpQueueAgeAlarm,
+        whatsappRsvpWorkerErrorsAlarm,
+        whatsappRsvpSendFailureAlarm,
+        whatsappRsvpWorkerFailureAlarm,
         ...lambdaThrottleAlarms
       ]) {
         alarm.addAlarmAction(alarmAction);

@@ -1,6 +1,11 @@
-import { PutCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WeddingRepository } from "../src/services/dynamodb/repositories/wedding-repository";
+import {
+  WEBHOOK_EVENT_TTL_SECONDS,
+  WHATSAPP_WEBHOOK_EVENT_TTL_SECONDS,
+  WeddingRepository
+} from "../src/services/dynamodb/repositories/wedding-repository";
 
 describe("WeddingRepository", () => {
   beforeEach(() => {
@@ -272,5 +277,120 @@ describe("WeddingRepository", () => {
         })
       );
     });
+  });
+});
+
+describe("WeddingRepository webhook event markers", () => {
+  beforeEach(() => {
+    process.env.WEDDING_TABLE_NAME = "brimax-wedding-test";
+  });
+
+  it("claims an event as pending so a crashed run is distinguishable from a handled one", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.recordWebhookEventIfNew("whatsapp", "evt-1", WHATSAPP_WEBHOOK_EVENT_TTL_SECONDS, {
+        eventType: "button_reply",
+        providerMessageId: "wamid.ABC"
+      })
+    ).resolves.toBe(true);
+
+    const command = send.mock.calls[0][0] as PutCommand;
+    expect(command.input.ConditionExpression).toBe("attribute_not_exists(PK)");
+    expect(command.input.Item).toMatchObject({
+      PK: "WEBHOOK#whatsapp",
+      SK: "EVENT#evt-1",
+      entityType: "WebhookEvent",
+      processingStatus: "pending",
+      eventType: "button_reply",
+      providerMessageId: "wamid.ABC"
+    });
+  });
+
+  it("keeps the 24h default and the false-on-duplicate contract for the Asaas caller", async () => {
+    const start = Math.floor(Date.now() / 1000);
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    await repository.recordWebhookEventIfNew("asaas", "evt-2");
+
+    const ttl = (send.mock.calls[0][0] as PutCommand).input.Item?.ttl as number;
+    expect(WEBHOOK_EVENT_TTL_SECONDS).toBe(86_400);
+    expect(ttl).toBeGreaterThanOrEqual(start + WEBHOOK_EVENT_TTL_SECONDS);
+    expect(ttl).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + WEBHOOK_EVENT_TTL_SECONDS);
+
+    const duplicate = vi.fn().mockRejectedValue(
+      new ConditionalCheckFailedException({ message: "failed", $metadata: {} })
+    );
+    const duplicateRepository = new WeddingRepository({ send: duplicate } as never, "table-test");
+    await expect(duplicateRepository.recordWebhookEventIfNew("asaas", "evt-2")).resolves.toBe(false);
+  });
+
+  it("outlives Meta's retry window for WhatsApp events", () => {
+    // A 24h marker can expire while a Meta retry is still in flight, letting the same event be
+    // processed a second time and fire a duplicate follow-up send.
+    expect(WHATSAPP_WEBHOOK_EVENT_TTL_SECONDS).toBeGreaterThan(7 * 86_400);
+  });
+
+  it("marks an event processed, guarded so it cannot create a marker", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.markWebhookEventProcessed("whatsapp", "evt-1", { status: "processed" })
+    ).resolves.toBe(true);
+
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.Key).toEqual({ PK: "WEBHOOK#whatsapp", SK: "EVENT#evt-1" });
+    expect(command.input.ConditionExpression).toBe("attribute_exists(PK)");
+    expect(Object.values(command.input.ExpressionAttributeNames ?? {})).toEqual([
+      "processingStatus",
+      "processedAt",
+      "updatedAt",
+      "processingOutcome"
+    ]);
+    expect(command.input.ExpressionAttributeValues?.[":v0"]).toBe("processed");
+  });
+
+  it("records a failure reason when processing failed", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    await repository.markWebhookEventProcessed("whatsapp", "evt-1", {
+      status: "failed",
+      failureReason: "template no longer active"
+    });
+
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(Object.values(command.input.ExpressionAttributeNames ?? {})).toContain("failureReason");
+    expect(command.input.ExpressionAttributeValues?.[":v3"]).toBe("template no longer active");
+  });
+
+  it("records a durable rejection reason without changing marker status", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    await repository.markWebhookEventProcessed("whatsapp", "evt-1", {
+      status: "processed", rejectionReason: "terminal_flow"
+    });
+
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(Object.values(command.input.ExpressionAttributeNames ?? {})).toContain("rejectionReason");
+    expect(Object.values(command.input.ExpressionAttributeValues ?? {})).toContain("rejected");
+    expect(Object.values(command.input.ExpressionAttributeValues ?? {})).toContain("terminal_flow");
+  });
+
+  it("reads a marker back consistently", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Item: { PK: "WEBHOOK#whatsapp", SK: "EVENT#evt-1", processingStatus: "pending" }
+    });
+    const repository = new WeddingRepository({ send } as never, "table-test");
+
+    const result = await repository.getWebhookEvent("whatsapp", "evt-1");
+
+    const command = send.mock.calls[0][0] as GetCommand;
+    expect(command.input.ConsistentRead).toBe(true);
+    expect(result?.processingStatus).toBe("pending");
   });
 });

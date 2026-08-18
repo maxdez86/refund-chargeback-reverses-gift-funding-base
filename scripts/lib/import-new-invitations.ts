@@ -29,6 +29,7 @@ type InvitationItem = {
   entityType: "Invitation";
   invitationCode: string;
   householdName: string;
+  phoneNumber?: string;
 };
 
 type GuestItem = {
@@ -68,6 +69,9 @@ export function validateNewInvitations(invitations: readonly NewInvitation[]) {
     if (!invitation.householdName.trim()) {
       throw new Error(`Invitation ${invitation.invitationCode} is missing householdName.`);
     }
+    if (invitation.phoneNumber !== undefined && !/^[1-9]\d{7,14}$/.test(invitation.phoneNumber)) {
+      throw new Error(`Invalid phone number for invitation ${invitation.invitationCode}.`);
+    }
     if (invitation.guests.length === 0) {
       throw new Error(`Invitation ${invitation.invitationCode} has no guests.`);
     }
@@ -95,7 +99,8 @@ export function buildInvitationItems(invitation: NewInvitation): [InvitationItem
     ...invitationKeys(invitation.invitationCode),
     entityType: "Invitation",
     invitationCode: invitation.invitationCode,
-    householdName: invitation.householdName
+    householdName: invitation.householdName,
+    ...(invitation.phoneNumber ? { phoneNumber: invitation.phoneNumber } : {})
   };
 
   const guestItems = invitation.guests.map<GuestItem>((guest) => {
@@ -144,6 +149,7 @@ export async function importNewInvitations(
   let inserted = 0;
   let wouldInsert = 0;
   let skipped = 0;
+  let missingPhone = 0;
 
   for (const invitation of invitations) {
     const existing = await client.send(
@@ -155,6 +161,7 @@ export async function importNewInvitations(
 
     if (existing.Item) {
       skipped += 1;
+      if (!existing.Item.phoneNumber) missingPhone += 1;
       logger.log(`skipped ${invitation.invitationCode}: invitation already exists`);
       continue;
     }
@@ -162,6 +169,7 @@ export async function importNewInvitations(
     const transaction = buildImportTransaction(tableName, invitation);
     if (options.mode === "dry-run") {
       wouldInsert += 1;
+      if (!invitation.phoneNumber) missingPhone += 1;
       logger.log(
         `would insert ${invitation.invitationCode}: ${transaction.TransactItems?.length ?? 0} rows`
       );
@@ -170,10 +178,11 @@ export async function importNewInvitations(
 
     await client.send(new TransactWriteCommand(transaction));
     inserted += 1;
+    if (!invitation.phoneNumber) missingPhone += 1;
     logger.log(`inserted ${invitation.invitationCode}: ${transaction.TransactItems?.length ?? 0} rows`);
   }
 
-  logger.log(`Import summary: inserted=${inserted} wouldInsert=${wouldInsert} skipped=${skipped}`);
+  logger.log(`Import summary: inserted=${inserted} wouldInsert=${wouldInsert} skipped=${skipped} missingPhone=${missingPhone}`);
 
   return { inserted, wouldInsert, skipped };
 }

@@ -1,0 +1,126 @@
+import { describe, expect, it, vi } from "vitest";
+import { AppError } from "../src/lib/errors";
+import { WhatsappRsvpSendService } from "../src/services/whatsapp/rsvp-send-service";
+
+const invitation = {
+  invitationCode: "SW2748",
+  householdName: "Família Silva",
+  phoneNumber: "5511963656517",
+  whatsappFlowStatus: "idle" as const,
+  guests: [{ guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "pending" as const }]
+};
+
+const definition = {
+  purpose: "wedding_rsvp_pending_reminder",
+  version: 3,
+  name: "wedding_rsvp_pending_reminder",
+  language: "pt_BR",
+  parameterFormat: "named" as const,
+  components: [{ type: "body" as const, parameters: [{ key: "household_name", type: "text" as const }] }],
+  createdAt: "2026-08-17T00:00:00.000Z"
+};
+
+function setup(overrides: Record<string, unknown> = {}) {
+  const repository = {
+    getInvitationByCode: vi.fn().mockResolvedValue(invitation),
+    getWhatsappCommand: vi.fn(),
+    reserveWhatsappCommand: vi.fn().mockResolvedValue(undefined),
+    updateWhatsappCommand: vi.fn().mockResolvedValue(undefined),
+    updateWhatsappFlow: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+  const templates = { getActive: vi.fn().mockResolvedValue(definition) };
+  const publish = (overrides.publish as ReturnType<typeof vi.fn> | undefined) ?? vi.fn().mockResolvedValue({ status: "queued" as const, enqueuedAt: "2026-08-17T12:00:00.000Z", messageId: "sqs-1" });
+  const log = vi.fn();
+  const service = new WhatsappRsvpSendService({
+    repository,
+    templates,
+    publish,
+    validateVariables: vi.fn(),
+    log,
+    createCommandId: () => "command-1"
+  });
+  return { repository, templates, publish, log, service };
+}
+
+describe("WhatsappRsvpSendService", () => {
+  it("atomically reserves, enqueues, and returns the command", async () => {
+    const { service, repository, publish, log } = setup();
+    await expect(service.queueTemplate("SW2748", definition.purpose, "key12345", { requestId: "req-1" })).resolves.toEqual({
+      commandId: "idempotency-key12345",
+      invitationCode: "SW2748",
+      templateId: definition.purpose,
+      templateVersion: 3,
+      status: "queued",
+      replayed: false
+    });
+    expect(repository.reserveWhatsappCommand).toHaveBeenCalledWith(expect.objectContaining({ status: "queued", stage: "pending" }), "idle");
+    expect(publish).toHaveBeenCalledWith("idempotency-key12345", { requestId: "req-1" });
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ requestId: "req-1", commandId: "idempotency-key12345", outcome: "queued" }));
+  });
+
+  it("validates invitation, template, phone, flow, and variables before reservation", async () => {
+    const { service, repository, templates } = setup({
+      getInvitationByCode: vi.fn().mockResolvedValue(null)
+    });
+    await expect(service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-1" })).rejects.toMatchObject({ statusCode: 404 });
+    expect(templates.getActive).not.toHaveBeenCalled();
+    expect(repository.reserveWhatsappCommand).not.toHaveBeenCalled();
+
+    const invalidVariables = setup({
+      getInvitationByCode: vi.fn().mockResolvedValue({ ...invitation, whatsappFlowStatus: "send_queued" })
+    });
+    await expect(invalidVariables.service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-2" })).rejects.toMatchObject({ statusCode: 409 });
+    expect(invalidVariables.repository.reserveWhatsappCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects an incompatible template before writing", async () => {
+    const validateVariables = vi.fn().mockImplementation(() => {
+      throw new AppError("Unsupported WhatsApp template parameter guest_name.", 422, "INVALID_INVITATION_STATE");
+    });
+    const { repository, templates, publish, log } = setup();
+    const service = new WhatsappRsvpSendService({ repository, templates, publish, validateVariables, log });
+    await expect(service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-1" })).rejects.toMatchObject({ statusCode: 422 });
+    expect(repository.reserveWhatsappCommand).not.toHaveBeenCalled();
+  });
+
+  it("re-enqueues a persisted queued command and detects conflicts", async () => {
+    const existing = { commandId: "idempotency-key12345", invitationCode: "SW2748", templateId: definition.purpose, templateVersion: 2, status: "queued" as const };
+    const { service, publish } = setup({
+      reserveWhatsappCommand: vi.fn().mockRejectedValue({ name: "ConditionalCheckFailedException" }),
+      getWhatsappCommand: vi.fn().mockResolvedValue(existing)
+    });
+    await expect(service.queueTemplate("SW2748", definition.purpose, "key12345", { requestId: "req-1" })).resolves.toMatchObject({ replayed: true, status: "queued", templateVersion: 2 });
+    expect(publish).toHaveBeenCalledWith("idempotency-key12345", { requestId: "req-1" });
+
+    const conflict = setup({
+      reserveWhatsappCommand: vi.fn().mockRejectedValue({ name: "ConditionalCheckFailedException" }),
+      getWhatsappCommand: vi.fn().mockResolvedValue({ ...existing, invitationCode: "AB1234" })
+    });
+    await expect(conflict.service.queueTemplate("SW2748", definition.purpose, "key12345", { requestId: "req-2" })).rejects.toMatchObject({ statusCode: 409, code: "IDEMPOTENCY_CONFLICT" });
+  });
+
+  it("marks the command and flow failed when SQS rejects", async () => {
+    const { service, repository } = setup({ publish: vi.fn().mockRejectedValue(new Error("SQS unavailable")) });
+    await expect(service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-1" })).rejects.toMatchObject({ statusCode: 503, code: "QUEUE_FAILURE" });
+    expect(repository.updateWhatsappCommand).toHaveBeenCalledWith("command-1", expect.objectContaining({ status: "failed" }), expect.any(Object));
+    expect(repository.updateWhatsappFlow).toHaveBeenCalledWith("SW2748", expect.objectContaining({ whatsappFlowStatus: "failed" }), expect.any(Object));
+  });
+
+  it("allows force only when explicitly requested", async () => {
+    const { service, repository } = setup({
+      getInvitationByCode: vi.fn().mockResolvedValue({ ...invitation, whatsappFlowStatus: "completed" })
+    });
+    await expect(service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-1" })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-2" }, { force: true })).resolves.toMatchObject({ status: "queued" });
+    expect(repository.reserveWhatsappCommand).toHaveBeenCalledWith(expect.anything(), "completed");
+  });
+
+  it("does not expose sensitive values in logs", async () => {
+    const { service, log } = setup();
+    await service.queueTemplate("SW2748", definition.purpose, undefined, { requestId: "req-1" });
+    const serialized = JSON.stringify(log.mock.calls);
+    expect(serialized).not.toContain(invitation.phoneNumber);
+    expect(serialized).not.toContain(invitation.householdName);
+  });
+});

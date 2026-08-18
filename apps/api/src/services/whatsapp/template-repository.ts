@@ -94,6 +94,7 @@ export class WhatsappTemplateRepository {
       version: parsed.data.version,
       name: parsed.data.name,
       language: parsed.data.language,
+      parameterFormat: parsed.data.parameterFormat,
       components: parsed.data.components,
       createdAt: parsed.data.createdAt
     };
@@ -137,6 +138,7 @@ export class WhatsappTemplateRepository {
         version: parsed.data.version,
         name: parsed.data.name,
         language: parsed.data.language,
+        parameterFormat: parsed.data.parameterFormat,
         components: parsed.data.components,
         createdAt: parsed.data.createdAt
       };

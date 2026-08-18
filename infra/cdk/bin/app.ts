@@ -216,7 +216,10 @@ new ObservabilityStack(app, resourceName("BrimaxObservabilityStack", stage), {
   webhookProcessorFunction: appStack.webhookProcessorFunction,
   webhookQueue: appStack.webhookQueue,
   whatsappWebhookFunction: appStack.whatsappWebhookFunction,
-  table: dataStack.table
+  table: dataStack.table,
+  whatsappRsvpDlq: appStack.whatsappRsvpDlq,
+  whatsappRsvpQueue: appStack.whatsappRsvpQueue,
+  whatsappRsvpWorkerFunction: appStack.whatsappRsvpWorkerFunction
 });
 
 edgeStack.addDependency(certificateStack);

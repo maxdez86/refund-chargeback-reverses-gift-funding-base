@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HouseholdInvitationSchema, RsvpStatusSchema } from "./guest";
+import { PublicHouseholdInvitationSchema, RsvpStatusSchema } from "./guest";
 import { InvitationCodeSchema } from "./invitation-code";
 
 export const RsvpGuestAnswerSchema = z.object({
@@ -26,7 +26,7 @@ export const RsvpSubmissionResponseSchema = z.object({
 });
 
 export const InvitationLookupResponseSchema = z.object({
-  invitation: HouseholdInvitationSchema,
+  invitation: PublicHouseholdInvitationSchema,
   lookupProof: z.string().min(1),
   lookupProofExpiresAt: z.string().datetime()
 });

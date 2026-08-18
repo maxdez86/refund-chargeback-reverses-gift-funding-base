@@ -46,6 +46,11 @@ export function jsonResponse(statusCode: number, body: unknown, headers: Record<
   };
 }
 
+export function headerValue(headers: Record<string, string | undefined>, name: string) {
+  const expected = name.toLowerCase();
+  return Object.entries(headers).find(([key]) => key.toLowerCase() === expected)?.[1];
+}
+
 export function noContentResponse(headers: Record<string, HeaderValue> = {}) {
   return {
     statusCode: 204,

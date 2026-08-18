@@ -1,9 +1,17 @@
+import {
+  WhatsappAttendanceEntrySchema,
+  WhatsappFlowStageSchema,
+  WhatsappFlowStatusSchema,
+  WhatsappPhoneSourceSchema,
+  WhatsappRsvpStatusResponseSchema
+} from "@brimax/contracts";
 import type {
   AdminGuestExportRow,
   GuestProfile,
   GuestSummary,
   HouseholdInvitation,
-  RsvpSubmissionRequest
+  RsvpSubmissionRequest,
+  WhatsappRsvpStatusResponse
 } from "@brimax/contracts";
 
 type UnknownRecord = Record<string, unknown>;
@@ -78,6 +86,22 @@ export function toHouseholdInvitation({
   return {
     invitationCode: String(invitation.invitationCode ?? ""),
     householdName: String(invitation.householdName ?? ""),
+    phoneNumber: invitation.phoneNumber ? String(invitation.phoneNumber) : undefined,
+    whatsappFlowStatus: invitation.whatsappFlowStatus
+      ? WhatsappFlowStatusSchema.parse(invitation.whatsappFlowStatus)
+      : undefined,
+    whatsappFlowStage: invitation.whatsappFlowStage
+      ? WhatsappFlowStageSchema.parse(invitation.whatsappFlowStage)
+      : undefined,
+    whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ? String(invitation.whatsappLastOutboundMessageId) : undefined,
+    whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ? String(invitation.whatsappLastInboundMessageId) : undefined,
+    whatsappFlowUpdatedAt: invitation.whatsappFlowUpdatedAt ? String(invitation.whatsappFlowUpdatedAt) : undefined,
+    whatsappFlowCompletedAt: invitation.whatsappFlowCompletedAt ? String(invitation.whatsappFlowCompletedAt) : undefined,
+    whatsappFallbackSentAt: invitation.whatsappFallbackSentAt ? String(invitation.whatsappFallbackSentAt) : undefined,
+    whatsappFailureReason: invitation.whatsappFailureReason ? String(invitation.whatsappFailureReason) : undefined,
+    whatsappAttendance: Array.isArray(invitation.whatsappAttendance)
+      ? invitation.whatsappAttendance.map((entry) => WhatsappAttendanceEntrySchema.parse(entry))
+      : undefined,
     guests: guests
       .slice()
       .sort(
@@ -89,6 +113,43 @@ export function toHouseholdInvitation({
         toEffectiveGuestSummary(guest, responsesByGuestId.get(String(guest.guestId ?? "")))
       )
   };
+}
+
+export function toWhatsappRsvpStatus(invitation: UnknownRecord): WhatsappRsvpStatusResponse {
+  return WhatsappRsvpStatusResponseSchema.parse({
+    invitationCode: String(invitation.invitationCode ?? ""),
+    phoneNumber: invitation.phoneNumber ? String(invitation.phoneNumber) : undefined,
+    phoneNumberUpdatedAt: invitation.phoneNumberUpdatedAt
+      ? String(invitation.phoneNumberUpdatedAt)
+      : undefined,
+    phoneNumberSource: invitation.phoneNumberSource
+      ? WhatsappPhoneSourceSchema.parse(invitation.phoneNumberSource)
+      : undefined,
+    status: invitation.whatsappFlowStatus
+      ? WhatsappFlowStatusSchema.parse(invitation.whatsappFlowStatus)
+      : "idle",
+    stage: invitation.whatsappFlowStage
+      ? WhatsappFlowStageSchema.parse(invitation.whatsappFlowStage)
+      : undefined,
+    lastOutboundMessageId: invitation.whatsappLastOutboundMessageId
+      ? String(invitation.whatsappLastOutboundMessageId)
+      : undefined,
+    lastInboundMessageId: invitation.whatsappLastInboundMessageId
+      ? String(invitation.whatsappLastInboundMessageId)
+      : undefined,
+    updatedAt: invitation.whatsappFlowUpdatedAt
+      ? String(invitation.whatsappFlowUpdatedAt)
+      : undefined,
+    completedAt: invitation.whatsappFlowCompletedAt
+      ? String(invitation.whatsappFlowCompletedAt)
+      : undefined,
+    fallbackSentAt: invitation.whatsappFallbackSentAt
+      ? String(invitation.whatsappFallbackSentAt)
+      : undefined,
+    failureReason: invitation.whatsappFailureReason
+      ? String(invitation.whatsappFailureReason)
+      : undefined
+  });
 }
 
 export function toAdminExportRows({

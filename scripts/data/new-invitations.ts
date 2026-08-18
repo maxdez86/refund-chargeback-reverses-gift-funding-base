@@ -7,6 +7,7 @@ export type NewInvitationGuest = {
 export type NewInvitation = {
   invitationCode: string;
   householdName: string;
+  phoneNumber?: string;
   guests: NewInvitationGuest[];
 };
 
@@ -48,4 +49,3 @@ export const NEW_INVITATIONS: readonly NewInvitation[] = [
     ]
   },
 ] as const;
-	 

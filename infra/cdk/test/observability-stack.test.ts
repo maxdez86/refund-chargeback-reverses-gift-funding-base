@@ -8,9 +8,17 @@ import { EdgeStack } from "../lib/stacks/edge-stack";
 import { ObservabilityStack } from "../lib/stacks/observability-stack";
 import { applyCostAllocationTags } from "./support/tags";
 
+// This suite asserts only on alarms, the dashboard, and the alert topic — never on Lambda code
+// assets — so it synthesises with bundling disabled. Running esbuild over every AppStack function
+// costs ~15s per test and pushed the prod case past its timeout once the suite runs four workers in
+// parallel. Bundle correctness stays covered by app-stack.test.ts.
+function createApp() {
+  return new cdk.App({ context: { "aws:cdk:bundling-stacks": [] } });
+}
+
 describe("ObservabilityStack", () => {
-  it("creates an alert topic, dashboard, and core operational alarms", { timeout: 30000 }, () => {
-    const app = new cdk.App();
+  it("creates an alert topic, dashboard, and core operational alarms", { timeout: 10000 }, () => {
+    const app = createApp();
     applyCostAllocationTags(app, "prod");
     const dataStack = new DataStack(app, "ObservabilityDataStack", { stage: "prod" });
     const appStack = new AppStack(app, "ObservabilityAppStack", {
@@ -58,7 +66,10 @@ describe("ObservabilityStack", () => {
       webhookDlq: appStack.webhookDlq,
       webhookProcessorFunction: appStack.webhookProcessorFunction,
       webhookQueue: appStack.webhookQueue,
-      whatsappWebhookFunction: appStack.whatsappWebhookFunction
+      whatsappWebhookFunction: appStack.whatsappWebhookFunction,
+      whatsappRsvpDlq: appStack.whatsappRsvpDlq,
+      whatsappRsvpQueue: appStack.whatsappRsvpQueue,
+      whatsappRsvpWorkerFunction: appStack.whatsappRsvpWorkerFunction
     });
     const template = Template.fromStack(stack);
     const appTemplate = Template.fromStack(appStack);
@@ -76,8 +87,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    // 17 fixed alarms + one Lambda-throttle alarm per alarmed function (12).
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 29);
+    // 23 fixed alarms + one Lambda-throttle alarm per alarmed function (12).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 41);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -92,6 +103,24 @@ describe("ObservabilityStack", () => {
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription: "Alerts when the webhook queue begins backing up.",
       Threshold: 5
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when the WhatsApp RSVP dead-letter queue receives messages.",
+      MetricName: "ApproximateNumberOfMessagesVisible",
+      Namespace: "AWS/SQS",
+      Threshold: 1
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when the WhatsApp RSVP queue begins backing up.",
+      MetricName: "ApproximateNumberOfMessagesVisible",
+      Namespace: "AWS/SQS",
+      Threshold: 5
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmDescription: "Alerts when the WhatsApp RSVP send service records a failure.",
+      MetricName: "whatsapp-rsvp-send-failure-prod",
+      Namespace: "Brimax/Payments",
+      Threshold: 1
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmDescription:
@@ -176,8 +205,8 @@ describe("ObservabilityStack", () => {
     expect(template.toJSON()).toBeDefined();
   });
 
-  it("creates only the webhook DLQ alarm for dev", { timeout: 30000 }, () => {
-    const app = new cdk.App();
+  it("creates only the webhook DLQ alarm for dev", { timeout: 10000 }, () => {
+    const app = createApp();
     applyCostAllocationTags(app, "dev");
     const dataStack = new DataStack(app, "DevObservabilityDataStack", { stage: "dev" });
     const appStack = new AppStack(app, "DevObservabilityAppStack", {
@@ -225,7 +254,10 @@ describe("ObservabilityStack", () => {
       webhookDlq: appStack.webhookDlq,
       webhookProcessorFunction: appStack.webhookProcessorFunction,
       webhookQueue: appStack.webhookQueue,
-      whatsappWebhookFunction: appStack.whatsappWebhookFunction
+      whatsappWebhookFunction: appStack.whatsappWebhookFunction,
+      whatsappRsvpDlq: appStack.whatsappRsvpDlq,
+      whatsappRsvpQueue: appStack.whatsappRsvpQueue,
+      whatsappRsvpWorkerFunction: appStack.whatsappRsvpWorkerFunction
     });
     const template = Template.fromStack(stack);
 

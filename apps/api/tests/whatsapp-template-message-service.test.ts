@@ -39,6 +39,81 @@ describe("WhatsApp template binding", () => {
     ).toThrow("Unexpected WhatsApp template parameter");
   });
 
+  it("names header and body parameters for a NAMED definition", () => {
+    const named = [
+      {
+        type: "body" as const,
+        parameters: [
+          { key: "household_name", type: "text" as const },
+          { key: "guests", type: "text" as const }
+        ]
+      }
+    ];
+
+    expect(
+      bindComponents(
+        named,
+        {
+          household_name: { type: "text", text: "Família Silva" },
+          guests: { type: "text", text: "Ana, Bruno" }
+        },
+        "named"
+      )
+    ).toEqual([
+      {
+        type: "body",
+        parameters: [
+          { type: "text", parameter_name: "household_name", text: "Família Silva" },
+          { type: "text", parameter_name: "guests", text: "Ana, Bruno" }
+        ]
+      }
+    ]);
+  });
+
+  it("leaves a POSITIONAL definition unnamed", () => {
+    const bound = bindComponents(definitions, { guest_name: { type: "text", text: "Amanda" } });
+    expect(bound?.[0]).toEqual({ type: "body", parameters: [{ type: "text", text: "Amanda" }] });
+    expect(bound?.[0].parameters[0]).not.toHaveProperty("parameter_name");
+  });
+
+  it("never names a URL-button parameter, even under NAMED", () => {
+    const named = [
+      { type: "body" as const, parameters: [{ key: "household_name", type: "text" as const }] },
+      {
+        type: "button" as const,
+        subType: "url" as const,
+        index: 0,
+        parameters: [{ key: "invitation_link_suffix", type: "text" as const }]
+      }
+    ];
+
+    const bound = bindComponents(
+      named,
+      {
+        household_name: { type: "text", text: "Família Silva" },
+        invitation_link_suffix: { type: "text", text: "?code=SW2748#confirmar-presenca" }
+      },
+      "named"
+    );
+
+    expect(bound?.[1]).toEqual({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: "?code=SW2748#confirmar-presenca" }]
+    });
+    expect(bound?.[1].parameters[0]).not.toHaveProperty("parameter_name");
+  });
+
+  it("fails closed when a NAMED definition declares a non-text body slot", () => {
+    const named = [
+      { type: "body" as const, parameters: [{ key: "when", type: "date_time" as const }] }
+    ];
+    expect(() =>
+      bindComponents(named, { when: { type: "date_time", date_time: { fallback_value: "6 dez" } } }, "named")
+    ).toThrow("must be a text parameter");
+  });
+
   it("validates quick-reply and URL button definitions", () => {
     expect(
       WhatsappStoredComponentSchema.safeParse({
@@ -96,5 +171,37 @@ describe("WhatsappTemplateMessageService", () => {
       { to: "5511999999999", template: { name: "wedding", language: "en" } },
       { requestId: "request-1", templatePurpose: "wedding_invitation", templateVersion: 1 }
     );
+  });
+
+  it("carries a stored definition's NAMED format through to the sent parameters", async () => {
+    const repository = {
+      getActive: vi.fn().mockResolvedValue({
+        purpose: "wedding_rsvp_attending_followup",
+        version: 1,
+        name: "wedding_rsvp_attending_followup",
+        language: "pt_BR",
+        parameterFormat: "named",
+        components: [{ type: "body", parameters: [{ key: "household_name", type: "text" }] }],
+        createdAt: "2026-08-16T00:00:00.000Z"
+      })
+    };
+    const client = { sendTemplate: vi.fn().mockResolvedValue({ messageId: "wamid.2" }) };
+    const service = new WhatsappTemplateMessageService(repository as never, client as never);
+
+    await service.send(
+      {
+        purpose: "wedding_rsvp_attending_followup",
+        to: "5511999999999",
+        parameters: { household_name: { type: "text", text: "Família Silva" } }
+      },
+      { requestId: "request-2" }
+    );
+
+    expect(client.sendTemplate.mock.calls[0][0].template.components).toEqual([
+      {
+        type: "body",
+        parameters: [{ type: "text", parameter_name: "household_name", text: "Família Silva" }]
+      }
+    ]);
   });
 });

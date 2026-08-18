@@ -1,12 +1,14 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsappTemplateRepository } from "../src/services/whatsapp/template-repository";
+import { WhatsappTemplateDefinitionSchema } from "../src/services/whatsapp/schemas";
 
 const definition = {
   purpose: "wedding_invitation",
   version: 1,
   name: "wedding",
   language: "en",
+  parameterFormat: "positional" as const,
   components: [],
   createdAt: "2026-08-15T12:00:00.000Z"
 };
@@ -18,7 +20,24 @@ const versionItem = {
   ...definition
 };
 
+const definitionAsRead = {
+  purpose: definition.purpose,
+  version: definition.version,
+  name: definition.name,
+  language: definition.language,
+  parameterFormat: definition.parameterFormat,
+  components: definition.components,
+  createdAt: definition.createdAt
+};
+
 describe("WhatsappTemplateRepository", () => {
+  it("accepts generic retired purposes in persisted definitions", () => {
+    expect(WhatsappTemplateDefinitionSchema.parse({
+      ...definition,
+      purpose: "retired_template_2024"
+    }).purpose).toBe("retired_template_2024");
+  });
+
   it("creates an immutable version", async () => {
     const send = vi.fn().mockResolvedValue({});
     const repository = new WhatsappTemplateRepository({ send } as never, "table-test");
@@ -56,7 +75,7 @@ describe("WhatsappTemplateRepository", () => {
       })
       .mockResolvedValueOnce({ Item: versionItem });
     const repository = new WhatsappTemplateRepository({ send } as never, "table-test");
-    await expect(repository.getActive(definition.purpose)).resolves.toEqual(definition);
+    await expect(repository.getActive(definition.purpose)).resolves.toEqual(definitionAsRead);
     expect(send.mock.calls[0][0]).toBeInstanceOf(GetCommand);
     expect(send.mock.calls[1][0]).toBeInstanceOf(GetCommand);
   });
@@ -123,7 +142,18 @@ describe("WhatsappTemplateRepository", () => {
   it("supports listing immutable versions", async () => {
     const send = vi.fn().mockResolvedValue({ Items: [versionItem] });
     const repository = new WhatsappTemplateRepository({ send } as never, "table-test");
-    await expect(repository.listVersions(definition.purpose)).resolves.toEqual([definition]);
+    await expect(repository.listVersions(definition.purpose)).resolves.toEqual([definitionAsRead]);
     expect(send.mock.calls[0][0]).toBeInstanceOf(QueryCommand);
+  });
+
+  it("preserves named parameter format when reading a version", async () => {
+    const named = { ...versionItem, purpose: "wedding_rsvp_pending_reminder", parameterFormat: "named" as const };
+    const repository = new WhatsappTemplateRepository(
+      { send: vi.fn().mockResolvedValue({ Item: named }) } as never,
+      "table-test"
+    );
+    await expect(repository.getVersion(named.purpose, named.version)).resolves.toMatchObject({
+      parameterFormat: "named"
+    });
   });
 });

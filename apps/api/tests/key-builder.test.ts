@@ -7,10 +7,18 @@ import {
   paymentKeys,
   reservationOpenIndex,
   webhookKeys,
+  whatsappCommandKeys,
+  whatsappConversationCommandIndex,
+  whatsappConversationIndexPrefix,
+  whatsappConversationMessageIndex,
+  whatsappMessageKeys,
   whatsappTemplateActivationKeys,
   whatsappTemplateActiveKeys,
   whatsappTemplateVersionKeys
 } from "../src/services/dynamodb/key-builder";
+
+// A real Meta message ID, punctuation and all — these flow straight into the partition key.
+const WAMID = "wamid.HBgNNTUxMTk2MzY1NjUxNxUCABIYFjNBMEE3RjhCQzc5RDk4RkY4QjNBMQA=";
 
 describe("DynamoDB key builders", () => {
   it("creates invitation keys", () => {
@@ -77,5 +85,46 @@ describe("DynamoDB key builders", () => {
       PK: "WHATSAPP_TEMPLATE#wedding_invitation",
       SK: "ACTIVATION#2026-08-15T12:00:00.000Z#activation-1"
     });
+  });
+
+  it("creates WhatsApp message and command keys, preserving provider ID punctuation", () => {
+    expect(whatsappMessageKeys(WAMID)).toEqual({
+      PK: `WHATSAPP_MESSAGE#${WAMID}`,
+      SK: "MESSAGE"
+    });
+    expect(whatsappCommandKeys("idempotency-batch-01")).toEqual({
+      PK: "WHATSAPP_COMMAND#idempotency-batch-01",
+      SK: "COMMAND"
+    });
+  });
+
+  it("creates conversation index values that interleave commands and messages by time", () => {
+    expect(whatsappConversationMessageIndex("SW2748", "2026-08-17T12:00:00.000Z", WAMID)).toEqual({
+      GSI1PK: "INVITATION#SW2748",
+      GSI1SK: `WHATSAPP#2026-08-17T12:00:00.000Z#MESSAGE#${WAMID}`
+    });
+    expect(whatsappConversationCommandIndex("SW2748", "2026-08-17T11:00:00.000Z", "cmd-1")).toEqual({
+      GSI1PK: "INVITATION#SW2748",
+      GSI1SK: "WHATSAPP#2026-08-17T11:00:00.000Z#COMMAND#cmd-1"
+    });
+    expect(whatsappConversationIndexPrefix("SW2748")).toEqual({
+      GSI1PK: "INVITATION#SW2748",
+      GSI1SK: "WHATSAPP#"
+    });
+  });
+
+  it("sorts a conversation chronologically regardless of record kind", () => {
+    // The timestamp sits ahead of the record kind, so a command at 11:00 sorts before a message
+    // at 12:00. A kind-first prefix would have grouped all commands after all messages.
+    const sortKeys = [
+      whatsappConversationMessageIndex("SW2748", "2026-08-17T12:00:00.000Z", WAMID).GSI1SK,
+      whatsappConversationCommandIndex("SW2748", "2026-08-17T11:00:00.000Z", "cmd-1").GSI1SK,
+      whatsappConversationMessageIndex("SW2748", "2026-08-17T13:00:00.000Z", "wamid.ZZZ").GSI1SK
+    ];
+
+    expect([...sortKeys].sort()).toEqual([sortKeys[1], sortKeys[0], sortKeys[2]]);
+    for (const sortKey of sortKeys) {
+      expect(sortKey.startsWith(whatsappConversationIndexPrefix("SW2748").GSI1SK)).toBe(true);
+    }
   });
 });

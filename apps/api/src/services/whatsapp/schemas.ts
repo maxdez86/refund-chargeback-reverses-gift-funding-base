@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { WhatsappTemplatePurposeSchema as SharedWhatsappTemplatePurposeSchema } from "@brimax/contracts";
 
 export const WHATSAPP_GRAPH_API_VERSION = "v25.0";
 
-export const WhatsappTemplatePurposeSchema = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/);
+export const WhatsappTemplatePurposeSchema = SharedWhatsappTemplatePurposeSchema;
 export const WhatsappTemplateNameSchema = z.string().regex(/^[a-z0-9_]{1,512}$/);
 export const WhatsappTemplateLanguageSchema = z.string().regex(/^[a-z]{2,3}(?:_[A-Z]{2})?$/);
 export const WhatsappRecipientSchema = z.string().regex(/^[1-9]\d{7,14}$/);
@@ -15,7 +16,14 @@ const mediaReferenceSchema = z
   });
 
 export const WhatsappTemplateParameterSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: z.string().min(1) }),
+  // `parameter_name` is what Meta requires for a NAMED template. It is only modelled on the text
+  // variant because every approved template's header/body slots are text; `bindComponents` fails
+  // closed if a NAMED definition ever declares a slot of another type.
+  z.object({
+    type: z.literal("text"),
+    parameter_name: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
+    text: z.string().min(1)
+  }),
   z.object({
     type: z.literal("currency"),
     currency: z.object({
@@ -97,11 +105,16 @@ export const WhatsappStoredComponentSchema = z.union([
 ]);
 export type WhatsappStoredComponent = z.infer<typeof WhatsappStoredComponentSchema>;
 
+export const WhatsappTemplateParameterFormatSchema = z.enum(["named", "positional"]);
+export type WhatsappTemplateParameterFormat = z.infer<typeof WhatsappTemplateParameterFormatSchema>;
+
 export const WhatsappTemplateDefinitionSchema = z.object({
   purpose: WhatsappTemplatePurposeSchema,
   version: z.number().int().positive(),
   name: WhatsappTemplateNameSchema,
   language: WhatsappTemplateLanguageSchema,
+  // Defaulted so already-deployed positional definitions remain valid on read.
+  parameterFormat: WhatsappTemplateParameterFormatSchema.default("positional"),
   components: z.array(WhatsappStoredComponentSchema).default([]),
   createdAt: z.string().datetime()
 });
@@ -129,6 +142,11 @@ export const WhatsappSendTemplateInputSchema = z.object({
     language: WhatsappTemplateLanguageSchema,
     components: z.array(WhatsappTemplateComponentSchema).min(1).optional()
   })
+});
+
+export const WhatsappSendTextInputSchema = z.object({
+  to: WhatsappRecipientSchema,
+  text: z.object({ body: z.string().min(1).max(4096) })
 });
 
 export type WhatsappSendTemplateInput = z.infer<typeof WhatsappSendTemplateInputSchema>;

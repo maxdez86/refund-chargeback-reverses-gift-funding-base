@@ -55,6 +55,11 @@ export class AppStack extends cdk.Stack {
   readonly checkoutExpiryQueue: sqs.IQueue;
   readonly guestMessageNotificationDlq: sqs.IQueue;
   readonly guestMessageNotificationQueue: sqs.IQueue;
+  readonly whatsappRsvpQueue: sqs.IQueue;
+  readonly whatsappRsvpDlq: sqs.IQueue;
+  readonly whatsappRsvpWorkerFunction: lambda.IFunction;
+  readonly whatsappWebhookQueue: sqs.IQueue;
+  readonly whatsappWebhookDlq: sqs.IQueue;
   private readonly functionLogGroups = new Map<string, logs.LogGroup>();
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
@@ -140,6 +145,20 @@ export class AppStack extends cdk.Stack {
     });
     this.guestMessageNotificationDlq = guestMessageNotificationDlq;
     this.guestMessageNotificationQueue = guestMessageNotificationQueue;
+    const whatsappRsvpDlq = new sqs.Queue(this, "WhatsappRsvpDlq", { retentionPeriod: cdk.Duration.days(14) });
+    const whatsappRsvpQueue = new sqs.Queue(this, "WhatsappRsvpQueue", {
+      deadLetterQueue: { queue: whatsappRsvpDlq, maxReceiveCount: 5 },
+      visibilityTimeout: cdk.Duration.seconds(120)
+    });
+    this.whatsappRsvpDlq = whatsappRsvpDlq;
+    this.whatsappRsvpQueue = whatsappRsvpQueue;
+    const whatsappWebhookDlq = new sqs.Queue(this, "WhatsappWebhookDlq", { retentionPeriod: cdk.Duration.days(14) });
+    const whatsappWebhookQueue = new sqs.Queue(this, "WhatsappWebhookQueue", {
+      deadLetterQueue: { queue: whatsappWebhookDlq, maxReceiveCount: 5 },
+      visibilityTimeout: cdk.Duration.seconds(120)
+    });
+    this.whatsappWebhookDlq = whatsappWebhookDlq;
+    this.whatsappWebhookQueue = whatsappWebhookQueue;
     const senderDomain =
       props.stage === "prod"
         ? new ses.CfnEmailIdentity(this, "PaymentSenderDomainIdentity", {
@@ -303,6 +322,8 @@ export class AppStack extends cdk.Stack {
       WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       EXPIRY_QUEUE_URL: expiryQueue.queueUrl,
       GUEST_MESSAGE_NOTIFICATION_QUEUE_URL: guestMessageNotificationQueue.queueUrl,
+      WHATSAPP_QUEUE_URL: whatsappRsvpQueue.queueUrl,
+      WHATSAPP_WEBHOOK_QUEUE_URL: whatsappWebhookQueue.queueUrl,
       RSVP_NOTIFICATION_TO: props.contactEmail,
       WEDDING_TABLE_NAME: props.table.tableName,
       WHATSAPP_PHONE_NUMBER_ID: props.whatsappPhoneNumberId
@@ -422,6 +443,33 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30)
     });
+    const whatsappRsvpWorkerFn = this.createTaggedNodejsFunction("WhatsappRsvpWorkerFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-worker/handler.ts"),
+      environment: commonEnvironment, handler: "handler", memorySize: 512, projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(60)
+    });
+    this.whatsappRsvpWorkerFunction = whatsappRsvpWorkerFn;
+    const whatsappWebhookWorkerFn = this.createTaggedNodejsFunction("WhatsappWebhookWorkerFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-webhook-worker/handler.ts"),
+      environment: commonEnvironment, handler: "handler", memorySize: 512, projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(60)
+    });
+    const whatsappRsvpSendFn = this.createTaggedNodejsFunction("WhatsappRsvpSendFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-send/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(15)
+    });
+    const whatsappRsvpStatusFn = this.createTaggedNodejsFunction("WhatsappRsvpStatusFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-status/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(10)
+    });
+    const whatsappRsvpCommandStatusFn = this.createTaggedNodejsFunction("WhatsappRsvpCommandStatusFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-command-status/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(10)
+    });
+    const whatsappRsvpPhoneFn = this.createTaggedNodejsFunction("WhatsappRsvpPhoneFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-phone/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(10)
+    });
     const invitationGetFn = this.createTaggedNodejsFunction("InvitationGetFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/invitation-get/handler.ts"),
       environment: commonEnvironment,
@@ -451,7 +499,13 @@ export class AppStack extends cdk.Stack {
       whatsappWebhookFn,
       webhookProcessorFn,
       checkoutExpiryWorkerFn,
-      guestMessageNotifyFn
+      guestMessageNotifyFn,
+      whatsappRsvpWorkerFn,
+      whatsappWebhookWorkerFn,
+      whatsappRsvpSendFn,
+      whatsappRsvpStatusFn,
+      whatsappRsvpCommandStatusFn,
+      whatsappRsvpPhoneFn
     ];
 
     // Keep the guest-facing functions warm (excludes the vendor webhook pair
@@ -483,6 +537,16 @@ export class AppStack extends cdk.Stack {
         batchSize: 10
       })
     );
+    whatsappRsvpWorkerFn.addEventSource(new lambdaEventSources.SqsEventSource(whatsappRsvpQueue, {
+      batchSize: 5,
+      maxConcurrency: 2,
+      reportBatchItemFailures: true
+    }));
+    whatsappWebhookWorkerFn.addEventSource(new lambdaEventSources.SqsEventSource(whatsappWebhookQueue, {
+      batchSize: 5,
+      maxConcurrency: 2,
+      reportBatchItemFailures: true
+    }));
 
     // Bound worker parallelism with the event-source maxConcurrency (floor of 2),
     // NOT function reserved concurrency: reserved concurrency + an SQS source
@@ -542,6 +606,20 @@ export class AppStack extends cdk.Stack {
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
     guestMessageNotificationQueue.grantSendMessages(createGuestMessagesFn);
     guestMessageNotificationQueue.grantConsumeMessages(guestMessageNotifyFn);
+    props.table.grantReadWriteData(whatsappRsvpWorkerFn);
+    props.table.grantReadWriteData(whatsappRsvpSendFn);
+    props.table.grantReadData(whatsappRsvpStatusFn);
+    props.table.grantReadData(whatsappRsvpCommandStatusFn);
+    props.table.grantReadWriteData(whatsappRsvpPhoneFn);
+    whatsappRsvpQueue.grantSendMessages(whatsappRsvpSendFn);
+    whatsappRsvpQueue.grantConsumeMessages(whatsappRsvpWorkerFn);
+    props.table.grantReadWriteData(whatsappWebhookFn);
+    props.table.grantReadWriteData(whatsappWebhookWorkerFn);
+    whatsappWebhookQueue.grantSendMessages(whatsappWebhookFn);
+    whatsappWebhookQueue.grantConsumeMessages(whatsappWebhookWorkerFn);
+    whatsappRsvpQueue.grantSendMessages(whatsappWebhookWorkerFn);
+    appSecret.grantRead(whatsappWebhookWorkerFn);
+    appSecret.grantRead(whatsappRsvpWorkerFn);
     // grantRead is whole-secret only — each reader below can read every key in
     // the bucket. This is deliberate because Secrets Manager has no per-key IAM.
     appSecret.grantRead(createPaymentFn);
@@ -650,6 +728,25 @@ export class AppStack extends cdk.Stack {
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration("RsvpIntegration", rsvpFn)
     });
+    const whatsappSendRoutes = this.httpApi.addRoutes({
+      path: "/admin/whatsapp/messages", methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpSendIntegration", whatsappRsvpSendFn)
+    });
+    const whatsappStatusRoutes = this.httpApi.addRoutes({
+      path: "/admin/whatsapp/invitations/{invitationCode}", methods: [apigwv2.HttpMethod.GET],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpStatusIntegration", whatsappRsvpStatusFn)
+    });
+    const whatsappCommandStatusRoutes = this.httpApi.addRoutes({
+      path: "/admin/whatsapp/messages/{commandId}", methods: [apigwv2.HttpMethod.GET],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpCommandStatusIntegration", whatsappRsvpCommandStatusFn)
+    });
+    const whatsappPhoneRoutes = this.httpApi.addRoutes({
+      path: "/admin/whatsapp/invitations/{invitationCode}/phone", methods: [apigwv2.HttpMethod.PUT],
+      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpPhoneIntegration", whatsappRsvpPhoneFn)
+    });
+    for (const route of [whatsappSendRoutes[0], whatsappStatusRoutes[0], whatsappCommandStatusRoutes[0], whatsappPhoneRoutes[0]]) {
+      (route.node.defaultChild as apigwv2.CfnRoute).authorizationType = "AWS_IAM";
+    }
 
     if (defaultStage) {
       addStageRouteDependency(defaultStage, invitationRoutes);
@@ -658,6 +755,10 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, createGuestMessagesRoutes);
       addStageRouteDependency(defaultStage, createPaymentRoutes);
       addStageRouteDependency(defaultStage, discardPaymentRoutes);
+      addStageRouteDependency(defaultStage, whatsappSendRoutes);
+      addStageRouteDependency(defaultStage, whatsappStatusRoutes);
+      addStageRouteDependency(defaultStage, whatsappCommandStatusRoutes);
+      addStageRouteDependency(defaultStage, whatsappPhoneRoutes);
     }
 
     this.addMetricFilters(
@@ -689,6 +790,7 @@ export class AppStack extends cdk.Stack {
       ),
       metricValue: "1"
     });
+    this.addWhatsappRsvpMetricFilters(props.stage);
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
       description: "Raw API Gateway execute-api endpoint for fallback diagnostics only.",
@@ -730,6 +832,10 @@ export class AppStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "WebhookQueueUrl", {
       value: webhookQueue.queueUrl
+    });
+
+    new cdk.CfnOutput(this, "WhatsappQueueUrl", {
+      value: whatsappRsvpQueue.queueUrl
     });
 
     new cdk.CfnOutput(this, "CheckoutExpiryQueueUrl", {
@@ -891,6 +997,41 @@ export class AppStack extends cdk.Stack {
       metricNamespace: "Brimax/Payments",
       metricName: stageMetricName(`${metricNamespaceSuffix}-webhook-payment-not-found`, stage),
       filterPattern: logs.FilterPattern.literal('"WEBHOOK_PAYMENT_NOT_FOUND"'),
+      metricValue: "1"
+    });
+  }
+
+  private addWhatsappRsvpMetricFilters(stage: AppStage) {
+    const filters: Array<[string, string, string]> = [
+      ["WhatsappRsvpSendMetric", "WHATSAPP_RSVP_SEND", "whatsapp-rsvp-send"],
+      ["WhatsappRsvpSendFailureMetric", "WHATSAPP_RSVP_SEND_FAILURE", "whatsapp-rsvp-send-failure"],
+      ["WhatsappRsvpWorkerOutcomeMetric", "WHATSAPP_RSVP_WORKER_OUTCOME", "whatsapp-rsvp-worker-outcome"],
+      ["WhatsappRsvpReconciliationMetric", "WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED", "whatsapp-rsvp-reconciliation-required"],
+      ["WhatsappRsvpBranchMetric", "WHATSAPP_RSVP_BRANCH", "whatsapp-rsvp-branch"],
+      ["WhatsappRsvpCorrelationMetric", "WHATSAPP_RSVP_INBOUND_CORRELATION", "whatsapp-rsvp-inbound-correlation"],
+      ["WhatsappWebhookWorkerOutcomeMetric", "WHATSAPP_WEBHOOK_WORKER_OUTCOME", "whatsapp-webhook-worker-outcome"]
+    ];
+
+    for (const [id, term, name] of filters) {
+      new logs.MetricFilter(this, id, {
+        logGroup: this.getFunctionLogGroup(
+          id === "WhatsappRsvpSendMetric" ? "WhatsappRsvpSendFunction" :
+            id === "WhatsappRsvpBranchMetric" || id === "WhatsappRsvpCorrelationMetric" || id === "WhatsappWebhookWorkerOutcomeMetric"
+              ? "WhatsappWebhookWorkerFunction"
+              : "WhatsappRsvpWorkerFunction"
+        ),
+        metricNamespace: "Brimax/Payments",
+        metricName: stageMetricName(name, stage),
+        filterPattern: logs.FilterPattern.literal(`"${term}"`),
+        metricValue: "1"
+      });
+    }
+
+    new logs.MetricFilter(this, "WhatsappRsvpWorkerFailureMetric", {
+      logGroup: this.getFunctionLogGroup("WhatsappRsvpWorkerFunction"),
+      metricNamespace: "Brimax/Payments",
+      metricName: stageMetricName("whatsapp-rsvp-worker-failure", stage),
+      filterPattern: logs.FilterPattern.allTerms('"WHATSAPP_RSVP_WORKER_OUTCOME"', '"outcome":"failed"'),
       metricValue: "1"
     });
   }

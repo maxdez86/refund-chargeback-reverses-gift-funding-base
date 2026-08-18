@@ -197,4 +197,35 @@ describe("RsvpService", () => {
     expect(repository.upsertRsvp).not.toHaveBeenCalled();
     expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
+
+  it("closes an active WhatsApp flow through the website RSVP path", async () => {
+    const repository = {
+      getInvitationByCode: vi.fn().mockResolvedValue({ ...baseInvitation, whatsappFlowStatus: "message_sent" as const }),
+      upsertRsvp: vi.fn().mockResolvedValue("2026-01-01T00:00:00.000Z"),
+      updateWhatsappFlow: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new RsvpService(repository as never, { sendEmail: vi.fn().mockResolvedValue({}) } as never);
+
+    await service.submit(baseRequest);
+
+    expect(repository.updateWhatsappFlow).toHaveBeenCalledWith(
+      "AB2345",
+      expect.objectContaining({ whatsappFlowStatus: "website_update_required" }),
+      expect.objectContaining({ values: { ":c0": "message_sent" } })
+    );
+  });
+
+  it.each(["completed", "failed"] as const)("does not reopen a %s WhatsApp flow", async (status) => {
+    const repository = {
+      getInvitationByCode: vi.fn().mockResolvedValue({ ...baseInvitation, whatsappFlowStatus: status }),
+      upsertRsvp: vi.fn().mockResolvedValue("2026-01-01T00:00:00.000Z"),
+      updateWhatsappFlow: vi.fn()
+    };
+    const service = new RsvpService(repository as never, { sendEmail: vi.fn().mockResolvedValue({}) } as never);
+
+    await service.submit(baseRequest);
+
+    expect(repository.upsertRsvp).toHaveBeenCalledOnce();
+    expect(repository.updateWhatsappFlow).not.toHaveBeenCalled();
+  });
 });

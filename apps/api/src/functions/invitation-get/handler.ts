@@ -29,11 +29,25 @@ async function onGetInvitation(event: APIGatewayProxyEventV2) {
 
     const invitation = await invitationPromise;
     const proof = await issueLookupProof(invitation.invitationCode);
+    const privateInvitationFields = new Set([
+      "phoneNumber",
+      "whatsappFlowStatus",
+      "whatsappFlowStage",
+      "whatsappLastOutboundMessageId",
+      "whatsappLastInboundMessageId",
+      "whatsappFlowUpdatedAt",
+      "whatsappFlowCompletedAt",
+      "whatsappFailureReason",
+      "whatsappAttendance"
+    ]);
+    const publicInvitation = Object.fromEntries(
+      Object.entries(invitation).filter(([key]) => !privateInvitationFields.has(key))
+    );
 
     return jsonResponse(
       200,
       {
-        invitation,
+        invitation: publicInvitation,
         lookupProof: proof.lookupProof,
         lookupProofExpiresAt: proof.lookupProofExpiresAt
       },

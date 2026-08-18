@@ -154,6 +154,52 @@ export function phoneLookupIndex(phoneNumber: string) {
   };
 }
 
+export function whatsappMessageKeys(messageId: string) {
+  return { PK: `WHATSAPP_MESSAGE#${messageId}`, SK: "MESSAGE" };
+}
+
+export function whatsappInvitationPhoneLookupKeys(phoneNumber: string, invitationCode: string) {
+  return { PK: `WHATSAPP_PHONE#${phoneNumber}`, SK: `INVITATION#${invitationCode}` };
+}
+
+export function whatsappCommandKeys(commandId: string) {
+  return { PK: `WHATSAPP_COMMAND#${commandId}`, SK: "COMMAND" };
+}
+
+// Messages and commands live in their own partitions for point lookup by provider ID, so the
+// conversation timeline is an overloaded GSI1 entry instead. The ISO timestamp sits ahead of
+// the record kind so both kinds interleave chronologically under one begins_with query.
+const WHATSAPP_CONVERSATION_PREFIX = "WHATSAPP#";
+
+export function whatsappConversationIndexPrefix(invitationCode: string) {
+  return {
+    GSI1PK: `INVITATION#${invitationCode}`,
+    GSI1SK: WHATSAPP_CONVERSATION_PREFIX
+  };
+}
+
+export function whatsappConversationMessageIndex(
+  invitationCode: string,
+  createdAt: string,
+  messageId: string
+) {
+  return {
+    GSI1PK: `INVITATION#${invitationCode}`,
+    GSI1SK: `${WHATSAPP_CONVERSATION_PREFIX}${createdAt}#MESSAGE#${messageId}`
+  };
+}
+
+export function whatsappConversationCommandIndex(
+  invitationCode: string,
+  createdAt: string,
+  commandId: string
+) {
+  return {
+    GSI1PK: `INVITATION#${invitationCode}`,
+    GSI1SK: `${WHATSAPP_CONVERSATION_PREFIX}${createdAt}#COMMAND#${commandId}`
+  };
+}
+
 export function guestMessageFeedKey(createdAt: string, messageId: string) {
   return {
     PK: "GUEST_MESSAGES",

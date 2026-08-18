@@ -7,6 +7,7 @@ import {
 import { AppError } from "../lib/errors";
 import { WeddingRepository } from "../services/dynamodb/repositories/wedding-repository";
 import { enqueueGuestMessageNotification } from "../services/sqs/guest-message-notification-publisher";
+import { normalizeInlineWhitespace } from "../lib/normalize-inline-whitespace";
 
 const PAGE_SIZE = 50;
 
@@ -68,10 +69,6 @@ function sanitizeGuestMessageInput(input: { authorName: string; message: string 
     authorName: normalizeInlineWhitespace(input.authorName),
     message: normalizeMessageBody(input.message)
   };
-}
-
-function normalizeInlineWhitespace(value: string) {
-  return value.replace(/\s+/g, " ").trim();
 }
 
 function normalizeMessageBody(value: string) {

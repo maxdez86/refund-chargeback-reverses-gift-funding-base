@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { InvitationCodeSchema } from "./invitation-code";
+import { WhatsappAttendanceEntrySchema, WhatsappFlowStageSchema, WhatsappFlowStatusSchema } from "./whatsapp-rsvp";
 
 export const RsvpStatusSchema = z.enum(["pending", "attending", "declined"]);
 
@@ -28,10 +29,35 @@ export const GuestSummarySchema = z.object({
 export const HouseholdInvitationSchema = z.object({
   invitationCode: InvitationCodeSchema,
   householdName: z.string().min(1),
+  phoneNumber: z.string().regex(/^[1-9]\d{7,14}$/).optional(),
+  whatsappFlowStatus: WhatsappFlowStatusSchema.optional(),
+  whatsappFlowStage: WhatsappFlowStageSchema.optional(),
+  whatsappLastOutboundMessageId: z.string().min(1).optional(),
+  whatsappLastInboundMessageId: z.string().min(1).optional(),
+  whatsappFlowUpdatedAt: z.string().datetime().optional(),
+  whatsappFlowCompletedAt: z.string().datetime().optional(),
+  whatsappFallbackSentAt: z.string().datetime().optional(),
+  whatsappFailureReason: z.string().min(1).optional(),
+  whatsappAttendance: z.array(WhatsappAttendanceEntrySchema).optional(),
   guests: z.array(GuestSummarySchema).min(1)
+});
+
+/** Shape allowed in the public invitation response; operational WhatsApp state is excluded. */
+export const PublicHouseholdInvitationSchema = HouseholdInvitationSchema.omit({
+  phoneNumber: true,
+  whatsappFlowStatus: true,
+  whatsappFlowStage: true,
+  whatsappLastOutboundMessageId: true,
+  whatsappLastInboundMessageId: true,
+  whatsappFlowUpdatedAt: true,
+  whatsappFlowCompletedAt: true,
+  whatsappFallbackSentAt: true,
+  whatsappFailureReason: true,
+  whatsappAttendance: true
 });
 
 export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 export type GuestProfile = z.infer<typeof GuestProfileSchema>;
 export type GuestSummary = z.infer<typeof GuestSummarySchema>;
 export type HouseholdInvitation = z.infer<typeof HouseholdInvitationSchema>;
+export type PublicHouseholdInvitation = z.infer<typeof PublicHouseholdInvitationSchema>;
