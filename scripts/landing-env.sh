@@ -77,6 +77,8 @@ load_local_env_file() {
     VITE_API_URL
     VITE_TURNSTILE_SITE_KEY
     VITE_APP_STAGE
+    GOOGLE_WEB_CLIENT_ID
+    ADMIN_GOOGLE_HOSTED_DOMAIN
     VITE_GOOGLE_WEB_CLIENT_ID
     VITE_ADMIN_GOOGLE_HOSTED_DOMAIN
     VITE_ADMIN_SESSION_MODE
@@ -132,6 +134,7 @@ fi
 export CONTACT_EMAIL="${CONTACT_EMAIL:-casamento@brimax.life}"
 export API_DOMAIN="${API_DOMAIN:-api.${ROOT_DOMAIN}}"
 export WWW_DOMAIN="${WWW_DOMAIN:-www.${ROOT_DOMAIN}}"
+export ADMIN_GOOGLE_HOSTED_DOMAIN="${ADMIN_GOOGLE_HOSTED_DOMAIN:-brimax.life}"
 
 if [[ "${STAGE}" == "dev" ]]; then
   export STAGE_PREFIX="dev-"
@@ -147,6 +150,11 @@ export SENTRY_ORG="${SENTRY_ORG:-brimax}"
 export SENTRY_TEAM_SLUG="${SENTRY_TEAM_SLUG:-brimax-life}"
 
 validate_stage_configuration() {
+  if [[ "${ADMIN_GOOGLE_HOSTED_DOMAIN}" != "brimax.life" ]]; then
+    printf 'Invalid ADMIN_GOOGLE_HOSTED_DOMAIN in %s: expected brimax.life.\n' "${ENV_FILE}" >&2
+    exit 1
+  fi
+
   if [[ "${STAGE}" == "dev" ]]; then
     if [[ "${ROOT_DOMAIN}" == "brimax.life" || "${API_DOMAIN}" == "api.brimax.life" || "${WWW_DOMAIN}" == "www.brimax.life" ]]; then
       printf 'Invalid dev configuration in %s: dev stage cannot target production domains.\n' "${ENV_FILE}" >&2
@@ -172,13 +180,22 @@ export_public_web_env() {
   export VITE_CONTACT_EMAIL="${VITE_CONTACT_EMAIL:-${CONTACT_EMAIL}}"
   export VITE_API_URL="${VITE_API_URL:-https://${API_DOMAIN}}"
   export VITE_APP_STAGE="${STAGE}"
-  export VITE_GOOGLE_WEB_CLIENT_ID="${VITE_GOOGLE_WEB_CLIENT_ID:-}"
-  export VITE_ADMIN_GOOGLE_HOSTED_DOMAIN="${VITE_ADMIN_GOOGLE_HOSTED_DOMAIN:-brimax.life}"
+  if [[ -n "${VITE_GOOGLE_WEB_CLIENT_ID:-}" && -n "${GOOGLE_WEB_CLIENT_ID:-}" && "${VITE_GOOGLE_WEB_CLIENT_ID}" != "${GOOGLE_WEB_CLIENT_ID}" ]]; then
+    printf 'VITE_GOOGLE_WEB_CLIENT_ID must match GOOGLE_WEB_CLIENT_ID for stage %s.\n' "${STAGE}" >&2
+    exit 1
+  fi
+  if [[ -n "${VITE_ADMIN_GOOGLE_HOSTED_DOMAIN:-}" && "${VITE_ADMIN_GOOGLE_HOSTED_DOMAIN}" != "${ADMIN_GOOGLE_HOSTED_DOMAIN}" ]]; then
+    printf 'VITE_ADMIN_GOOGLE_HOSTED_DOMAIN must match ADMIN_GOOGLE_HOSTED_DOMAIN.\n' >&2
+    exit 1
+  fi
 
-  if [[ "${STAGE}" == "dev" ]]; then
-    export VITE_ADMIN_SESSION_MODE="${VITE_ADMIN_SESSION_MODE:-fixture}"
-  else
-    export VITE_ADMIN_SESSION_MODE="live"
+  export VITE_GOOGLE_WEB_CLIENT_ID="${GOOGLE_WEB_CLIENT_ID:-${VITE_GOOGLE_WEB_CLIENT_ID:-}}"
+  export VITE_ADMIN_GOOGLE_HOSTED_DOMAIN="${ADMIN_GOOGLE_HOSTED_DOMAIN}"
+
+  export VITE_ADMIN_SESSION_MODE="${VITE_ADMIN_SESSION_MODE:-live}"
+  if [[ "${VITE_ADMIN_SESSION_MODE}" != "fixture" && "${VITE_ADMIN_SESSION_MODE}" != "live" ]]; then
+    printf 'VITE_ADMIN_SESSION_MODE must be fixture or live.\n' >&2
+    exit 1
   fi
 
   if [[ "${STAGE}" == "dev" ]]; then

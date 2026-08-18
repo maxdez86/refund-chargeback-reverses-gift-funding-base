@@ -40,7 +40,9 @@ function createFullStageEnv(stage: "dev" | "prod") {
     WHATSAPP_VERIFY_TOKEN: "test-whatsapp-verify-token",
     TURNSTILE_SECRET_KEY: "test-turnstile-secret",
     TURNSTILE_SITE_KEY: "test-turnstile-site",
-    VITE_GOOGLE_WEB_CLIENT_ID: "test-google-web-client-id",
+    GOOGLE_WEB_CLIENT_ID: "test-google-web-client-id",
+    ADMIN_GOOGLE_HOSTED_DOMAIN: "brimax.life",
+    VITE_ADMIN_SESSION_MODE: "live",
     PAYMENTS_TEST_GIFT_ID: "g-test",
     PAYMENTS_TEST_GIFT_QUANTITY: "1",
     PAYMENTS_TEST_PAYER_NAME: "Test User",
@@ -102,7 +104,9 @@ describe("write-github-env-file.sh", () => {
         "WHATSAPP_VERIFY_TOKEN=test-whatsapp-verify-token",
         "TURNSTILE_SECRET_KEY=test-turnstile-secret",
         "TURNSTILE_SITE_KEY=test-turnstile-site",
-        "VITE_GOOGLE_WEB_CLIENT_ID=test-google-web-client-id",
+        "GOOGLE_WEB_CLIENT_ID=test-google-web-client-id",
+        "ADMIN_GOOGLE_HOSTED_DOMAIN=brimax.life",
+        "VITE_ADMIN_SESSION_MODE=live",
         "PAYMENTS_TEST_GIFT_ID=g-test",
         "PAYMENTS_TEST_GIFT_QUANTITY=1",
         "PAYMENTS_TEST_PAYER_NAME=Test\\ User",
@@ -185,6 +189,23 @@ describe("write-github-env-file.sh", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'Missing required GitHub environment vars/secrets for "dev": STAGE TOFU_STATE_KEY_PREFIX SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_TEAM_SLUG'
+    );
+  });
+
+  it("does not provide a fallback when the session mode is missing", () => {
+    const tempDir = createTempDir();
+    const envFile = path.join(tempDir, ".env.dev");
+    const env: NodeJS.ProcessEnv = { ...createFullStageEnv("dev") };
+    delete env.VITE_ADMIN_SESSION_MODE;
+
+    const result = runScript(
+      [envFile, "full-stage", "dev", "VITE_ADMIN_SESSION_MODE"],
+      env
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Missing required GitHub environment vars/secrets for "dev": VITE_ADMIN_SESSION_MODE'
     );
   });
 

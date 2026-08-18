@@ -5,7 +5,7 @@ deploy, seed templates, backfill phones, or send real messages from an
 unapproved shell session. Verify development first, then use a controlled
 manual-per-household production rollout.
 
-## Admin routes and IAM
+## Admin routes and Google Workspace authorization
 
 Use the stage API base URL (`https://api.brimax.life` for production or
 `https://api.dev.brimax.life` for development):
@@ -16,19 +16,22 @@ Use the stage API base URL (`https://api.brimax.life` for production or
   cursor-paginated history.
 - `PUT /admin/whatsapp/invitations/{invitationCode}/phone` updates a phone.
 
-All routes use `AWS_IAM`. The caller needs `execute-api:Invoke` on the deployed
-API stage, restricted to `/admin/whatsapp/*`. CDK does not create this operator
-role; grant it outside the repository. Credentials are intentionally omitted:
+All routes use the shared Google Workspace administrator authorizer. Obtain a
+Google ID token through the dashboard's stage-specific OAuth client and send it
+as a bearer token. The token must have the exact active-stage audience and the
+verified hosted-domain claim `hd=brimax.life`. See
+`docs/runbooks/google-workspace-admin-sso.md`. Never paste a real token into
+logs, documentation, or shell history:
 
 ```bash
-aws_signing_tool_request \
-  --method POST \
-  --url "https://api.dev.brimax.life/admin/whatsapp/messages" \
-  --region us-east-1 \
-  --service execute-api \
-  --header 'content-type: application/json' \
-  --header 'Idempotency-Key: campaign-wave-0001' \
-  --body '{"invitationCode":"SW2748","templateId":"wedding_rsvp_reconfirmation"}'
+read -r -s GOOGLE_ID_TOKEN
+curl --fail-with-body \
+  -X POST "https://api.dev.brimax.life/admin/whatsapp/messages" \
+  -H "Authorization: Bearer ${GOOGLE_ID_TOKEN}" \
+  -H 'content-type: application/json' \
+  -H 'Idempotency-Key: campaign-wave-0001' \
+  --data '{"invitationCode":"SW2748","templateId":"wedding_rsvp_reconfirmation"}'
+unset GOOGLE_ID_TOKEN
 ```
 
 The idempotency key is case-insensitive, must contain 8–64 safe characters,

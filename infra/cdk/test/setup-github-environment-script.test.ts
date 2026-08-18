@@ -50,7 +50,9 @@ function createHarness(stage: "dev" | "prod") {
       "WHATSAPP_VERIFY_TOKEN=test-whatsapp-verify-token",
       "TURNSTILE_SECRET_KEY=test-turnstile-secret",
       "TURNSTILE_SITE_KEY=test-turnstile-site",
-      "VITE_GOOGLE_WEB_CLIENT_ID=test-google-web-client-id",
+      "GOOGLE_WEB_CLIENT_ID=test-google-web-client-id",
+      "ADMIN_GOOGLE_HOSTED_DOMAIN=brimax.life",
+      "VITE_ADMIN_SESSION_MODE=live",
       "PAYMENTS_TEST_GIFT_ID=g-test",
       "PAYMENTS_TEST_GIFT_QUANTITY=1",
       'PAYMENTS_TEST_PAYER_NAME="Test User"',
@@ -131,6 +133,8 @@ describe("setup-github-environment.sh", () => {
           "secret set AWS_ROLE_TO_ASSUME_DEV --env dev --repo maxdez86/brimax-life --body arn:aws:iam::183286346090:role/stage-deploy-role"
         ),
         expect.stringContaining("variable set WHATSAPP_PHONE_NUMBER_ID --env dev"),
+        expect.stringContaining("variable set GOOGLE_WEB_CLIENT_ID --env dev"),
+        expect.stringContaining("variable set VITE_ADMIN_SESSION_MODE --env dev"),
         expect.stringContaining("secret set WHATSAPP_ACCESS_TOKEN --env dev")
       ])
     );

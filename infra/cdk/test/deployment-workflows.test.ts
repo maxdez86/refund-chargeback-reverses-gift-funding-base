@@ -36,6 +36,17 @@ describe.each([
     expect(workflow).toContain("- 'scripts/landing-env.sh'");
   });
 
+  it("wires the stage-specific Google administrator configuration", () => {
+    expect(workflow).toContain("GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}");
+    expect(workflow).toContain(
+      "ADMIN_GOOGLE_HOSTED_DOMAIN: ${{ vars.ADMIN_GOOGLE_HOSTED_DOMAIN }}"
+    );
+    expect(workflow).toContain(
+      "VITE_ADMIN_SESSION_MODE: ${{ vars.VITE_ADMIN_SESSION_MODE }}"
+    );
+    expect(workflow).not.toContain("vars.VITE_GOOGLE_WEB_CLIENT_ID");
+  });
+
   it("synchronizes only after backend and API DNS prerequisites", () => {
     const jobDefinition = workflow.slice(workflow.indexOf(`  ${job}:`));
 

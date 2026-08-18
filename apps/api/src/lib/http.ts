@@ -29,8 +29,8 @@ export function corsHeaders(requestOrigin: string | undefined): Record<string, s
   return {
     "access-control-allow-origin": requestOrigin,
     "access-control-allow-headers":
-      "content-type,idempotency-key,x-turnstile-token,x-rsvp-lookup-proof",
-    "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+      "authorization,content-type,idempotency-key,x-turnstile-token,x-rsvp-lookup-proof",
+    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     vary: "Origin"
   };
 }

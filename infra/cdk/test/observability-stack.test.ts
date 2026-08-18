@@ -22,6 +22,7 @@ describe("ObservabilityStack", () => {
     applyCostAllocationTags(app, "prod");
     const dataStack = new DataStack(app, "ObservabilityDataStack", { stage: "prod" });
     const appStack = new AppStack(app, "ObservabilityAppStack", {
+      adminGoogleHostedDomain: "brimax.life",
       apiCertificate: acm.Certificate.fromCertificateArn(
         app,
         "ObservabilityImportedApiCertificate",
@@ -31,6 +32,7 @@ describe("ObservabilityStack", () => {
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento@brimax.life",
+      googleWebClientId: "prod-client.apps.googleusercontent.com",
       rootDomain: "brimax.life",
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "prod",
@@ -87,8 +89,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    // 23 fixed alarms + one Lambda-throttle alarm per alarmed function (12).
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 41);
+    // 23 fixed alarms + one Lambda-throttle alarm per alarmed function (20).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 43);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",
@@ -210,6 +212,7 @@ describe("ObservabilityStack", () => {
     applyCostAllocationTags(app, "dev");
     const dataStack = new DataStack(app, "DevObservabilityDataStack", { stage: "dev" });
     const appStack = new AppStack(app, "DevObservabilityAppStack", {
+      adminGoogleHostedDomain: "brimax.life",
       apiCertificate: acm.Certificate.fromCertificateArn(
         app,
         "DevObservabilityImportedApiCertificate",
@@ -219,6 +222,7 @@ describe("ObservabilityStack", () => {
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento@brimax.life",
+      googleWebClientId: "dev-client.apps.googleusercontent.com",
       rootDomain: "dev.brimax.life",
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "dev",

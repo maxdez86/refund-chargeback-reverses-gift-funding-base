@@ -7,13 +7,14 @@ import { DataStack } from "../lib/stacks/data-stack";
 import { applyCostAllocationTags } from "./support/tags";
 
 describe("AppStack", () => {
-  it("creates the payment API, webhook queue, secrets, and Lambda handlers", { timeout: 30000 }, () => {
+  it("creates the payment API, webhook queue, secrets, and Lambda handlers", { timeout: 60000 }, () => {
     const app = new cdk.App();
     applyCostAllocationTags(app, "dev");
     const dataStack = new DataStack(app, "AppDataStack", {
       stage: "dev"
     });
     const stack = new AppStack(app, "PaymentAppStack", {
+      adminGoogleHostedDomain: "brimax.life",
       apiCertificate: acm.Certificate.fromCertificateArn(
         app,
         "ImportedApiCertificate",
@@ -23,6 +24,7 @@ describe("AppStack", () => {
       asaasApiKey: "asaas-api-key-test",
       asaasWebhookToken: "asaas-webhook-token-test",
       contactEmail: "casamento-dev@brimax.life",
+      googleWebClientId: "dev-client.apps.googleusercontent.com",
       rootDomain: "dev.brimax.life",
       sentryDsn: "https://public@example.ingest.sentry.io/123456",
       stage: "dev",
@@ -78,7 +80,14 @@ describe("AppStack", () => {
       RouteKey: "POST /guest-messages"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
-      RouteKey: "DELETE /admin/guest-messages/{messageId}"
+      RouteKey: "GET /admin/session",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "DELETE /admin/guest-messages/{messageId}",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments/{paymentId}/message"
@@ -94,19 +103,45 @@ describe("AppStack", () => {
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /admin/whatsapp/messages",
-      AuthorizationType: "AWS_IAM"
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /admin/whatsapp/invitations/{invitationCode}",
-      AuthorizationType: "AWS_IAM"
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /admin/whatsapp/messages/{commandId}",
-      AuthorizationType: "AWS_IAM"
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "PUT /admin/whatsapp/invitations/{invitationCode}/phone",
-      AuthorizationType: "AWS_IAM"
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
+      AuthorizerPayloadFormatVersion: "2.0",
+      AuthorizerResultTtlInSeconds: 30,
+      AuthorizerType: "REQUEST",
+      EnableSimpleResponses: true,
+      IdentitySource: ["$request.header.Authorization"],
+      Name: "dev-brimax-google-admin-authorizer"
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+      CorsConfiguration: {
+        AllowHeaders: [
+          "authorization",
+          "content-type",
+          "idempotency-key",
+          "x-turnstile-token",
+          "x-rsvp-lookup-proof"
+        ],
+        AllowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        AllowOrigins: ["https://dev.brimax.life", "https://www.dev.brimax.life"],
+        MaxAge: 600
+      }
     });
     for (const [, metricName] of [
       ['"WHATSAPP_RSVP_SEND"', "whatsapp-rsvp-send-dev"],
@@ -299,6 +334,16 @@ describe("AppStack", () => {
         }
       ]
     });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      FilterPattern: '"ADMIN_AUTH_DENIED"',
+      MetricTransformations: [
+        {
+          MetricName: "admin-auth-denied-dev",
+          MetricNamespace: "Brimax/Admin",
+          MetricValue: "1"
+        }
+      ]
+    });
     // The checkout-expiry worker consumes its queue with batchSize 1 and a
     // maxConcurrency floor of 2 (NOT reserved concurrency).
     template.hasResourceProperties("AWS::Lambda::EventSourceMapping", {
@@ -414,6 +459,60 @@ describe("AppStack", () => {
       string,
       { Properties?: Record<string, unknown>; Type: string }
     >;
+    const adminRoutes = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        String(resource.Properties?.RouteKey).includes(" /admin/")
+    );
+    expect(adminRoutes).toHaveLength(6);
+    const adminAuthorizerIds = new Set(
+      adminRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))
+    );
+    expect(adminAuthorizerIds.size).toBe(1);
+    for (const route of adminRoutes) {
+      expect(route.Properties).toMatchObject({ AuthorizationType: "CUSTOM" });
+      expect(route.Properties).toHaveProperty("AuthorizerId");
+    }
+    expect(JSON.stringify(adminRoutes)).not.toContain("AWS_IAM");
+
+    const webhookRoutes = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        String(resource.Properties?.RouteKey).includes(" /webhooks/")
+    );
+    expect(webhookRoutes).toHaveLength(3);
+    for (const route of webhookRoutes) {
+      expect(route.Properties).not.toHaveProperty("AuthorizerId");
+      expect(route.Properties?.AuthorizationType ?? "NONE").toBe("NONE");
+    }
+
+    const adminAuthorizerFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("AdminAuthorizerFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(adminAuthorizerFunctionEntry).toBeDefined();
+    expect(adminAuthorizerFunctionEntry?.[1].Properties).toMatchObject({
+      MemorySize: 256,
+      Timeout: 10,
+      Environment: {
+        Variables: {
+          ADMIN_GOOGLE_HOSTED_DOMAIN: "brimax.life",
+          GOOGLE_WEB_CLIENT_ID: "dev-client.apps.googleusercontent.com",
+          STAGE: "dev"
+        }
+      }
+    });
+    const adminAuthorizerRoleLogicalId = (
+      adminAuthorizerFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const adminAuthorizerPolicies = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(adminAuthorizerRoleLogicalId)
+    );
+    const adminAuthorizerPolicyJson = JSON.stringify(adminAuthorizerPolicies);
+    expect(adminAuthorizerPolicyJson).not.toMatch(/dynamodb|secretsmanager|sqs|ses:/i);
     const getGiftsFunctionEntry = Object.entries(resources).find(
       ([logicalId, resource]) =>
         logicalId.startsWith("GetGiftsFunction") && resource.Type === "AWS::Lambda::Function"
@@ -600,5 +699,80 @@ describe("AppStack", () => {
     template.hasOutput("SesMailFromTxtValue", {});
 
     expect(template.toJSON()).toBeDefined();
+  });
+
+  it("wires only the production Google audience into the production authorizer", () => {
+    const app = new cdk.App({ context: { "aws:cdk:bundling-stacks": [] } });
+    const dataStack = new DataStack(app, "ProdAuthDataStack", { stage: "prod" });
+    const stack = new AppStack(app, "ProdAuthAppStack", {
+      adminGoogleHostedDomain: "brimax.life",
+      apiCertificate: acm.Certificate.fromCertificateArn(
+        app,
+        "ProdAuthCertificate",
+        "arn:aws:acm:us-east-1:123456789012:certificate/test-prod-api"
+      ),
+      apiDomain: "api.brimax.life",
+      asaasApiKey: "test",
+      asaasWebhookToken: "test",
+      contactEmail: "casamento@brimax.life",
+      googleWebClientId: "prod-client.apps.googleusercontent.com",
+      rootDomain: "brimax.life",
+      sentryDsn: "https://public@example.ingest.sentry.io/123456",
+      stage: "prod",
+      table: dataStack.table,
+      turnstileSecretKey: "test",
+      whatsappAccessToken: "test",
+      whatsappAppSecret: "test",
+      whatsappPhoneNumberId: "123456789",
+      whatsappVerifyToken: "test",
+      wwwDomain: "www.brimax.life",
+      xrayEnabled: false
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ADMIN_GOOGLE_HOSTED_DOMAIN: "brimax.life",
+          GOOGLE_WEB_CLIENT_ID: "prod-client.apps.googleusercontent.com",
+          STAGE: "prod"
+        })
+      }
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
+      AuthorizerPayloadFormatVersion: "2.0",
+      AuthorizerResultTtlInSeconds: 30,
+      EnableSimpleResponses: true,
+      IdentitySource: ["$request.header.Authorization"]
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+      CorsConfiguration: Match.objectLike({
+        AllowHeaders: Match.arrayWith(["authorization"]),
+        AllowMethods: Match.arrayWith(["PUT"]),
+        AllowOrigins: ["https://brimax.life", "https://www.brimax.life"]
+      })
+    });
+    const resources = template.toJSON().Resources as Record<
+      string,
+      { Properties?: Record<string, unknown>; Type: string }
+    >;
+    const protectedRoutes = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        String(resource.Properties?.RouteKey).includes(" /admin/")
+    );
+    expect(protectedRoutes).toHaveLength(6);
+    expect(protectedRoutes.every((route) => route.Properties?.AuthorizationType === "CUSTOM")).toBe(true);
+    expect(new Set(protectedRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))).size).toBe(1);
+    const authorizerInvokePermissions = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::Lambda::Permission" &&
+        resource.Properties?.Principal === "apigateway.amazonaws.com" &&
+        JSON.stringify(resource.Properties?.SourceArn).includes("authorizers")
+    );
+    expect(authorizerInvokePermissions).toHaveLength(1);
+    expect(JSON.stringify(template.toJSON())).not.toContain(
+      "dev-client.apps.googleusercontent.com"
+    );
   });
 });

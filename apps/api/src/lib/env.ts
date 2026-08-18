@@ -22,7 +22,14 @@ type Env = {
   weddingTableName: string;
 };
 
+type AdminAuthEnv = {
+  googleWebClientId: string;
+  hostedDomain: "brimax.life";
+  stage: ReturnType<typeof resolveStage>;
+};
+
 let cachedEnv: Env | null = null;
+let cachedAdminAuthEnv: AdminAuthEnv | null = null;
 
 function required(name: string) {
   const value = process.env[name];
@@ -56,6 +63,26 @@ function normalizeOrigin(value: string) {
 
 export function resolveSiteBaseUrl() {
   return configuredSiteBaseUrl();
+}
+
+export function resolveRuntimeStage() {
+  return resolveStage(process.env.STAGE);
+}
+
+export function getAdminAuthEnv(): AdminAuthEnv {
+  if (cachedAdminAuthEnv) return cachedAdminAuthEnv;
+
+  const hostedDomain = required("ADMIN_GOOGLE_HOSTED_DOMAIN");
+  if (hostedDomain !== "brimax.life") {
+    throw new Error("ADMIN_GOOGLE_HOSTED_DOMAIN must be exactly brimax.life.");
+  }
+
+  cachedAdminAuthEnv = {
+    googleWebClientId: required("GOOGLE_WEB_CLIENT_ID"),
+    hostedDomain,
+    stage: resolveRuntimeStage()
+  };
+  return cachedAdminAuthEnv;
 }
 
 export function resolveSiteOrigin() {

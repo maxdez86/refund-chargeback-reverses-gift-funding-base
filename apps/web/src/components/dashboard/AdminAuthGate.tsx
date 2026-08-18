@@ -62,7 +62,7 @@ export function AdminAuthGate({
       {state.message && <p role="alert" className="mb-4 text-sm text-destructive">{state.message}</p>}
       <GoogleSignInButton clientId={config.googleClientId} hostedDomain={config.hostedDomain} onCredential={onCredential} />
       <p className="mt-5 max-w-sm text-xs leading-relaxed text-muted-foreground">
-        A verificação exibida aqui antecipa a experiência. A autorização definitiva pertence ao serviço administrativo.
+        O serviço administrativo valida esta credencial e confirma o acesso antes de carregar o painel.
       </p>
     </StateCard>
   );

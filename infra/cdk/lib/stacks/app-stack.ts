@@ -3,6 +3,7 @@ import path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
+import * as apigwv2Authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
@@ -25,9 +26,11 @@ function stageMetricName(metricName: string, stage: AppStage) {
 export interface AppStackProps extends cdk.StackProps {
   apiCertificate: acm.ICertificate;
   apiDomain: string;
+  adminGoogleHostedDomain: string;
   asaasApiKey: string;
   asaasWebhookToken: string;
   contactEmail: string;
+  googleWebClientId: string;
   whatsappAccessToken: string;
   whatsappAppSecret: string;
   whatsappPhoneNumberId: string;
@@ -64,6 +67,13 @@ export class AppStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
+
+    if (!props.googleWebClientId.trim()) {
+      throw new Error("googleWebClientId must contain the active stage Google OAuth client ID.");
+    }
+    if (props.adminGoogleHostedDomain !== "brimax.life") {
+      throw new Error("adminGoogleHostedDomain must be exactly brimax.life.");
+    }
 
     const projectRoot = path.resolve(__dirname, "../../../../");
     const senderEmailIdentity = props.contactEmail;
@@ -198,6 +208,7 @@ export class AppStack extends cdk.Stack {
       apiName: `brimax-${props.stage}-api`,
       corsPreflight: {
         allowHeaders: [
+          "authorization",
           "content-type",
           "idempotency-key",
           "x-turnstile-token",
@@ -206,6 +217,7 @@ export class AppStack extends cdk.Stack {
         allowMethods: [
           apigwv2.CorsHttpMethod.GET,
           apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PUT,
           apigwv2.CorsHttpMethod.DELETE,
           apigwv2.CorsHttpMethod.OPTIONS
         ],
@@ -262,7 +274,9 @@ export class AppStack extends cdk.Stack {
           status: "$context.status",
           protocol: "$context.protocol",
           responseLength: "$context.responseLength",
-          integrationError: "$context.integrationErrorMessage"
+          integrationError: "$context.integrationErrorMessage",
+          adminSubject: "$context.authorizer.subject",
+          adminEmail: "$context.authorizer.email"
         })
       };
       defaultStage.defaultRouteSettings = {
@@ -328,6 +342,48 @@ export class AppStack extends cdk.Stack {
       WEDDING_TABLE_NAME: props.table.tableName,
       WHATSAPP_PHONE_NUMBER_ID: props.whatsappPhoneNumberId
     };
+    const adminAuthorizerEnvironment = {
+      ADMIN_GOOGLE_HOSTED_DOMAIN: props.adminGoogleHostedDomain,
+      GOOGLE_WEB_CLIENT_ID: props.googleWebClientId,
+      SENTRY_DSN: props.sentryDsn,
+      STAGE: props.stage,
+      XRAY_ENABLED: String(props.xrayEnabled)
+    };
+    const adminSessionEnvironment = {
+      ALLOWED_ORIGINS: allowedOrigins.join(","),
+      SENTRY_DSN: props.sentryDsn,
+      STAGE: props.stage,
+      XRAY_ENABLED: String(props.xrayEnabled)
+    };
+
+    const adminAuthorizerFn = this.createTaggedNodejsFunction("AdminAuthorizerFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-authorizer/handler.ts"),
+      environment: adminAuthorizerEnvironment,
+      handler: "handler",
+      memorySize: 256,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminSessionFn = this.createTaggedNodejsFunction("AdminSessionFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-session/handler.ts"),
+      environment: adminSessionEnvironment,
+      handler: "handler",
+      memorySize: 256,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminAuthorizer = new apigwv2Authorizers.HttpLambdaAuthorizer(
+      "GoogleWorkspaceAdminAuthorizer",
+      adminAuthorizerFn,
+      {
+        authorizerName: resourceName("brimax-google-admin-authorizer", props.stage),
+        identitySource: ["$request.header.Authorization"],
+        responseTypes: [apigwv2Authorizers.HttpLambdaResponseType.SIMPLE],
+        resultsCacheTtl: cdk.Duration.seconds(30)
+      }
+    );
 
     const createPaymentFn = this.createTaggedNodejsFunction("CreatePaymentFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-create/handler.ts"),
@@ -488,6 +544,8 @@ export class AppStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(10)
     });
     this.alarmedFunctions = [
+      adminAuthorizerFn,
+      adminSessionFn,
       createPaymentFn,
       discardPaymentFn,
       getPaymentFn,
@@ -683,14 +741,39 @@ export class AppStack extends cdk.Stack {
         createGuestMessagesFn
       )
     });
-    this.httpApi.addRoutes({
-      path: "/admin/guest-messages/{messageId}",
-      methods: [apigwv2.HttpMethod.DELETE],
-      integration: new apigwv2Integrations.HttpLambdaIntegration(
+    const addAdminRoutes = (
+      routeName: string,
+      pathPattern: string,
+      methods: apigwv2.HttpMethod[],
+      integration: apigwv2.HttpRouteIntegration
+    ) => {
+      if (!pathPattern.startsWith("/admin/")) {
+        throw new Error(`${routeName} must be under /admin/: ${pathPattern}`);
+      }
+
+      return this.httpApi.addRoutes({
+        path: pathPattern,
+        methods,
+        integration,
+        authorizer: adminAuthorizer
+      });
+    };
+
+    const adminSessionRoutes = addAdminRoutes(
+      "AdminSessionRoute",
+      "/admin/session",
+      [apigwv2.HttpMethod.GET],
+      new apigwv2Integrations.HttpLambdaIntegration("AdminSessionIntegration", adminSessionFn)
+    );
+    const deleteGuestMessageRoutes = addAdminRoutes(
+      "DeleteGuestMessageRoute",
+      "/admin/guest-messages/{messageId}",
+      [apigwv2.HttpMethod.DELETE],
+      new apigwv2Integrations.HttpLambdaIntegration(
         "DeleteGuestMessageIntegration",
         deleteGuestMessageFn
       )
-    });
+    );
     const paymentMessageRoutes = this.httpApi.addRoutes({
       path: "/payments/{paymentId}/message",
       methods: [apigwv2.HttpMethod.POST],
@@ -728,25 +811,30 @@ export class AppStack extends cdk.Stack {
       methods: [apigwv2.HttpMethod.POST],
       integration: new apigwv2Integrations.HttpLambdaIntegration("RsvpIntegration", rsvpFn)
     });
-    const whatsappSendRoutes = this.httpApi.addRoutes({
-      path: "/admin/whatsapp/messages", methods: [apigwv2.HttpMethod.POST],
-      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpSendIntegration", whatsappRsvpSendFn)
-    });
-    const whatsappStatusRoutes = this.httpApi.addRoutes({
-      path: "/admin/whatsapp/invitations/{invitationCode}", methods: [apigwv2.HttpMethod.GET],
-      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpStatusIntegration", whatsappRsvpStatusFn)
-    });
-    const whatsappCommandStatusRoutes = this.httpApi.addRoutes({
-      path: "/admin/whatsapp/messages/{commandId}", methods: [apigwv2.HttpMethod.GET],
-      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpCommandStatusIntegration", whatsappRsvpCommandStatusFn)
-    });
-    const whatsappPhoneRoutes = this.httpApi.addRoutes({
-      path: "/admin/whatsapp/invitations/{invitationCode}/phone", methods: [apigwv2.HttpMethod.PUT],
-      integration: new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpPhoneIntegration", whatsappRsvpPhoneFn)
-    });
-    for (const route of [whatsappSendRoutes[0], whatsappStatusRoutes[0], whatsappCommandStatusRoutes[0], whatsappPhoneRoutes[0]]) {
-      (route.node.defaultChild as apigwv2.CfnRoute).authorizationType = "AWS_IAM";
-    }
+    const whatsappSendRoutes = addAdminRoutes(
+      "WhatsappSendRoute",
+      "/admin/whatsapp/messages",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpSendIntegration", whatsappRsvpSendFn)
+    );
+    const whatsappStatusRoutes = addAdminRoutes(
+      "WhatsappStatusRoute",
+      "/admin/whatsapp/invitations/{invitationCode}",
+      [apigwv2.HttpMethod.GET],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpStatusIntegration", whatsappRsvpStatusFn)
+    );
+    const whatsappCommandStatusRoutes = addAdminRoutes(
+      "WhatsappCommandStatusRoute",
+      "/admin/whatsapp/messages/{commandId}",
+      [apigwv2.HttpMethod.GET],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpCommandStatusIntegration", whatsappRsvpCommandStatusFn)
+    );
+    const whatsappPhoneRoutes = addAdminRoutes(
+      "WhatsappPhoneRoute",
+      "/admin/whatsapp/invitations/{invitationCode}/phone",
+      [apigwv2.HttpMethod.PUT],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpPhoneIntegration", whatsappRsvpPhoneFn)
+    );
 
     if (defaultStage) {
       addStageRouteDependency(defaultStage, invitationRoutes);
@@ -755,6 +843,8 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, createGuestMessagesRoutes);
       addStageRouteDependency(defaultStage, createPaymentRoutes);
       addStageRouteDependency(defaultStage, discardPaymentRoutes);
+      addStageRouteDependency(defaultStage, adminSessionRoutes);
+      addStageRouteDependency(defaultStage, deleteGuestMessageRoutes);
       addStageRouteDependency(defaultStage, whatsappSendRoutes);
       addStageRouteDependency(defaultStage, whatsappStatusRoutes);
       addStageRouteDependency(defaultStage, whatsappCommandStatusRoutes);
@@ -791,6 +881,13 @@ export class AppStack extends cdk.Stack {
       metricValue: "1"
     });
     this.addWhatsappRsvpMetricFilters(props.stage);
+    new logs.MetricFilter(this, "AdminAuthDeniedMetric", {
+      logGroup: this.getFunctionLogGroup("AdminAuthorizerFunction"),
+      metricNamespace: "Brimax/Admin",
+      metricName: stageMetricName("admin-auth-denied", props.stage),
+      filterPattern: logs.FilterPattern.literal('"ADMIN_AUTH_DENIED"'),
+      metricValue: "1"
+    });
 
     new cdk.CfnOutput(this, "RawExecuteApiUrl", {
       description: "Raw API Gateway execute-api endpoint for fallback diagnostics only.",

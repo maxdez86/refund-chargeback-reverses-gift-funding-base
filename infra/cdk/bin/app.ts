@@ -33,6 +33,8 @@ const rawWhatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const rawWhatsappVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 const rawTurnstileSecretKey = process.env.TURNSTILE_SECRET_KEY;
 const rawSentryDsn = process.env.SENTRY_DSN?.trim();
+const rawGoogleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID?.trim();
+const rawAdminGoogleHostedDomain = process.env.ADMIN_GOOGLE_HOSTED_DOMAIN?.trim();
 const rawObservabilityAlertEmail = process.env.OBSERVABILITY_ALERT_EMAIL?.trim();
 const rawXrayEnabled = process.env.XRAY_ENABLED?.trim().toLowerCase();
 const xrayEnabled = rawXrayEnabled ? rawXrayEnabled === "true" : stage === "prod";
@@ -95,6 +97,14 @@ function requirePaymentDeploySecrets() {
     missing.push("SENTRY_DSN");
   }
 
+  if (!rawGoogleWebClientId) {
+    missing.push("GOOGLE_WEB_CLIENT_ID");
+  }
+
+  if (!rawAdminGoogleHostedDomain) {
+    missing.push("ADMIN_GOOGLE_HOSTED_DOMAIN");
+  }
+
   if (stage === "prod" && !rawObservabilityAlertEmail) {
     missing.push("OBSERVABILITY_ALERT_EMAIL");
   }
@@ -119,6 +129,12 @@ const whatsappPhoneNumberId = rawWhatsappPhoneNumberId ?? "cdk-placeholder-whats
 const whatsappVerifyToken = rawWhatsappVerifyToken ?? "cdk-placeholder-whatsapp-verify-token";
 const turnstileSecretKey = rawTurnstileSecretKey ?? TURNSTILE_TEST_SECRET_KEY;
 const sentryDsn = rawSentryDsn ?? "";
+const googleWebClientId = rawGoogleWebClientId ?? "cdk-placeholder.apps.googleusercontent.com";
+const adminGoogleHostedDomain = rawAdminGoogleHostedDomain ?? "brimax.life";
+
+if (adminGoogleHostedDomain !== "brimax.life") {
+  throw new Error("ADMIN_GOOGLE_HOSTED_DOMAIN must be exactly brimax.life.");
+}
 
 function envOrDefault(name: string, fallback: string) {
   return process.env[name]?.trim() || fallback;
@@ -171,12 +187,14 @@ const dataStack = new DataStack(app, resourceName("BrimaxDataStack", stage), {
 });
 
 const appStack = new AppStack(app, resourceName("BrimaxAppStack", stage), {
+  adminGoogleHostedDomain,
   apiCertificate: certificateStack.apiCertificate,
   apiDomain,
   asaasApiKey,
   asaasWebhookToken,
   contactEmail,
   env,
+  googleWebClientId,
   rootDomain,
   stage,
   sentryDsn,

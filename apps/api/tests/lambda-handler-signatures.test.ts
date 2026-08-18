@@ -31,6 +31,8 @@ vi.mock("../src/services/dynamodb/repositories/payment-repository", () => ({
 vi.mock("../src/services/email/client", () => ({ EmailService: class {} }));
 
 const handlerModules = [
+  ["AdminAuthorizerFunction", () => import("../src/functions/admin-authorizer/handler")],
+  ["AdminSessionFunction", () => import("../src/functions/admin-session/handler")],
   ["AsaasWebhookFunction", () => import("../src/functions/asaas-webhook/handler")],
   ["AsaasWebhookProcessorFunction", () => import("../src/functions/asaas-webhook-processor/handler")],
   ["CheckoutExpiryWorkerFunction", () => import("../src/functions/checkout-expiry-worker/handler")],

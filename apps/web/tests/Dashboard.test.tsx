@@ -49,6 +49,7 @@ describe("administrative dashboard", () => {
     render(<Dashboard />);
     expect(screen.getByRole("heading", { name: "Administração Brimax" })).toBeInTheDocument();
     expect(screen.getByText(/conta verificada do Google Workspace brimax.life/i)).toBeInTheDocument();
+    expect(screen.getByText(/serviço administrativo valida esta credencial/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Continuar com Google" }));
     expect(baseActions.acceptCredential).toHaveBeenCalledWith("credential");
   });
