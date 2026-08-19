@@ -82,6 +82,7 @@ load_local_env_file() {
     VITE_GOOGLE_WEB_CLIENT_ID
     VITE_ADMIN_GOOGLE_HOSTED_DOMAIN
     VITE_ADMIN_SESSION_MODE
+    ADMIN_AUTHORIZATION
   )
   local key
   local output

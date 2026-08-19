@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WhatsappApiError } from "../apps/api/src/services/whatsapp/client.ts";
 import { filterWhatsappRsvpHistory, parseWhatsappRsvpArgs, redactWhatsappPhone } from "./lib/whatsapp-rsvp-operations.ts";
+import { autoSendWhatsappRsvp, parseWhatsappRsvpAutoSendArgs } from "./lib/whatsapp-rsvp-auto-send.ts";
 import {
   buildWhatsappWebhookPayload,
   parseWhatsappSimulatorArgs,
@@ -25,6 +26,12 @@ import {
   importNewInvitations,
   validateNewInvitations
 } from "./lib/import-new-invitations.ts";
+import {
+  formatPhoneBatchSummary,
+  parsePhoneBatchCsv,
+  parseWhatsappRsvpPhoneBatchArgs,
+  runWhatsappRsvpPhoneBatch
+} from "./lib/whatsapp-rsvp-phones.ts";
 
 test("template management defaults writes to dry-run", () => {
   const options = parseManageWhatsappTemplateArgs([
@@ -335,6 +342,35 @@ test("RSVP argument parsing keeps flags independent and supports list", () => {
   assert.throws(() => parseWhatsappRsvpArgs(["list", "--invitation-code", "SW0000", "--status", "sent"]), /--status must be/);
 });
 
+test("RSVP auto-send parsing requires confirmation and rejects template selection", () => {
+  assert.deepEqual(
+    parseWhatsappRsvpAutoSendArgs(["--invitation-code", "SW2748", "--confirm-send"]),
+    { invitationCode: "SW2748", confirmSend: true }
+  );
+  assert.throws(() => parseWhatsappRsvpAutoSendArgs(["--invitation-code", "SW2748"]), /confirm-send/);
+  assert.throws(() => parseWhatsappRsvpAutoSendArgs(["--invitation-code", "SW2748", "--template-id", "foo"]), /Only/);
+});
+
+test("RSVP auto-send calls the endpoint without a template id and parses its response", async () => {
+  let request: RequestInit | undefined;
+  const result = await autoSendWhatsappRsvp("SW2748", {
+    apiBaseUrl: "https://api.dev.example",
+    authorization: "Bearer test-token",
+    fetchImpl: async (url, init) => {
+      request = init;
+      assert.equal(String(url), "https://api.dev.example/admin/whatsapp/invitations/SW2748/send-rsvp");
+      return new Response(JSON.stringify({
+        commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+        templateVersion: 1, status: "queued", replayed: false
+      }), { status: 202 });
+    }
+  });
+  assert.equal(result.templateId, "wedding_rsvp_pending_reminder");
+  assert.equal(request?.method, "POST");
+  assert.equal((request?.headers as Record<string, string>)["idempotency-key"], "auto-rsvp-SW2748");
+  assert.equal((request?.headers as Record<string, string>).authorization, "Bearer test-token");
+});
+
 test("new invitation imports preserve an optional validated phone number", () => {
   const invitation = {
     invitationCode: "SW2748",
@@ -433,3 +469,187 @@ function expectEvent(buttonId: string) {
     replyContextMessageId: "wamid.synthetic-outbound-SW0000"
   };
 }
+
+const PHONE_BATCH_CSV = [
+  "invitationCode,phoneNumber",
+  "SW2748,+55 11 91436-2818",
+  "",
+  "# a comment",
+  '"QR3579","5511922223333"'
+].join("\r\n");
+
+function phoneBatchDeps(stored: Record<string, string | undefined>) {
+  const calls = { reads: 0, writes: 0 };
+  const deps = {
+    readStatus: async (invitationCode: string) => {
+      calls.reads += 1;
+      if (!(invitationCode in stored)) return null;
+      return { phoneNumber: stored[invitationCode] };
+    },
+    updatePhone: async (invitationCode: string, phoneNumber: string) => {
+      calls.writes += 1;
+      stored[invitationCode] = phoneNumber;
+      return { updatedAt: "2026-08-18T00:00:00.000Z" };
+    }
+  };
+  return { calls, deps };
+}
+
+function phoneBatchLogger() {
+  const lines: string[] = [];
+  return { lines, logger: { log: (line: string) => lines.push(line) } };
+}
+
+test("phone batch CSV tolerates a header, BOM, CRLF, comments, blanks, and quoted cells", () => {
+  const parsed = parsePhoneBatchCsv(`\uFEFF${PHONE_BATCH_CSV}\r\n`);
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.rows, [
+    { line: 2, invitationCode: "SW2748", phoneNumber: "5511914362818" },
+    { line: 5, invitationCode: "QR3579", phoneNumber: "5511922223333" }
+  ]);
+});
+
+test("phone batch rejects bad rows individually and keeps the good ones", () => {
+  const parsed = parsePhoneBatchCsv(
+    [
+      "SW2748,5511914362818",
+      "sw2222,5511922223333",
+      "SW0148,5511933334444",
+      "QR3579",
+      "QR4444,12",
+      "SW2748,5511955556666"
+    ].join("\n")
+  );
+  assert.deepEqual(parsed.rows, [{ line: 1, invitationCode: "SW2748", phoneNumber: "5511914362818" }]);
+  assert.deepEqual(parsed.errors.map((error) => error.line), [2, 3, 4, 5, 6]);
+  assert.match(parsed.errors[0].error, /Invalid invitation code/);
+  assert.match(parsed.errors[2].error, /Expected 2 columns/);
+  assert.match(parsed.errors[3].error, /Invalid WhatsApp phone number/);
+  assert.match(parsed.errors[4].error, /Duplicate invitation code, already on line 1/);
+});
+
+test("phone batch dry-run classifies every row without writing", async () => {
+  const { calls, deps } = phoneBatchDeps({ SW2748: undefined, QR3579: "5511999998888" });
+  const parsed = parsePhoneBatchCsv(PHONE_BATCH_CSV);
+  const result = await runWhatsappRsvpPhoneBatch(parsed, { mode: "dry-run", stage: "dev", confirmProd: false, logger: phoneBatchLogger().logger }, deps);
+
+  assert.equal(calls.writes, 0);
+  assert.equal(result.wouldUpdate, 2);
+  assert.deepEqual(result.entries.map((entry) => entry.classification), ["new", "changed"]);
+  assert.equal(result.changed, 1);
+  assert.equal(result.failed, 0);
+});
+
+test("phone batch warns that a replaced number keeps resolving to the invitation", async () => {
+  const { deps } = phoneBatchDeps({ SW2748: "5511999998888" });
+  const { lines, logger } = phoneBatchLogger();
+  await runWhatsappRsvpPhoneBatch(
+    parsePhoneBatchCsv("SW2748,5511914362818"),
+    { mode: "apply", stage: "dev", confirmProd: false, logger },
+    deps
+  );
+  assert.equal(lines.some((line) => line.includes("keeps resolving to this invitation")), true);
+});
+
+test("phone batch skips an unchanged number instead of rewriting it", async () => {
+  const { calls, deps } = phoneBatchDeps({ SW2748: "5511914362818" });
+  const result = await runWhatsappRsvpPhoneBatch(
+    parsePhoneBatchCsv("SW2748,+5511914362818"),
+    { mode: "apply", stage: "dev", confirmProd: false, logger: phoneBatchLogger().logger },
+    deps
+  );
+  assert.equal(calls.writes, 0);
+  assert.equal(result.unchanged, 1);
+});
+
+test("phone batch continues past a failing row and reports a missing invitation", async () => {
+  const { calls, deps } = phoneBatchDeps({ SW2748: undefined, QR3579: undefined });
+  deps.updatePhone = async (invitationCode: string) => {
+    calls.writes += 1;
+    if (invitationCode === "SW2748") throw new Error("Throttled.");
+    return { updatedAt: "2026-08-18T00:00:00.000Z" };
+  };
+  const parsed = parsePhoneBatchCsv(
+    ["SW2748,5511914362818", "ZZ9999,5511933334444", "QR3579,5511922223333"].join("\n")
+  );
+  const result = await runWhatsappRsvpPhoneBatch(
+    parsed,
+    { mode: "apply", stage: "dev", confirmProd: false, logger: phoneBatchLogger().logger },
+    deps
+  );
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.failed, 2);
+  assert.equal(result.missing, 1);
+  assert.deepEqual(result.entries.map((entry) => entry.outcome), ["failed", "failed", "updated"]);
+  assert.equal(result.entries[1].error, "Invitation not found.");
+});
+
+test("phone batch production guard runs before any repository read", async () => {
+  const { calls, deps } = phoneBatchDeps({ SW2748: undefined });
+  await assert.rejects(
+    runWhatsappRsvpPhoneBatch(
+      parsePhoneBatchCsv("SW2748,5511914362818"),
+      { mode: "apply", stage: "prod", confirmProd: false, logger: phoneBatchLogger().logger },
+      deps
+    ),
+    /--confirm-prod/
+  );
+  assert.equal(calls.reads, 0);
+  assert.equal(calls.writes, 0);
+});
+
+test("phone batch limit stops after the requested rows", async () => {
+  const { calls, deps } = phoneBatchDeps({ SW2748: undefined, QR3579: undefined });
+  const result = await runWhatsappRsvpPhoneBatch(
+    parsePhoneBatchCsv(PHONE_BATCH_CSV),
+    { mode: "apply", stage: "dev", confirmProd: false, limit: 1, logger: phoneBatchLogger().logger },
+    deps
+  );
+  assert.equal(calls.writes, 1);
+  assert.equal(result.skipped, 1);
+});
+
+test("phone batch never exposes a full phone number in its result or logs", async () => {
+  const { deps } = phoneBatchDeps({ SW2748: undefined, QR3579: "5511999998888" });
+  const { lines, logger } = phoneBatchLogger();
+  const result = await runWhatsappRsvpPhoneBatch(
+    parsePhoneBatchCsv(PHONE_BATCH_CSV),
+    { mode: "apply", stage: "dev", confirmProd: false, logger },
+    deps
+  );
+  const serialized = JSON.stringify(result);
+  for (const secret of ["5511914362818", "5511922223333", "5511999998888"]) {
+    assert.equal(serialized.includes(secret), false);
+    assert.equal(lines.some((line) => line.includes(secret)), false);
+  }
+  assert.equal(result.entries[0].phoneNumber, "*********2818");
+});
+
+test("phone batch argument parsing defaults to dry-run and requires a csv", () => {
+  const options = parseWhatsappRsvpPhoneBatchArgs(["--csv", "list.csv"]);
+  assert.equal(options.mode, "dry-run");
+  assert.equal(options.confirmProd, false);
+  assert.equal(options.full, false);
+  assert.equal(options.limit, undefined);
+
+  const applied = parseWhatsappRsvpPhoneBatchArgs(["--csv", "list.csv", "--apply", "--confirm-prod", "--limit", "5"]);
+  assert.equal(applied.mode, "apply");
+  assert.equal(applied.confirmProd, true);
+  assert.equal(applied.limit, 5);
+
+  assert.throws(() => parseWhatsappRsvpPhoneBatchArgs([]), /Missing --csv/);
+  assert.throws(() => parseWhatsappRsvpPhoneBatchArgs(["--csv", "--apply"]), /Missing --csv/);
+  assert.throws(() => parseWhatsappRsvpPhoneBatchArgs(["--csv", "list.csv", "--limit", "0"]), /positive integer/);
+  assert.throws(() => parseWhatsappRsvpPhoneBatchArgs(["--csv", "list.csv", "--send"]), /Unexpected argument/);
+});
+
+test("phone batch summary reports every outcome bucket", () => {
+  assert.equal(
+    formatPhoneBatchSummary({
+      mode: "apply", entries: [], updated: 41, wouldUpdate: 0,
+      unchanged: 6, failed: 2, missing: 2, changed: 3, skipped: 0
+    }),
+    "Phone batch summary: mode=apply updated=41 wouldUpdate=0 unchanged=6 failed=2 missing=2 changed=3 skipped=0"
+  );
+});

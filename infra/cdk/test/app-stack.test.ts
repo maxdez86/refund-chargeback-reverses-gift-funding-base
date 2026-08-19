@@ -107,6 +107,11 @@ describe("AppStack", () => {
       AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/whatsapp/invitations/{invitationCode}/send-rsvp",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /admin/whatsapp/invitations/{invitationCode}",
       AuthorizationType: "CUSTOM",
       AuthorizerId: Match.anyValue()
@@ -464,7 +469,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(adminRoutes).toHaveLength(6);
+    expect(adminRoutes).toHaveLength(7);
     const adminAuthorizerIds = new Set(
       adminRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))
     );
@@ -761,7 +766,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(protectedRoutes).toHaveLength(6);
+    expect(protectedRoutes).toHaveLength(7);
     expect(protectedRoutes.every((route) => route.Properties?.AuthorizationType === "CUSTOM")).toBe(true);
     expect(new Set(protectedRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))).size).toBe(1);
     const authorizerInvokePermissions = Object.values(resources).filter(

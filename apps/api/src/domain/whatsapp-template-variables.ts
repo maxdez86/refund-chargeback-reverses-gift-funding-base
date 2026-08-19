@@ -48,6 +48,12 @@ export function sanitizeParameterText(value: string, field: string, maxLength: n
     : normalized;
 }
 
+export function extractFirstName(householdName: string): string {
+  const normalized = replaceControlCharacters(householdName).replace(/\s+/g, " ").trim();
+  if (!normalized) throw invalidState("Invitation household name is empty.");
+  return sanitizeParameterText(normalized.split(" ", 1)[0]!, "household name", HOUSEHOLD_NAME_MAX_LENGTH);
+}
+
 export function invitationLinkSuffix(invitationCode: string): string {
   InvitationCodeSchema.parse(invitationCode);
   // The host is frozen in Meta's approved template; even dev-stage sends link to prod.
@@ -107,7 +113,7 @@ export function deriveTemplateParameters(
   if (keys.has("household_name")) {
     values.household_name = {
       type: "text",
-      text: sanitizeParameterText(invitation.householdName, "household name", HOUSEHOLD_NAME_MAX_LENGTH)
+      text: extractFirstName(invitation.householdName)
     };
   }
   if (keys.has("invitation_code")) {

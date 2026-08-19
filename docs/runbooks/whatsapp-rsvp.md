@@ -71,10 +71,49 @@ New invitation imports may include an optional validated E.164-shaped
 `phoneNumber` field. The importer reports missing phones in its summary. Never
 put real phone data in Git, fixtures, command output, or chat.
 
-Existing invitations have no bulk migration in this release. Before any
-production send, manually update every existing invitation through the phone
-endpoint or guarded RSVP operation and verify that no target household is
-missing a phone. This is a hard production launch gate.
+Existing invitations are backfilled with `pnpm whatsapp:rsvp-phones`, which
+loops the single-household `whatsapp:rsvp phone` operation over an
+`invitationCode,phoneNumber` CSV. It writes DynamoDB only and never sends a
+message. The gate itself still stands: before any production send, verify that
+no target household is missing a phone.
+
+```bash
+BRIMAX_ENV_FILE=.env.dev pnpm whatsapp:rsvp-phones --csv .tmp/phones.csv
+BRIMAX_ENV_FILE=.env.dev pnpm whatsapp:rsvp-phones --csv .tmp/phones.csv --apply
+BRIMAX_ENV_FILE=.env pnpm whatsapp:rsvp-phones --csv .tmp/phones.csv --apply --confirm-prod
+```
+
+Runs are dry-run unless `--apply` is passed, and a production apply is refused
+without `--confirm-prod`. The CSV takes two columns plus an optional header,
+`#` comments, and blank lines. Phone numbers are normalized exactly as the
+single-household operation normalizes them, so `+55 11 91436-2818` and
+`5511914362818` are the same number.
+
+Every row is classified against the stored value before anything is written:
+
+| Outcome | Meaning |
+|---|---|
+| `new` | The invitation has no phone yet. |
+| `unchanged` | The stored phone already matches, so no write is issued. |
+| `changed` | A different phone is stored. See the warning below. |
+| `missing` | No such invitation. The row fails. |
+
+A bad row never stops the run. Every remaining row is processed and the command
+exits non-zero if anything failed, so a dry-run that exits `0` is the evidence
+that the gate is clear. `--limit <n>` processes only the first `n` rows, which
+is how to stage the backfill in small waves.
+
+Replacing an existing phone leaves the previous number still resolving to that
+invitation: the update adds the new `WHATSAPP_PHONE#<phone>` lookup row but
+never removes the old one. The command warns and counts these as `changed`.
+Remove stale lookup rows deliberately, never as a side effect of a backfill.
+
+Each run writes `results.jsonl`, `summary.txt`, and — when rows fail — a
+re-runnable `failures.csv` under
+`.tmp/whatsapp-rsvp-phones/<timestamp>-<stage>/`. Only the last four digits of
+a phone reach stdout or `results.jsonl`. `failures.csv` holds raw numbers so it
+can be fed straight back into `--csv`, which is why it and the input CSV both
+belong under the gitignored `.tmp/`.
 
 ## Deployment and templates
 

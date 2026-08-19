@@ -66,6 +66,8 @@
     "whatsapp:template": "bash scripts/whatsapp-template.sh",
     "whatsapp:send-template": "bash scripts/whatsapp-send-template.sh",
     "whatsapp:rsvp": "bash scripts/whatsapp-rsvp.sh",
+    "whatsapp:rsvp-auto": "bash scripts/whatsapp-rsvp-auto.sh",
+    "whatsapp:rsvp-phones": "bash scripts/whatsapp-rsvp-phones.sh",
     "whatsapp:simulate": "pnpm exec tsx scripts/lib/whatsapp-webhook-simulator.ts",
     "wait:landing:cert": "bash scripts/wait-for-landing-certificate.sh"
   },

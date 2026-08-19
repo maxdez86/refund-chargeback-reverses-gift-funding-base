@@ -514,6 +514,10 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-send/handler.ts"),
       environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(15)
     });
+    const whatsappRsvpAutoSendFn = this.createTaggedNodejsFunction("WhatsappRsvpAutoSendFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-auto-send/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(15)
+    });
     const whatsappRsvpStatusFn = this.createTaggedNodejsFunction("WhatsappRsvpStatusFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-status/handler.ts"),
       environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(10)
@@ -666,10 +670,12 @@ export class AppStack extends cdk.Stack {
     guestMessageNotificationQueue.grantConsumeMessages(guestMessageNotifyFn);
     props.table.grantReadWriteData(whatsappRsvpWorkerFn);
     props.table.grantReadWriteData(whatsappRsvpSendFn);
+    props.table.grantReadWriteData(whatsappRsvpAutoSendFn);
     props.table.grantReadData(whatsappRsvpStatusFn);
     props.table.grantReadData(whatsappRsvpCommandStatusFn);
     props.table.grantReadWriteData(whatsappRsvpPhoneFn);
     whatsappRsvpQueue.grantSendMessages(whatsappRsvpSendFn);
+    whatsappRsvpQueue.grantSendMessages(whatsappRsvpAutoSendFn);
     whatsappRsvpQueue.grantConsumeMessages(whatsappRsvpWorkerFn);
     props.table.grantReadWriteData(whatsappWebhookFn);
     props.table.grantReadWriteData(whatsappWebhookWorkerFn);
@@ -817,6 +823,12 @@ export class AppStack extends cdk.Stack {
       [apigwv2.HttpMethod.POST],
       new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpSendIntegration", whatsappRsvpSendFn)
     );
+    const whatsappAutoSendRoutes = addAdminRoutes(
+      "WhatsappAutoSendRoute",
+      "/admin/whatsapp/invitations/{invitationCode}/send-rsvp",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpAutoSendIntegration", whatsappRsvpAutoSendFn)
+    );
     const whatsappStatusRoutes = addAdminRoutes(
       "WhatsappStatusRoute",
       "/admin/whatsapp/invitations/{invitationCode}",
@@ -846,6 +858,7 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, adminSessionRoutes);
       addStageRouteDependency(defaultStage, deleteGuestMessageRoutes);
       addStageRouteDependency(defaultStage, whatsappSendRoutes);
+      addStageRouteDependency(defaultStage, whatsappAutoSendRoutes);
       addStageRouteDependency(defaultStage, whatsappStatusRoutes);
       addStageRouteDependency(defaultStage, whatsappCommandStatusRoutes);
       addStageRouteDependency(defaultStage, whatsappPhoneRoutes);

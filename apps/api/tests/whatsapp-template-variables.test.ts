@@ -3,6 +3,7 @@ import type { HouseholdInvitation } from "@brimax/contracts";
 import type { WhatsappStoredComponent } from "../src/services/whatsapp/schemas";
 import {
   deriveTemplateParameters,
+  extractFirstName,
   formatGuestList,
   GUEST_LIST_MAX_LENGTH,
   invitationLinkSuffix,
@@ -40,11 +41,20 @@ describe("WhatsApp template variables", () => {
       { type: "button", subType: "url", index: 0, parameters: [{ key: "invitation_link_suffix", type: "text" }] }
     ]));
     expect(result).toEqual({
-      household_name: { type: "text", text: "Eugênia Ribeiro" },
+      household_name: { type: "text", text: "Eugênia" },
       guests: { type: "text", text: "Ana, Bruno e Carla" },
       invitation_code: { type: "text", text: "SW2748" },
       invitation_link_suffix: { type: "text", text: "?code=SW2748#confirmar-presenca" }
     });
+  });
+
+  it("extracts the first name from household names", () => {
+    expect(extractFirstName("Cristiane Andrade da Silva e família")).toBe("Cristiane");
+    expect(extractFirstName("Ronaldo da Silva")).toBe("Ronaldo");
+    expect(extractFirstName(" Ana\n    Ribeiro\t")).toBe("Ana");
+    expect(extractFirstName("Eugênia Ribeiro")).toBe("Eugênia");
+    expect(extractFirstName("Ronaldo")).toBe("Ronaldo");
+    expect(() => extractFirstName("   ")).toThrow("household name is empty");
   });
 
   it("rejects retired, unknown, non-text, and conflicting slots at derivation", () => {
@@ -84,7 +94,7 @@ describe("WhatsApp template variables", () => {
     ]))).toThrow("household name is empty");
     expect(deriveTemplateParameters(invitationFixture({ householdName: " Ana\n    Ribeiro\t" }), definition("wedding_rsvp_pending_reminder", [
       { type: "body", parameters: [{ key: "household_name", type: "text" }] }
-    ])).household_name.text).toBe("Ana Ribeiro");
+    ])).household_name.text).toBe("Ana");
   });
 
   it("validates links and handles overflow without cutting a name", () => {
@@ -108,7 +118,7 @@ describe("WhatsApp template variables", () => {
     expect(bindComponents(components, parameters, "named")).toEqual([{
       type: "body",
       parameters: [
-        { type: "text", text: "Eugênia Ribeiro", parameter_name: "household_name" },
+        { type: "text", text: "Eugênia", parameter_name: "household_name" },
         { type: "text", text: "Ana, Bruno e Carla", parameter_name: "guests" }
       ]
     }]);
