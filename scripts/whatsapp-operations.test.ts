@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WhatsappApiError } from "../apps/api/src/services/whatsapp/client.ts";
 import { filterWhatsappRsvpHistory, parseWhatsappRsvpArgs, redactWhatsappPhone } from "./lib/whatsapp-rsvp-operations.ts";
+import { parseWhatsappRsvpResetArgs, resetWhatsappRsvpFlow } from "./lib/whatsapp-rsvp-reset.ts";
 import { autoSendWhatsappRsvp, parseWhatsappRsvpAutoSendArgs } from "./lib/whatsapp-rsvp-auto-send.ts";
 import {
   buildWhatsappWebhookPayload,
@@ -32,6 +33,42 @@ import {
   parseWhatsappRsvpPhoneBatchArgs,
   runWhatsappRsvpPhoneBatch
 } from "./lib/whatsapp-rsvp-phones.ts";
+import {
+  WHATSAPP_TEMPLATE_EXPORT_API_VERSION,
+  WHATSAPP_TEMPLATE_EXPORT_NAMES,
+  WHATSAPP_TEMPLATE_EXPORT_WABA_ID,
+  compareTemplateRecency,
+  exactNameMatches,
+  parseExportWhatsappTemplatesArgs,
+  readAccessTokenFromEnv,
+  runExportWhatsappTemplates,
+  selectLatestTemplate,
+  templateExportRequestUrl
+} from "./lib/export-whatsapp-templates.ts";
+
+test("WhatsApp RSVP reset accepts repeated or comma-separated invitation codes", () => {
+  assert.deepEqual(
+    parseWhatsappRsvpResetArgs(["--invitation-code", "SV2543,AB2345", "--invitation-code", "SV2543"]),
+    { invitationCodes: ["SV2543", "AB2345"], apply: false }
+  );
+  assert.throws(() => parseWhatsappRsvpResetArgs(["--apply"]), /at least one/);
+});
+
+test("WhatsApp RSVP reset dry-run only inventories the invitation and conversation", async () => {
+  const commands: string[] = [];
+  const result = await resetWhatsappRsvpFlow("dev-brimax-wedding", ["SV2543"], false, {
+    send: async (command) => {
+      commands.push(command.constructor.name);
+      if (command.constructor.name !== "QueryCommand") return {};
+      const input = (command as { input: { IndexName?: string } }).input;
+      return input.IndexName
+        ? { Items: [{ PK: "WHATSAPP_MESSAGE#1", SK: "MESSAGE" }] }
+        : { Items: [{ entityType: "Invitation" }] };
+    }
+  });
+  assert.deepEqual(result, [{ invitationCode: "SV2543", conversationItems: 1, applied: false }]);
+  assert.deepEqual(commands, ["QueryCommand", "QueryCommand"]);
+});
 
 test("template management defaults writes to dry-run", () => {
   const options = parseManageWhatsappTemplateArgs([
@@ -107,7 +144,7 @@ test("seed dry-run returns a safe plan without writes", async () => {
     "dev"
   );
   assert.equal(result.mode, "dry-run");
-  assert.equal(result.plan.length, 6);
+  assert.equal(result.plan.length, 13);
   assert.equal(writes, 0);
   assert.equal(JSON.stringify(result).includes("components"), false);
 });
@@ -121,7 +158,7 @@ test("seed apply creates all versions without activating", async () => {
     "dev"
   );
   assert.equal(result.mode, "applied");
-  assert.equal(creates, 6);
+  assert.equal(creates, 13);
   assert.equal(activations, 0);
 });
 
@@ -175,7 +212,7 @@ test("seed activation verifies the complete active definition", async () => {
 
 test("seed never activates a pending Meta approval entry", async () => {
   const entry = listTemplateManifestEntries().find(
-    (candidate) => candidate.definition.purpose === "wedding_rsvp_pending_reminder"
+    (candidate) => candidate.definition.purpose === "wedding_rsvp_pending_reminder_group"
   )!;
   let activations = 0;
   await assert.rejects(
@@ -360,12 +397,12 @@ test("RSVP auto-send calls the endpoint without a template id and parses its res
       request = init;
       assert.equal(String(url), "https://api.dev.example/admin/whatsapp/invitations/SW2748/send-rsvp");
       return new Response(JSON.stringify({
-        commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+        commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group",
         templateVersion: 1, status: "queued", replayed: false
       }), { status: 202 });
     }
   });
-  assert.equal(result.templateId, "wedding_rsvp_pending_reminder");
+  assert.equal(result.templateId, "wedding_rsvp_pending_reminder_group");
   assert.equal(request?.method, "POST");
   assert.equal((request?.headers as Record<string, string>)["idempotency-key"], "auto-rsvp-SW2748");
   assert.equal((request?.headers as Record<string, string>).authorization, "Bearer test-token");
@@ -417,7 +454,7 @@ test("list maps flow statuses to durable command history", () => {
 });
 
 test("simulator produces signed, parser-valid payloads for every branch", () => {
-  for (const branch of ["a1", "b1", "b2", "b3", "fallback"] as const) {
+  for (const branch of ["a1", "b2", "b3", "fallback"] as const) {
     const result = simulateWhatsappWebhook(branch, "SW0000", "fixed-fake-secret");
     assert.equal(result.parsed.outcome, "accepted");
     if (result.parsed.outcome !== "accepted") throw new Error("Expected accepted payload.");
@@ -652,4 +689,186 @@ test("phone batch summary reports every outcome bucket", () => {
     }),
     "Phone batch summary: mode=apply updated=41 wouldUpdate=0 unchanged=6 failed=2 missing=2 changed=3 skipped=0"
   );
+});
+
+test("template export defaults cover all twelve RSVP templates against the pinned Graph version", () => {
+  const options = parseExportWhatsappTemplatesArgs([]);
+  assert.equal(options.names.length, 12);
+  assert.deepEqual(options.names, [...WHATSAPP_TEMPLATE_EXPORT_NAMES]);
+  assert.equal(new Set(options.names).size, 12);
+  assert.equal(options.apiVersion, WHATSAPP_TEMPLATE_EXPORT_API_VERSION);
+  assert.equal(options.wabaId, WHATSAPP_TEMPLATE_EXPORT_WABA_ID);
+  assert.equal(options.outputFile, "wedding_templates_export.json");
+  assert.equal(options.delayMs, 350);
+
+  const overridden = parseExportWhatsappTemplatesArgs([
+    "--name", "wedding_rsvp_reconfirmation",
+    "--name", "wedding_rsvp_reconfirmation_single",
+    "--api-version", "v25.0",
+    "--out", "out.json",
+    "--delay-ms", "0"
+  ]);
+  assert.deepEqual(overridden.names, ["wedding_rsvp_reconfirmation", "wedding_rsvp_reconfirmation_single"]);
+  assert.equal(overridden.apiVersion, "v25.0");
+  assert.equal(overridden.outputFile, "out.json");
+  assert.equal(overridden.delayMs, 0);
+
+  assert.throws(() => parseExportWhatsappTemplatesArgs(["--api-version", "20"]), /--api-version/);
+  assert.throws(() => parseExportWhatsappTemplatesArgs(["--waba-id", "abc"]), /--waba-id/);
+  assert.throws(() => parseExportWhatsappTemplatesArgs(["--delay-ms", "-1"]), /--delay-ms/);
+  assert.throws(() => parseExportWhatsappTemplatesArgs(["--attempts", "0"]), /--attempts/);
+  assert.throws(() => parseExportWhatsappTemplatesArgs(["--name"]), /Missing value for --name/);
+});
+
+test("template export request targets the business account message_templates edge", () => {
+  const url = new URL(
+    templateExportRequestUrl(
+      { apiVersion: WHATSAPP_TEMPLATE_EXPORT_API_VERSION, wabaId: WHATSAPP_TEMPLATE_EXPORT_WABA_ID },
+      "wedding_rsvp_declined_followup_single"
+    )
+  );
+  assert.equal(url.origin, "https://graph.facebook.com");
+  assert.equal(url.pathname, `/v20.0/${WHATSAPP_TEMPLATE_EXPORT_WABA_ID}/message_templates`);
+  assert.equal(url.searchParams.get("name"), "wedding_rsvp_declined_followup_single");
+  assert.equal(url.searchParams.get("access_token"), null);
+});
+
+test("template export keeps only exact name matches from Meta's prefix filter", () => {
+  const returned = [
+    { id: "1", name: "wedding_rsvp_attending_followup" },
+    { id: "2", name: "wedding_rsvp_attending_followup_website" },
+    { id: "3", name: "wedding_rsvp_attending_followup_single" },
+    { id: "4", name: "wedding_rsvp_attending_followup_website_single" }
+  ];
+  const matches = exactNameMatches(returned, "wedding_rsvp_attending_followup");
+  assert.deepEqual(matches.map((entry) => entry.id), ["1"]);
+});
+
+test("template export prefers the newest version even when it is not approved", () => {
+  const versions = [
+    { id: "100", name: "wedding_rsvp_reconfirmation", status: "APPROVED", language: "pt_BR" },
+    { id: "300", name: "wedding_rsvp_reconfirmation", status: "PENDING", language: "pt_BR" },
+    { id: "200", name: "wedding_rsvp_reconfirmation", status: "REJECTED", language: "pt_BR" }
+  ];
+  assert.equal(selectLatestTemplate(versions)?.id, "300");
+  assert.deepEqual([...versions].sort(compareTemplateRecency).map((entry) => entry.id), ["300", "200", "100"]);
+  // Ids exceed Number.MAX_SAFE_INTEGER, so ordering must not go through floating point.
+  assert.equal(
+    selectLatestTemplate([
+      { id: "9007199254740993", name: "t" },
+      { id: "9007199254740992", name: "t" }
+    ])?.id,
+    "9007199254740993"
+  );
+});
+
+test("template export aggregates by name, follows paging, and keeps going after a failure", async () => {
+  const calls: { url: string; authorization: string | null }[] = [];
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
+    if (url.includes("name=wedding_rsvp_reconfirmation&")) {
+      return new Response(
+        JSON.stringify({
+          data: [{ id: "10", name: "wedding_rsvp_reconfirmation", status: "APPROVED", language: "pt_BR" }],
+          paging: { next: "https://graph.facebook.com/v20.0/next-page?access_token=leaked" }
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("next-page")) {
+      return new Response(
+        JSON.stringify({
+          data: [
+            { id: "20", name: "wedding_rsvp_reconfirmation", status: "PENDING", language: "en" },
+            { id: "21", name: "wedding_rsvp_reconfirmation_single", status: "PENDING", language: "pt_BR" }
+          ]
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("name=wedding_rsvp_declined_followup_single&")) {
+      return new Response(
+        JSON.stringify({ error: { message: "Unsupported get request.", code: 100 } }),
+        { status: 400 }
+      );
+    }
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  }) as typeof globalThis.fetch;
+
+  const result = await runExportWhatsappTemplates(
+    {
+      ...parseExportWhatsappTemplatesArgs(["--delay-ms", "0"]),
+      names: [
+        "wedding_rsvp_reconfirmation",
+        "wedding_rsvp_declined_followup_single",
+        "wedding_rsvp_undecided_followup_single"
+      ]
+    },
+    {
+      fetch: fetchImpl,
+      getAccessToken: () => "test-token",
+      sleep: async () => {},
+      now: () => new Date("2026-08-19T00:00:00.000Z"),
+      log: () => {}
+    }
+  );
+
+  assert.equal(result.requested, 3);
+  assert.equal(result.succeeded, 2);
+  assert.equal(result.failed, 1);
+  assert.equal(result.exportedAt, "2026-08-19T00:00:00.000Z");
+
+  const reconfirmation = result.templates.wedding_rsvp_reconfirmation;
+  assert.equal(reconfirmation.matchCount, 2);
+  assert.equal(reconfirmation.latest?.id, "20");
+  assert.equal(reconfirmation.latest?.status, "PENDING");
+  assert.deepEqual(reconfirmation.versions.map((entry) => entry.id), ["20", "10"]);
+  assert.deepEqual(reconfirmation.languages, ["en", "pt_BR"]);
+  assert.deepEqual(reconfirmation.otherNameMatches, ["wedding_rsvp_reconfirmation_single"]);
+
+  assert.deepEqual(result.missing, ["wedding_rsvp_undecided_followup_single"]);
+  assert.equal(result.templates.wedding_rsvp_undecided_followup_single.latest, null);
+  assert.equal(result.templates.wedding_rsvp_declined_followup_single, undefined);
+  assert.deepEqual(result.errors, [
+    { name: "wedding_rsvp_declined_followup_single", message: "Unsupported get request.", status: 400, code: 100 }
+  ]);
+
+  assert.ok(calls.every((call) => call.authorization === "Bearer test-token"));
+  assert.ok(calls.every((call) => !call.url.includes("access_token")));
+  assert.ok(!JSON.stringify(result).includes("test-token"));
+});
+
+test("template export retries throttled responses before giving up", async () => {
+  let attempts = 0;
+  const fetchImpl = (async () => {
+    attempts += 1;
+    if (attempts < 3) return new Response("{}", { status: 429, headers: { "retry-after": "1" } });
+    return new Response(
+      JSON.stringify({ data: [{ id: "5", name: "wedding_rsvp_pending_reminder_single", status: "PENDING" }] }),
+      { status: 200 }
+    );
+  }) as typeof globalThis.fetch;
+
+  const slept: number[] = [];
+  const result = await runExportWhatsappTemplates(
+    { ...parseExportWhatsappTemplatesArgs(["--delay-ms", "0"]), names: ["wedding_rsvp_pending_reminder_single"] },
+    {
+      fetch: fetchImpl,
+      getAccessToken: () => "test-token",
+      sleep: async (ms) => { slept.push(ms); },
+      log: () => {}
+    }
+  );
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(slept, [1_000, 1_000]);
+  assert.equal(result.failed, 0);
+  assert.equal(result.templates.wedding_rsvp_pending_reminder_single.latest?.id, "5");
+});
+
+test("template export requires the WhatsApp access token", () => {
+  assert.throws(() => readAccessTokenFromEnv({}), /WHATSAPP_ACCESS_TOKEN/);
+  assert.throws(() => readAccessTokenFromEnv({ WHATSAPP_ACCESS_TOKEN: "   " }), /WHATSAPP_ACCESS_TOKEN/);
+  assert.equal(readAccessTokenFromEnv({ WHATSAPP_ACCESS_TOKEN: " token " }), "token");
 });

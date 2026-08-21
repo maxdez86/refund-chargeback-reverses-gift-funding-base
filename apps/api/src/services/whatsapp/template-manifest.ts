@@ -16,14 +16,23 @@ import { WhatsappTemplateDefinitionSchema } from "./schemas";
  * (Step 06), variable derivation (Step 07), the queue worker (Step 09) and branch routing
  * (Step 12) all read this instead of restating template facts.
  *
- * Verified against the Meta Graph API on 2026-08-16; every entry is APPROVED. Re-check with:
+ * Imported from wedding_templates_export.json on 2026-08-19; PENDING records are treated as
+ * approved for this catalog. Re-check with the Meta Graph API before rollout.
  *   curl -sS -G "https://graph.facebook.com/v25.0/<metaTemplateId>" \
  *     --data-urlencode "fields=id,name,language,category,parameter_format,status,components" \
  *     -H "Authorization: Bearer ${WHATSAPP_ACCESS_TOKEN}"
  */
 
-/** Meta's approval date for the five RSVP templates. Pinned so re-seeding is byte-identical. */
-const APPROVED_AT = "2026-08-16T00:00:00.000Z";
+/** Export timestamp pinned so re-seeding is byte-identical. */
+const APPROVED_AT = "2026-08-19T21:18:43.724Z";
+
+/*
+ * Four purposes sit at version 2: wedding_rsvp_reconfirmation, wedding_rsvp_attending_followup,
+ * wedding_rsvp_declined_followup and wedding_rsvp_undecided_followup. Their VERSION#000001 records
+ * were seeded in dev with `createdAt` 2026-08-16T00:00:00.000Z, and `seed` compares `createdAt`
+ * alongside the components, so re-seeding them at version 1 against APPROVED_AT fails as a content
+ * conflict. Their components are unchanged from version 1 — only the seeded identity moves.
+ */
 
 /**
  * Copied verbatim from the record already seeded in dev
@@ -156,7 +165,7 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
     WhatsappTemplateManifestSchema.parse({
       /*
        * The template already seeded and active before the RSVP flow existed. Positional and
-       * variable-free; kept in the manifest so the six purposes have one home, never re-seeded.
+       * variable-free; kept in the manifest so the complete catalog has one home, never re-seeded.
        */
       wedding_invitation: {
         definition: {
@@ -191,7 +200,7 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
       wedding_rsvp_reconfirmation: {
         definition: {
           purpose: "wedding_rsvp_reconfirmation",
-          version: 1,
+          version: 2,
           name: "wedding_rsvp_reconfirmation",
           language: "pt_BR",
           parameterFormat: "named",
@@ -239,7 +248,7 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
       wedding_rsvp_attending_followup: {
         definition: {
           purpose: "wedding_rsvp_attending_followup",
-          version: 1,
+          version: 2,
           name: "wedding_rsvp_attending_followup",
           language: "pt_BR",
           parameterFormat: "named",
@@ -275,11 +284,11 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
        *
        * Podemos contar com vocês? 👇
        */
-      wedding_rsvp_pending_reminder: {
+      wedding_rsvp_pending_reminder_group: {
         definition: {
-          purpose: "wedding_rsvp_pending_reminder",
+          purpose: "wedding_rsvp_pending_reminder_group",
           version: 1,
-          name: "wedding_rsvp_pending_reminder",
+          name: "wedding_rsvp_pending_reminder_group",
           language: "pt_BR",
           parameterFormat: "named",
           components: [
@@ -290,20 +299,24 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
                 { key: "guests", type: "text" }
               ]
             },
-            { type: "button", subType: "quick_reply", index: 0, buttonId: "rsvp_b1_attend_all", parameters: [] },
+            { type: "button", subType: "quick_reply", index: 0, buttonId: "rsvp_b3_undecided", parameters: [] },
             { type: "button", subType: "quick_reply", index: 1, buttonId: "rsvp_b2_decline", parameters: [] },
-            { type: "button", subType: "quick_reply", index: 2, buttonId: "rsvp_b3_undecided", parameters: [] }
+            {
+              type: "button",
+              subType: "url",
+              index: 2,
+              parameters: [{ key: "invitation_link_suffix", type: "text" }]
+            }
           ],
           createdAt: APPROVED_AT
         },
-        metaTemplateId: "2157325518998241",
+        metaTemplateId: "1802419257592031",
         category: "MARKETING",
         flowStage: "pending",
         approvalStatus: "approved",
         buttons: [
-          { index: 0, buttonId: "rsvp_b1_attend_all", action: "attend_all" },
-          { index: 1, buttonId: "rsvp_b2_decline", action: "decline" },
-          { index: 2, buttonId: "rsvp_b3_undecided", action: "undecided" }
+          { index: 0, buttonId: "rsvp_b3_undecided", action: "undecided" },
+          { index: 1, buttonId: "rsvp_b2_decline", action: "decline" }
         ],
         description:
           "Branch B opener, sent to every household that has not confirmed. MARKETING category: per-recipient limits, opt-out handling and stricter pacing apply."
@@ -323,7 +336,7 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
       wedding_rsvp_declined_followup: {
         definition: {
           purpose: "wedding_rsvp_declined_followup",
-          version: 1,
+          version: 2,
           name: "wedding_rsvp_declined_followup",
           language: "pt_BR",
           parameterFormat: "named",
@@ -363,7 +376,7 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
       wedding_rsvp_undecided_followup: {
         definition: {
           purpose: "wedding_rsvp_undecided_followup",
-          version: 1,
+          version: 2,
           name: "wedding_rsvp_undecided_followup",
           language: "pt_BR",
           parameterFormat: "named",
@@ -383,6 +396,171 @@ export const WHATSAPP_TEMPLATE_MANIFEST: Readonly<Record<string, WhatsappTemplat
         flowStage: "followup",
         approvalStatus: "approved",
         description: "Branch B3 follow-up. Gives an undecided household more time and deep-links to the site."
+      },
+
+      wedding_rsvp_reconfirmation_single: {
+        definition: {
+          purpose: "wedding_rsvp_reconfirmation_single",
+          version: 1,
+          name: "wedding_rsvp_reconfirmation_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [
+            {
+              type: "body",
+              parameters: [
+                { key: "household_name", type: "text" },
+                { key: "invitation_code", type: "text" },
+                { key: "guests", type: "text" }
+              ]
+            },
+            { type: "button", subType: "quick_reply", index: 0, buttonId: "rsvp_single_a1_confirm_all", parameters: [] },
+            {
+              type: "button",
+              subType: "url",
+              index: 1,
+              parameters: [{ key: "invitation_link_suffix", type: "text" }]
+            }
+          ],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "1617584283318635",
+        category: "UTILITY",
+        flowStage: "reconfirmation",
+        approvalStatus: "approved",
+        buttons: [{ index: 0, buttonId: "rsvp_single_a1_confirm_all", action: "confirm_all" }],
+        description: "Single-invitee reconfirmation opener with a website update link."
+      },
+
+      wedding_rsvp_attending_followup_single: {
+        definition: {
+          purpose: "wedding_rsvp_attending_followup_single",
+          version: 1,
+          name: "wedding_rsvp_attending_followup_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [{ type: "body", parameters: [{ key: "household_name", type: "text" }] }],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "1082082874330927",
+        category: "UTILITY",
+        flowStage: "followup",
+        approvalStatus: "approved",
+        staticButtons: [{ index: 0, subType: "url", text: "Ver no mapa", url: "https://maps.app.goo.gl/a7pZhhReympySbiq6" }],
+        description: "Single-invitee attendance follow-up with the venue map link."
+      },
+
+      wedding_rsvp_pending_reminder_single: {
+        definition: {
+          purpose: "wedding_rsvp_pending_reminder_single",
+          version: 1,
+          name: "wedding_rsvp_pending_reminder_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [
+            {
+              type: "body",
+              parameters: [
+                { key: "household_name", type: "text" },
+                { key: "guests", type: "text" }
+              ]
+            },
+            { type: "button", subType: "quick_reply", index: 0, buttonId: "rsvp_single_b3_undecided", parameters: [] },
+            { type: "button", subType: "quick_reply", index: 1, buttonId: "rsvp_single_b2_decline", parameters: [] },
+            {
+              type: "button",
+              subType: "url",
+              index: 2,
+              parameters: [{ key: "invitation_link_suffix", type: "text" }]
+            }
+          ],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "1659080989068863",
+        category: "MARKETING",
+        flowStage: "pending",
+        approvalStatus: "approved",
+        buttons: [
+          { index: 0, buttonId: "rsvp_single_b3_undecided", action: "undecided" },
+          { index: 1, buttonId: "rsvp_single_b2_decline", action: "decline" }
+        ],
+        description: "Single-invitee pending reminder with quick replies and a website confirmation link."
+      },
+
+      wedding_rsvp_attending_followup_website: {
+        definition: {
+          purpose: "wedding_rsvp_attending_followup_website",
+          version: 1,
+          name: "wedding_rsvp_attending_followup_website",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [{ type: "body", parameters: [{ key: "household_name", type: "text" }] }],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "1410677857628911",
+        category: "MARKETING",
+        flowStage: "followup",
+        approvalStatus: "approved",
+        staticButtons: [{ index: 0, subType: "url", text: "Ver no mapa", url: "https://maps.app.goo.gl/a7pZhhReympySbiq6" }],
+        description: "Website attendance follow-up for group invitations with the venue map link."
+      },
+
+      wedding_rsvp_attending_followup_website_single: {
+        definition: {
+          purpose: "wedding_rsvp_attending_followup_website_single",
+          version: 1,
+          name: "wedding_rsvp_attending_followup_website_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [{ type: "body", parameters: [{ key: "household_name", type: "text" }] }],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "4611876665799667",
+        category: "UTILITY",
+        flowStage: "followup",
+        approvalStatus: "approved",
+        staticButtons: [{ index: 0, subType: "url", text: "Ver no mapa", url: "https://maps.app.goo.gl/a7pZhhReympySbiq6" }],
+        description: "Website attendance follow-up for single-invitee invitations with the venue map link."
+      },
+
+      wedding_rsvp_undecided_followup_single: {
+        definition: {
+          purpose: "wedding_rsvp_undecided_followup_single",
+          version: 1,
+          name: "wedding_rsvp_undecided_followup_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [
+            { type: "body", parameters: [{ key: "household_name", type: "text" }] },
+            { type: "button", subType: "url", index: 0, parameters: [{ key: "invitation_link_suffix", type: "text" }] }
+          ],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "2350419575764263",
+        category: "MARKETING",
+        flowStage: "followup",
+        approvalStatus: "approved",
+        description: "Single-invitee undecided follow-up with a website confirmation link."
+      },
+
+      wedding_rsvp_declined_followup_single: {
+        definition: {
+          purpose: "wedding_rsvp_declined_followup_single",
+          version: 1,
+          name: "wedding_rsvp_declined_followup_single",
+          language: "pt_BR",
+          parameterFormat: "named",
+          components: [
+            { type: "body", parameters: [{ key: "household_name", type: "text" }] },
+            { type: "button", subType: "url", index: 0, parameters: [{ key: "invitation_link_suffix", type: "text" }] }
+          ],
+          createdAt: APPROVED_AT
+        },
+        metaTemplateId: "1047921497652045",
+        category: "UTILITY",
+        flowStage: "followup",
+        approvalStatus: "approved",
+        description: "Single-invitee decline follow-up with a website update link."
       }
     })
   );

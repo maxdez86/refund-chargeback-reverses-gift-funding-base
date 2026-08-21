@@ -1,10 +1,15 @@
-import type { HouseholdInvitation, WhatsappFlowStatus, WhatsappRsvpAction } from "@brimax/contracts";
+import type { HouseholdInvitation, WhatsappFlowStatus, WhatsappRsvpAction, WhatsappRsvpTemplatePurpose } from "@brimax/contracts";
 import { actionForButtonId } from "../services/whatsapp/template-manifest";
 import { canTransition, isTerminalFlowStatus } from "./whatsapp-flow-state";
+import {
+  selectWhatsappAttendanceFollowupTemplate,
+  selectWhatsappDeclinedFollowupTemplate,
+  selectWhatsappUndecidedFollowupTemplate
+} from "./whatsapp-rsvp-template-selection";
 
 export type WhatsappBranchDecision =
   | { kind: "fallback"; action?: undefined }
-  | { kind: "branch"; action: WhatsappRsvpAction; status: WhatsappFlowStatus; templateId?: string; conflict?: string }
+  | { kind: "branch"; action: WhatsappRsvpAction; status: WhatsappFlowStatus; templateId?: WhatsappRsvpTemplatePurpose; conflict?: string }
   | { kind: "rejected"; reason: "terminal_flow" | "invalid_transition" | "consistency_conflict" };
 
 export function decideWhatsappRsvpBranch(
@@ -19,18 +24,18 @@ export function decideWhatsappRsvpBranch(
 
   const confirmed = invitation.guests.some((guest) => guest.rsvpStatus === "attending");
   const decision: Extract<WhatsappBranchDecision, { kind: "branch" }> = action === "confirm_all"
-    ? { kind: "branch", action, status: "completed", templateId: "wedding_rsvp_attending_followup" }
+    ? { kind: "branch", action, status: "attendance_confirmed_whatsapp", templateId: selectWhatsappAttendanceFollowupTemplate(invitation) }
     : action === "attend_all"
-      ? { kind: "branch", action, status: "attendance_confirmed_whatsapp", templateId: "wedding_rsvp_attending_followup" }
+      ? { kind: "branch", action, status: "attendance_confirmed_whatsapp", templateId: selectWhatsappAttendanceFollowupTemplate(invitation) }
       : action === "decline"
-        ? { kind: "branch", action, status: "attendance_declined", templateId: "wedding_rsvp_declined_followup" }
-        : { kind: "branch", action, status: "undecided", templateId: "wedding_rsvp_undecided_followup" };
+        ? { kind: "branch", action, status: "attendance_declined", templateId: selectWhatsappDeclinedFollowupTemplate(invitation) }
+        : { kind: "branch", action, status: "undecided", templateId: selectWhatsappUndecidedFollowupTemplate(invitation) };
 
-  if ((decision.action === "confirm_all" && !confirmed) || (decision.action !== "confirm_all" && confirmed)) {
-    return { kind: "rejected", reason: "consistency_conflict" };
-  }
   if (!canTransition(currentStatus, decision.status)) {
     return { kind: "rejected", reason: "invalid_transition" };
+  }
+  if ((decision.action === "confirm_all" && !confirmed) || (decision.action !== "confirm_all" && confirmed)) {
+    return { kind: "rejected", reason: "consistency_conflict" };
   }
   return decision;
 }

@@ -1,5 +1,5 @@
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WEBHOOK_EVENT_TTL_SECONDS,
@@ -198,6 +198,124 @@ describe("WeddingRepository", () => {
           childSixOrYoungerAttendingCount: 1
         })
       );
+    });
+  });
+
+  describe("atomic RSVP and WhatsApp reservations", () => {
+    const request = {
+      invitationCode: "ABCD2345",
+      submittedBy: "guest-01",
+      guestResponses: [{ guestId: "guest-01", status: "attending" as const, isChildSixOrYounger: false }],
+      attendingGuestCount: 1
+    };
+    const operation = {
+      websiteOperationId: "website-operation-1",
+      websitePayloadDigest: "a".repeat(64),
+      websiteIdempotencyKeyDigest: "b".repeat(64)
+    };
+
+    it("reserves a WhatsApp branch outcome and complete-on-send command in one transaction", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.reserveWhatsappBranch({
+        invitationCode: "ABCD2345",
+        expectedStatus: "message_sent",
+        status: "attendance_confirmed_whatsapp",
+        lastInboundMessageId: "wamid.inbound",
+        updatedAt: "2026-08-19T12:00:00.000Z",
+        attendance: [{ guestId: "guest-01", status: "attending", recordedAt: "2026-08-19T12:00:00.000Z" }],
+        command: {
+          commandId: "branch-command",
+          invitationCode: "ABCD2345",
+          templateId: "wedding_rsvp_attending_followup_single",
+          templateVersion: 1,
+          status: "queued",
+          stage: "followup",
+          effect: "complete_on_send",
+          expectedFlowStatus: "attendance_confirmed_whatsapp",
+          createdAt: "2026-08-19T12:00:00.000Z"
+        }
+      });
+
+      const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+      expect(transaction.input.TransactItems).toHaveLength(2);
+      expect(transaction.input.TransactItems?.[0]?.Update).toMatchObject({
+        Key: { PK: "INVITATION#ABCD2345", SK: "INVITATION" },
+        ConditionExpression: "attribute_exists(PK) AND #status = :expected"
+      });
+      expect(transaction.input.TransactItems?.[0]?.Update?.ExpressionAttributeValues).toMatchObject({
+        ":expected": "message_sent",
+        ":status": "attendance_confirmed_whatsapp"
+      });
+      expect(transaction.input.TransactItems?.[1]?.Put).toMatchObject({
+        Item: expect.objectContaining({
+          PK: "WHATSAPP_COMMAND#branch-command",
+          effect: "complete_on_send",
+          expectedFlowStatus: "attendance_confirmed_whatsapp"
+        }),
+        ConditionExpression: "attribute_not_exists(PK)"
+      });
+    });
+
+    it("stores website RSVP, pending flow, and follow-up command atomically", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.reserveWebsiteRsvp({
+        request,
+        status: "attending",
+        operation,
+        expectedWebsiteOperationId: operation.websiteOperationId,
+        updatedAt: "2026-08-19T12:00:00.000Z",
+        expectedStatus: "message_sent",
+        command: {
+          commandId: "website-operation-1",
+          invitationCode: "ABCD2345",
+          templateId: "wedding_rsvp_attending_followup_website_single",
+          templateVersion: 1,
+          status: "queued",
+          stage: "followup",
+          effect: "complete_on_send",
+          expectedFlowStatus: "website_followup_pending",
+          createdAt: "2026-08-19T12:00:00.000Z"
+        }
+      });
+
+      const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+      expect(transaction.input.TransactItems).toHaveLength(3);
+      expect(transaction.input.TransactItems?.[0]?.Put).toMatchObject({
+        Item: expect.objectContaining({
+          PK: "INVITATION#ABCD2345",
+          SK: "RSVP#CURRENT",
+          websiteOperationId: "website-operation-1",
+          websitePayloadDigest: "a".repeat(64)
+        }),
+        ConditionExpression: expect.stringContaining("#operation")
+      });
+      expect(transaction.input.TransactItems?.[1]?.Update).toMatchObject({
+        ConditionExpression: "attribute_exists(PK) AND #status = :expected",
+        ExpressionAttributeValues: expect.objectContaining({
+          ":expected": "message_sent",
+          ":pending": "website_followup_pending"
+        })
+      });
+      expect(transaction.input.TransactItems?.[2]?.Put?.ConditionExpression).toBe("attribute_not_exists(PK)");
+    });
+
+    it("writes an RSVP-only item with an idempotency condition", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.writeRsvpOnly({ request, status: "attending", operation, expectedWebsiteOperationId: operation.websiteOperationId, updatedAt: "2026-08-19T12:00:00.000Z" });
+
+      const command = send.mock.calls[0][0] as PutCommand;
+      expect(command.input.ConditionExpression).toContain("#operation");
+      expect(command.input.Item).toEqual(expect.objectContaining({
+        PK: "INVITATION#ABCD2345",
+        SK: "RSVP#CURRENT",
+        websiteIdempotencyKeyDigest: "b".repeat(64)
+      }));
     });
   });
 

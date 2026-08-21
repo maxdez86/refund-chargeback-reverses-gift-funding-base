@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { AppError } from "../src/lib/errors";
 import { WhatsappRsvpSendService } from "../src/services/whatsapp/rsvp-send-service";
 
@@ -11,9 +12,9 @@ const invitation = {
 };
 
 const definition = {
-  purpose: "wedding_rsvp_pending_reminder",
+  purpose: "wedding_rsvp_pending_reminder_group",
   version: 3,
-  name: "wedding_rsvp_pending_reminder",
+  name: "wedding_rsvp_pending_reminder_group",
   language: "pt_BR",
   parameterFormat: "named" as const,
   components: [{ type: "body" as const, parameters: [{ key: "household_name", type: "text" as const }] }],
@@ -98,6 +99,19 @@ describe("WhatsappRsvpSendService", () => {
       getWhatsappCommand: vi.fn().mockResolvedValue({ ...existing, invitationCode: "AB1234" })
     });
     await expect(conflict.service.queueTemplate("SW2748", definition.purpose, "key12345", { requestId: "req-2" })).rejects.toMatchObject({ statusCode: 409, code: "IDEMPOTENCY_CONFLICT" });
+  });
+
+  it("replays a command when reservation loses a conditional transaction race", async () => {
+    const existing = { commandId: "idempotency-key12345", invitationCode: "SW2748", templateId: definition.purpose, templateVersion: 2, status: "queued" as const };
+    const { service, publish } = setup({
+      reserveWhatsappCommand: vi.fn().mockRejectedValue(new TransactionCanceledException({
+        message: "conditional race", $metadata: {}, CancellationReasons: [{ Code: "ConditionalCheckFailed" }]
+      })),
+      getWhatsappCommand: vi.fn().mockResolvedValue(existing)
+    });
+    await expect(service.queueTemplate("SW2748", definition.purpose, "key12345", { requestId: "req-1" }))
+      .resolves.toMatchObject({ replayed: true, status: "queued" });
+    expect(publish).toHaveBeenCalledWith("idempotency-key12345", { requestId: "req-1" });
   });
 
   it("marks the command and flow failed when SQS rejects", async () => {

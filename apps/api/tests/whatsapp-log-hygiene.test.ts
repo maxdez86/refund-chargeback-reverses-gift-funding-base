@@ -21,8 +21,8 @@ describe("WhatsApp RSVP log hygiene and correlation", () => {
       },
       templates: {
         getActive: async () => ({
-          purpose: "wedding_rsvp_pending_reminder",
-          name: "wedding_rsvp_pending_reminder",
+          purpose: "wedding_rsvp_pending_reminder_group",
+          name: "wedding_rsvp_pending_reminder_group",
           language: "pt_BR",
           version: 1,
           parameterFormat: "named",
@@ -36,7 +36,7 @@ describe("WhatsApp RSVP log hygiene and correlation", () => {
       log
     });
 
-    await service.queueTemplate("SW2748", "wedding_rsvp_pending_reminder", undefined, { requestId: "request-1" });
+    await service.queueTemplate("SW2748", "wedding_rsvp_pending_reminder_group", undefined, { requestId: "request-1" });
     const serialized = JSON.stringify(log.mock.calls);
     expect(serialized).toContain("request-1");
     expect(serialized).toContain("command-1");

@@ -53,7 +53,7 @@ describe("WhatsApp RSVP operator handlers", () => {
     expect(body(malformed)).toMatchObject({ code: "VALIDATION_ERROR" });
 
     const invalidHeader = await handler(event({
-      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder" }),
+      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group" }),
       headers: { "Idempotency-Key": "short" }
     }), context);
     expect(invalidHeader.statusCode).toBe(400);
@@ -63,23 +63,23 @@ describe("WhatsApp RSVP operator handlers", () => {
 
   it("uses a case-insensitive idempotency header and returns 202", async () => {
     queueTemplateMock.mockResolvedValue({
-      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group",
       templateVersion: 1, status: "queued", replayed: false
     });
     const { handler } = await import("../src/functions/whatsapp-rsvp-send/handler");
     const response = await handler(event({
-      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder" }),
+      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group" }),
       headers: { "IDEMPOTENCY-KEY": "valid-key-1" }
     }), context);
     expect(response.statusCode).toBe(202);
-    expect(queueTemplateMock).toHaveBeenCalledWith("SW2748", "wedding_rsvp_pending_reminder", "valid-key-1", { requestId: "req-1" });
+    expect(queueTemplateMock).toHaveBeenCalledWith("SW2748", "wedding_rsvp_pending_reminder_group", "valid-key-1", { requestId: "req-1" });
   });
 
   it("maps queue failures to 503", async () => {
     queueTemplateMock.mockRejectedValueOnce(new AppError("Queue unavailable.", 503, "QUEUE_UNAVAILABLE"));
     const { handler } = await import("../src/functions/whatsapp-rsvp-send/handler");
     const response = await handler(event({
-      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder" })
+      body: JSON.stringify({ invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group" })
     }), context);
     expect(response.statusCode).toBe(503);
     expect(body(response)).toMatchObject({ code: "QUEUE_UNAVAILABLE" });
@@ -126,7 +126,7 @@ describe("WhatsApp RSVP operator handlers", () => {
   it("returns command status and maps an unknown command to 404", async () => {
     const { handler } = await import("../src/functions/whatsapp-rsvp-command-status/handler");
     getCommandStatusMock.mockResolvedValue({
-      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group",
       templateVersion: 1, status: "sent", retryCount: 1, reconciliationStatus: "none",
       providerMessageId: "wamid.1", createdAt: "2026-08-17T12:00:00.000Z"
     });

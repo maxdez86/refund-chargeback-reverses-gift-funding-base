@@ -147,7 +147,7 @@ describe("WhatsappTemplateRepository", () => {
   });
 
   it("preserves named parameter format when reading a version", async () => {
-    const named = { ...versionItem, purpose: "wedding_rsvp_pending_reminder", parameterFormat: "named" as const };
+    const named = { ...versionItem, purpose: "wedding_rsvp_pending_reminder_group", parameterFormat: "named" as const };
     const repository = new WhatsappTemplateRepository(
       { send: vi.fn().mockResolvedValue({ Item: named }) } as never,
       "table-test"

@@ -1,10 +1,7 @@
 import type { WhatsappFlowStatus } from "@brimax/contracts";
 
 export const TERMINAL_FLOW_STATUSES = [
-  "attendance_confirmed_whatsapp",
-  "attendance_declined",
   "website_update_required",
-  "undecided",
   "completed",
   "failed",
   "reconciliation_required"
@@ -12,25 +9,25 @@ export const TERMINAL_FLOW_STATUSES = [
 
 const transitions: Record<WhatsappFlowStatus, readonly WhatsappFlowStatus[]> = {
   idle: ["send_queued"],
-  send_queued: ["sending", "message_sent", "failed"],
-  sending: ["message_sent", "failed", "reconciliation_required"],
+  send_queued: ["sending", "website_followup_pending", "failed", "reconciliation_required"],
+  sending: ["message_sent", "website_followup_pending", "failed", "reconciliation_required"],
   message_sent: [
     "response_received", "attendance_confirmed_whatsapp", "attendance_declined",
-    "website_update_required", "undecided", "completed", "failed", "reconciliation_required"
+    "website_followup_pending", "undecided", "failed", "reconciliation_required"
   ],
   response_received: [
-    "send_queued",
     "attendance_confirmed_whatsapp",
     "attendance_declined",
-    "website_update_required",
+    "website_followup_pending",
     "undecided",
-    "completed",
-    "failed"
+    "failed",
+    "reconciliation_required"
   ],
-  attendance_confirmed_whatsapp: [],
-  attendance_declined: [],
+  attendance_confirmed_whatsapp: ["completed", "failed", "reconciliation_required"],
+  attendance_declined: ["completed", "failed", "reconciliation_required"],
+  website_followup_pending: ["completed", "failed", "reconciliation_required"],
   website_update_required: [],
-  undecided: [],
+  undecided: ["completed", "failed", "reconciliation_required"],
   completed: [],
   failed: [],
   reconciliation_required: []

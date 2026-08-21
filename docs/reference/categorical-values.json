@@ -1,0 +1,152 @@
+{
+  "guest": {
+    "rsvpStatus": ["pending", "attending", "declined"]
+  },
+  "whatsapp": {
+    "whatsappFlowStatus": [
+      "idle",
+      "send_queued",
+      "sending",
+      "message_sent",
+      "response_received",
+      "attendance_confirmed_whatsapp",
+      "attendance_declined",
+      "website_update_required",
+      "undecided",
+      "completed",
+      "failed",
+      "reconciliation_required"
+    ],
+    "whatsappFlowStage": ["reconfirmation", "pending", "followup", "fallback"],
+    "whatsappAttendance.status": ["attending", "declined"],
+    "whatsappCommand.status": ["queued", "sending", "sent", "failed", "queue_unavailable", "reconciliation_required"],
+    "whatsappMessage.direction": ["inbound", "outbound"],
+    "whatsappMessage.status": ["received", "sent", "delivered", "read", "failed"],
+    "whatsappReconciliationStatus": ["none", "required", "resolved"],
+    "phoneNumberSource": ["operator", "import", "guest"],
+    "history.kind": ["command", "message"],
+    "webhookEventSource.collection": ["messages", "statuses", "errors", "change"],
+    "webhookEvent.type": [
+      "button_reply",
+      "list_reply",
+      "text",
+      "audio",
+      "image",
+      "video",
+      "document",
+      "sticker",
+      "location",
+      "contacts",
+      "reaction",
+      "unsupported_message",
+      "status_sent",
+      "status_delivered",
+      "status_read",
+      "status_failed",
+      "unknown_event",
+      "invalid_payload"
+    ],
+    "webhookInvalidItemReason": [
+      "collection_not_array",
+      "item_not_object",
+      "missing_message_id",
+      "missing_message_type",
+      "malformed_button_reply",
+      "malformed_list_reply",
+      "malformed_text",
+      "malformed_media",
+      "malformed_location",
+      "malformed_contacts",
+      "malformed_reaction",
+      "missing_status_id",
+      "missing_status_value"
+    ],
+    "webhookInvalidEnvelopeReason": [
+      "not_object",
+      "wrong_object",
+      "missing_or_empty_entry",
+      "invalid_entry",
+      "missing_or_empty_changes",
+      "invalid_change_value",
+      "invalid_messaging_product"
+    ],
+    "webhookProcessingOutcome": ["processed", "rejected"]
+  },
+  "whatsappTemplates": {
+    "category": ["UTILITY", "MARKETING"],
+    "approvalStatus": ["approved", "pending_meta_approval"],
+    "parameterFormat": ["named", "positional"],
+    "component.type": ["header", "body", "button"],
+    "button.subType": ["quick_reply", "url"],
+    "templateParameter.type": ["text", "currency", "date_time", "image", "document", "video", "payload"],
+    "sourceVariant": ["interactive", "template_quick_reply"],
+    "purpose": [
+      "wedding_invitation",
+      "wedding_rsvp_reconfirmation",
+      "wedding_rsvp_attending_followup",
+      "wedding_rsvp_pending_reminder_group",
+      "wedding_rsvp_declined_followup",
+      "wedding_rsvp_undecided_followup"
+    ]
+  },
+  "payments": {
+    "paymentMethod": ["HOSTED", "PIX", "CREDIT_CARD"],
+    "paymentStatus": [
+      "CREATED",
+      "AWAITING_PAYMENT",
+      "PROCESSING",
+      "CONFIRMED",
+      "RECEIVED",
+      "EXPIRED",
+      "CANCELED",
+      "REFUNDED",
+      "CHARGEBACK",
+      "FAILED"
+    ],
+    "customerProfileStatus": ["PENDING", "READY", "FAILED"],
+    "fundingModelVersion": ["LEGACY_FIXED_50", "EXACT_FINAL_QUOTA"],
+    "paymentReservation.status": ["PENDING_CHECKOUT", "ACTIVE", "CONSUMED", "RELEASED", "RECOVERY_HOLD"],
+    "paymentShell.shellStatus": [
+      "CHECKOUT_CREATING",
+      "CHECKOUT_REMOTE_AMBIGUOUS",
+      "CHECKOUT_READY",
+      "CHECKOUT_RELEASED",
+      "CHECKOUT_CONSUMED"
+    ],
+    "idempotency.status": ["IN_PROGRESS", "COMPLETED", "FAILED"],
+    "notification.status": ["PENDING", "SENT"],
+    "stage": ["dev", "prod"],
+    "currency": ["BRL"],
+    "whatsappWebhookMarker.processingOutcome": ["processed", "rejected"],
+    "whatsappWebhookMarker.processingStatus": ["pending", "processing", "processed", "failed"]
+  },
+  "entityType": {
+    "wedding": [
+      "Invitation",
+      "InvitationGuest",
+      "RsvpResponse",
+      "GuestMessage",
+      "GuestMessageLookup",
+      "WhatsappInvitationPhoneLookup",
+      "WhatsappCommand",
+      "WhatsappMessage",
+      "WebhookEvent"
+    ],
+    "payments": [
+      "PaymentIdempotency",
+      "Payment",
+      "PaymentReservation",
+      "PaymentShell",
+      "GiftMetadata",
+      "GiftState",
+      "PaymentMessage",
+      "PaymentNotification",
+      "WebhookEvent"
+    ],
+    "whatsappTemplates": [
+      "WhatsappTemplateVersion",
+      "WhatsappTemplateActive",
+      "WhatsappTemplateActivation"
+    ]
+  }
+}

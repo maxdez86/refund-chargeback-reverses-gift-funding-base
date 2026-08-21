@@ -22,9 +22,13 @@ describe("WhatsApp flow state", () => {
 
   it("allows the active lifecycle and rejects terminal reopening", () => {
     expect(canTransition("idle", "send_queued")).toBe(true);
-    expect(canTransition("send_queued", "message_sent")).toBe(true);
+    expect(canTransition("send_queued", "message_sent")).toBe(false);
     expect(canTransition("sending", "message_sent")).toBe(true);
     expect(canTransition("message_sent", "response_received")).toBe(true);
+    expect(canTransition("attendance_declined", "completed")).toBe(true);
+    expect(canTransition("attendance_declined", "message_sent")).toBe(false);
+    expect(canTransition("website_followup_pending", "failed")).toBe(true);
+    expect(canTransition("website_update_required", "send_queued")).toBe(false);
     expect(canTransition("completed", "response_received")).toBe(false);
     expect(TERMINAL_FLOW_STATUSES.every(isTerminalFlowStatus)).toBe(true);
   });

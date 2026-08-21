@@ -1,4 +1,5 @@
 import type { SQSRecord, SQSEvent } from "aws-lambda";
+import type { WhatsappFlowStatus } from "@brimax/contracts";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { z } from "zod";
 import { deriveTemplateParameters } from "../../domain/whatsapp-template-variables";
@@ -20,8 +21,8 @@ import { WhatsappCloudApiClient } from "../../services/whatsapp/client";
 const WhatsappWorkerMessageSchema = z.object({ commandId: z.string().min(1).max(512) }).strict();
 const MAX_RECEIVE_COUNT = 10_000;
 
-type WorkerRepository = Pick<WeddingRepository, "getWhatsappCommand" | "getInvitationByCode" | "claimWhatsappCommand" | "updateWhatsappCommand" | "updateWhatsappFlow" | "putWhatsappMessage">;
-type WorkerTemplates = Pick<WhatsappTemplateRepository, "getActive">;
+type WorkerRepository = Pick<WeddingRepository, "getWhatsappCommand" | "getInvitationByCode" | "claimWhatsappCommand" | "updateWhatsappCommand" | "updateWhatsappFlow" | "finalizeAcceptedWhatsappSend">;
+type WorkerTemplates = Pick<WhatsappTemplateRepository, "getVersion">;
 type WorkerSender = Pick<WhatsappTemplateMessageService, "send">;
 type TextSender = Pick<WhatsappCloudApiClient, "sendText">;
 
@@ -72,16 +73,17 @@ async function reconcile(
   now: string,
   log: (entry: Record<string, unknown>) => void,
   condition = conditionForSending(),
-  preserveFlowStatus = false
+  effect: "opener" | "preserve" | "complete_on_send" = "opener",
+  expectedFlowStatus?: WhatsappFlowStatus
 ) {
   try {
     await repository.updateWhatsappCommand(commandId, {
       status: "reconciliation_required", reconciliationStatus: "required", failureReason: reason, updatedAt: now
     }, condition);
-    if (!preserveFlowStatus) {
+    if (effect !== "preserve" && expectedFlowStatus) {
       await repository.updateWhatsappFlow(invitationCode, {
         whatsappFlowStatus: "reconciliation_required", whatsappFailureReason: reason, whatsappFlowUpdatedAt: now
-      }, transitionCondition("sending"));
+      }, transitionCondition(expectedFlowStatus));
     }
     log({ metric: "WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED", commandId, invitationCode, outcome: "reconciliation_required" });
     return true;
@@ -99,16 +101,17 @@ async function failPermanently(
   category: string | undefined,
   providerCode: number | undefined,
   now: string,
-  preserveFlowStatus = false
+  effect: "opener" | "preserve" | "complete_on_send" = "opener",
+  expectedFlowStatus?: WhatsappFlowStatus
 ) {
   await repository.updateWhatsappCommand(commandId, {
     status: "failed", reconciliationStatus: "none", failureReason: reason,
     providerErrorCategory: category, providerErrorCode: providerCode, updatedAt: now
   }, conditionForSending());
-  if (!preserveFlowStatus) {
+  if (effect !== "preserve" && expectedFlowStatus) {
     await repository.updateWhatsappFlow(invitationCode, {
       whatsappFlowStatus: "failed", whatsappFailureReason: reason, whatsappFlowUpdatedAt: now
-    }, transitionCondition("sending"));
+    }, transitionCondition(expectedFlowStatus));
   }
 }
 
@@ -128,9 +131,21 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
     log({ metric: "WHATSAPP_RSVP_WORKER_SKIPPED", commandId, outcome: "skipped" });
     return false;
   }
+  const legacyCommand = command as typeof command & { preserveFlowStatus?: boolean };
+  const effect = command.effect ?? (legacyCommand.preserveFlowStatus === true ? "preserve" : "opener");
+  // Opener commands record their owned starting state. Once claimed, the
+  // worker transitions that state to `sending`; all provider failure and
+  // finalization paths therefore use `sending` as their owned status.
+  const expectedFlowStatus = effect === "opener"
+    ? "sending"
+    : command.expectedFlowStatus;
 
   const attemptAt = now();
-  const reclaimBefore = new Date(Date.parse(attemptAt) - WHATSAPP_QUEUE_VISIBILITY_TIMEOUT_MS - WHATSAPP_RECLAIM_MARGIN_MS).toISOString();
+  // A redelivered message is normally visible again at the queue visibility
+  // timeout. The margin makes the reclaim threshold slightly earlier than
+  // that boundary so scheduling jitter cannot acknowledge a stale message
+  // without reclaiming it.
+  const reclaimBefore = new Date(Date.parse(attemptAt) - WHATSAPP_QUEUE_VISIBILITY_TIMEOUT_MS + WHATSAPP_RECLAIM_MARGIN_MS).toISOString();
   const currentReceiveCount = receiveCount(record);
   const claimed = await dependencies.repository.claimWhatsappCommand(commandId, { now: attemptAt, receiveCount: currentReceiveCount, reclaimBefore });
 
@@ -162,7 +177,7 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
   }
 
   if (!invitation) {
-    await failPermanently(dependencies.repository, String(command.invitationCode), commandId, "WhatsApp command invitation no longer exists.", undefined, undefined, attemptAt, command.preserveFlowStatus);
+    await failPermanently(dependencies.repository, String(command.invitationCode), commandId, "WhatsApp command invitation no longer exists.", undefined, undefined, attemptAt, effect, expectedFlowStatus);
     return false;
   }
 
@@ -170,28 +185,57 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
   try {
     definition = command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID
       ? undefined
-      : await dependencies.templates.getActive(String(command.templateId));
+      : await dependencies.templates.getVersion(String(command.templateId), Number(command.templateVersion));
   } catch (error) {
     if (error instanceof AppError && error.statusCode >= 500) {
-      await failPermanently(dependencies.repository, invitation.invitationCode, commandId, error.message, "invalid_request", undefined, attemptAt, command.preserveFlowStatus);
+      await failPermanently(dependencies.repository, invitation.invitationCode, commandId, error.message, "invalid_request", undefined, attemptAt, effect, expectedFlowStatus);
       log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, outcome: "failed", category: "stored_template_invalid" });
       return false;
     }
     throw error;
   }
 
-  if (!command.preserveFlowStatus) {
+  if (effect === "opener") {
+    const openerExpectedStatus = "send_queued";
+    const openerClaimable = invitation.whatsappFlowStatus === openerExpectedStatus ||
+      invitation.whatsappFlowStatus === "sending";
+    if (!openerClaimable) {
+      await reconcile(
+        dependencies.repository,
+        invitation.invitationCode,
+        commandId,
+        "WhatsApp opener command no longer owns an opener-eligible flow.",
+        attemptAt,
+        log,
+        undefined,
+        "preserve"
+      );
+      return false;
+    }
     try {
       await dependencies.repository.updateWhatsappFlow(invitation.invitationCode, {
         whatsappFlowStatus: "sending", whatsappFlowUpdatedAt: attemptAt
-      }, transitionCondition(invitation.whatsappFlowStatus ?? "idle"));
+      }, transitionCondition(invitation.whatsappFlowStatus));
     } catch (error) {
       if (error instanceof ConditionalCheckFailedException) {
-        await reconcile(dependencies.repository, invitation.invitationCode, commandId, "WhatsApp flow changed while the worker claimed the command.", attemptAt, log, undefined, command.preserveFlowStatus);
+        await reconcile(dependencies.repository, invitation.invitationCode, commandId, "WhatsApp flow changed while the worker claimed the command.", attemptAt, log, undefined, effect, expectedFlowStatus);
         return false;
       }
       throw error;
     }
+  }
+  if (effect === "complete_on_send" && invitation.whatsappFlowStatus !== expectedFlowStatus) {
+    await reconcile(
+      dependencies.repository,
+      invitation.invitationCode,
+      commandId,
+      "WhatsApp flow no longer matches the command's expected intermediate status.",
+      attemptAt,
+      log,
+      undefined,
+      "preserve"
+    );
+    return false;
   }
 
   const handleFailure = async (error: unknown) => {
@@ -206,10 +250,10 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
       return true;
     }
     if (classification.outcome === "ambiguous") {
-      await reconcile(dependencies.repository, invitation.invitationCode, commandId, reason, attemptAt, log, undefined, command.preserveFlowStatus);
+      await reconcile(dependencies.repository, invitation.invitationCode, commandId, reason, attemptAt, log, undefined, effect, expectedFlowStatus);
       return false;
     }
-    await failPermanently(dependencies.repository, invitation.invitationCode, commandId, reason, classification.category, classification.providerCode, attemptAt, command.preserveFlowStatus);
+    await failPermanently(dependencies.repository, invitation.invitationCode, commandId, reason, classification.category, classification.providerCode, attemptAt, effect, expectedFlowStatus);
     log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, retryCount: command.retryCount + 1, receiveCount: currentReceiveCount, outcome: "failed", category: classification.category });
     return false;
   };
@@ -235,21 +279,34 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
   }
 
   try {
-    await dependencies.repository.putWhatsappMessage({
+    const finalization = await dependencies.repository.finalizeAcceptedWhatsappSend({
+      commandId,
+      invitationCode: invitation.invitationCode,
+      effect,
+      expectedFlowStatus,
+      now: attemptAt,
+      fallback: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID,
+      message: {
       messageId: result.messageId, invitationCode: invitation.invitationCode, direction: "outbound", status: "sent",
       commandId, templateId: command.templateId, templateVersion: command.templateVersion, stage: command.stage, body: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID ? WHATSAPP_FALLBACK_TEXT : undefined, createdAt: attemptAt
+      }
     });
-    await dependencies.repository.updateWhatsappCommand(commandId, {
-      status: "sent", providerMessageId: result.messageId, sentAt: attemptAt, updatedAt: attemptAt
-    }, conditionForSending());
-    await dependencies.repository.updateWhatsappFlow(invitation.invitationCode,
-      command.preserveFlowStatus
-        ? { whatsappFallbackSentAt: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID ? attemptAt : undefined }
-        : command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID
-          ? { whatsappFlowStatus: "response_received", whatsappFlowStage: "fallback", whatsappFallbackSentAt: attemptAt, whatsappLastOutboundMessageId: result.messageId, whatsappFlowUpdatedAt: attemptAt }
-          : { whatsappFlowStatus: "message_sent", whatsappLastOutboundMessageId: result.messageId, whatsappFlowUpdatedAt: attemptAt },
-      command.preserveFlowStatus ? undefined : transitionCondition("sending"));
-    log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, wamid: result.messageId, retryCount: command.retryCount + 1, receiveCount: currentReceiveCount, outcome: "sent" });
+    if (finalization.outcome === "reconciliation_required") {
+      await reconcile(
+        dependencies.repository,
+        invitation.invitationCode,
+        commandId,
+        finalization.reason,
+        attemptAt,
+        log,
+        undefined,
+        effect,
+        expectedFlowStatus
+      );
+      log({ metric: "WHATSAPP_RSVP_WORKER_FINALIZATION_AMBIGUOUS", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, effect, outcome: "reconciliation_required" });
+      return false;
+    }
+    log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, effect, wamid: result.messageId, retryCount: command.retryCount + 1, receiveCount: currentReceiveCount, outcome: finalization.outcome === "replayed" ? "finalization_replayed" : "sent" });
     return false;
   } catch (error) {
     await reconcile(
@@ -260,7 +317,8 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
       attemptAt,
       log,
       undefined,
-      command.preserveFlowStatus
+      effect,
+      expectedFlowStatus
     );
     return false;
   }

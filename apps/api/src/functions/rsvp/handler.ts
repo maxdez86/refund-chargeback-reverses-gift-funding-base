@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { ZodError } from "zod";
-import { RsvpSubmissionRequestSchema } from "@brimax/contracts";
+import { RsvpSubmissionRequestSchema, WhatsappIdempotencyKeySchema } from "@brimax/contracts";
 import { RsvpService } from "../../domain/rsvp-service";
 import { corsHeaders, jsonResponse } from "../../lib/http";
 import { AppError } from "../../lib/errors";
@@ -15,7 +15,10 @@ async function onSubmitRsvp(event: APIGatewayProxyEventV2) {
   const cors = corsHeaders(event.headers.origin);
 
   try {
-    const idempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
+    const rawIdempotencyKey = event.headers["idempotency-key"] ?? event.headers["Idempotency-Key"];
+    const idempotencyKey = rawIdempotencyKey?.trim()
+      ? WhatsappIdempotencyKeySchema.parse(rawIdempotencyKey.trim())
+      : undefined;
     let requestBody: unknown;
     try {
       requestBody = JSON.parse(event.body ?? "{}");
@@ -24,7 +27,7 @@ async function onSubmitRsvp(event: APIGatewayProxyEventV2) {
     }
     const parsedRequest = RsvpSubmissionRequestSchema.parse(requestBody);
     await verifyLookupProof(event, parsedRequest.invitationCode);
-    const { response, notificationSent } = await service.submit(parsedRequest);
+    const { response, notificationSent } = await service.submit(parsedRequest, idempotencyKey);
 
     console.info(
       JSON.stringify({
@@ -32,7 +35,7 @@ async function onSubmitRsvp(event: APIGatewayProxyEventV2) {
         invitationCode: response.invitationCode,
         status: response.status,
         notificationSent,
-        idempotencyKeyPresent: Boolean(idempotencyKey?.trim())
+        idempotencyKeyPresent: Boolean(idempotencyKey)
       })
     );
 

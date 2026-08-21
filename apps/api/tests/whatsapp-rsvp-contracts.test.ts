@@ -21,7 +21,7 @@ describe("WhatsApp RSVP contracts", () => {
       expect(WhatsappRsvpSendRequestSchema.parse({ invitationCode, templateId })).toEqual({ invitationCode, templateId });
       expect(WhatsappRsvpTemplatePurposeSchema.parse(templateId)).toBe(templateId);
     }
-    expect(new Set(WHATSAPP_RSVP_TEMPLATE_PURPOSES).size).toBe(6);
+    expect(new Set(WHATSAPP_RSVP_TEMPLATE_PURPOSES).size).toBe(13);
     expect(() => WhatsappRsvpSendRequestSchema.parse({ invitationCode: "bad", templateId: "valid_template" })).toThrow();
     for (const templateId of ["Wedding_Rsvp", "wedding_rsvp_pending_reminde", "retired_template_2024", "future_template", "a".repeat(100)]) {
       expect(() => WhatsappRsvpSendRequestSchema.parse({ invitationCode, templateId })).toThrow();
@@ -55,7 +55,7 @@ describe("WhatsApp RSVP contracts", () => {
     const base = {
       commandId: "idempotency-SW2748-key12345",
       invitationCode,
-      templateId: "wedding_rsvp_pending_reminder",
+      templateId: "wedding_rsvp_pending_reminder_group",
       templateVersion: 3,
       status: "queued" as const
     };
@@ -65,6 +65,14 @@ describe("WhatsApp RSVP contracts", () => {
 
   it("parses status, phone, and shared error responses", () => {
     expect(WhatsappRsvpStatusResponseSchema.parse({ invitationCode, status: "idle" })).toEqual({ invitationCode, status: "idle" });
+    expect(WhatsappRsvpStatusResponseSchema.parse({
+      invitationCode,
+      status: "website_followup_pending"
+    })).toEqual({ invitationCode, status: "website_followup_pending" });
+    expect(WhatsappRsvpStatusResponseSchema.parse({
+      invitationCode,
+      status: "website_update_required"
+    })).toEqual({ invitationCode, status: "website_update_required" });
     expect(WhatsappPhoneUpdateResponseSchema.parse({ invitationCode, phoneNumber: "5511963656517", updatedAt: "2026-08-17T12:00:00.000Z" })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request." })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request.", issues: [{ path: ["templateId"], message: "Invalid" }] })).toBeTruthy();

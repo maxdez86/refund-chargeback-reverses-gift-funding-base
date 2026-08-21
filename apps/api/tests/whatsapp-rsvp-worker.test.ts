@@ -1,16 +1,17 @@
 import type { SQSEvent } from "aws-lambda";
 import { describe, expect, it, vi } from "vitest";
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { WhatsappApiError } from "../src/services/whatsapp/client";
 import { createWhatsappRsvpWorker } from "../src/functions/whatsapp-rsvp-worker/handler";
 import { WHATSAPP_FALLBACK_TEMPLATE_ID, WHATSAPP_FALLBACK_TEXT } from "../src/domain/whatsapp-rsvp-service";
 
 const invitation = {
   invitationCode: "SW2748", householdName: "Household", phoneNumber: "5511963656517",
-  whatsappFlowStatus: "idle" as const,
+  whatsappFlowStatus: "send_queued" as const,
   guests: [{ guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "pending" as const }]
 };
 const definition = {
-  purpose: "wedding_rsvp_pending_reminder", name: "wedding_rsvp_pending_reminder", language: "pt_BR",
+  purpose: "wedding_rsvp_pending_reminder_group", name: "wedding_rsvp_pending_reminder_group", language: "pt_BR",
   version: 1, parameterFormat: "named" as const,
   components: [{ type: "body" as const, parameters: [{ key: "household_name", type: "text" as const }] }],
   createdAt: "2026-08-15T12:00:00.000Z"
@@ -18,9 +19,9 @@ const definition = {
 
 function command(overrides: Record<string, unknown> = {}) {
   return {
-    commandId: "command-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+    commandId: "command-1", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_group",
     templateVersion: 1, stage: "pending" as const, status: "queued" as const,
-    retryCount: 0, startedAt: undefined, ...overrides
+    retryCount: 0, startedAt: undefined, expectedFlowStatus: "send_queued", ...overrides
   };
 }
 
@@ -44,12 +45,28 @@ function setup(overrides: Record<string, unknown> = {}) {
       return true;
     }),
     updateWhatsappCommand: vi.fn().mockImplementation(async (_id, values) => { state.command = { ...state.command, ...values }; }),
-    updateWhatsappFlow: vi.fn().mockImplementation(async (_id, values) => { state.invitation = { ...state.invitation, ...values }; }),
-    putWhatsappMessage: vi.fn().mockResolvedValue({ created: true })
+    updateWhatsappFlow: vi.fn().mockImplementation(async (_id, values, condition) => {
+      const expected = condition?.values?.[":c0"] ?? condition?.values?.[":status"];
+      if (typeof expected === "string" && state.invitation.whatsappFlowStatus !== expected) {
+        throw new ConditionalCheckFailedException({ message: "stale flow", $metadata: {} });
+      }
+      state.invitation = { ...state.invitation, ...values };
+    }),
+    finalizeAcceptedWhatsappSend: vi.fn().mockImplementation(async (input) => {
+      state.command = { ...state.command, status: "sent", providerMessageId: input.message.messageId, sentAt: input.now, updatedAt: input.now };
+      if (input.effect === "opener") {
+        state.invitation = { ...state.invitation, whatsappFlowStatus: "message_sent", whatsappLastOutboundMessageId: input.message.messageId, whatsappFlowUpdatedAt: input.now };
+      } else if (input.effect === "complete_on_send") {
+        state.invitation = { ...state.invitation, whatsappFlowStatus: "completed", whatsappFlowCompletedAt: input.now, whatsappLastOutboundMessageId: input.message.messageId, whatsappFlowUpdatedAt: input.now };
+      } else if (input.fallback) {
+        state.invitation = { ...state.invitation, whatsappFallbackSentAt: input.now };
+      }
+      return { outcome: "applied" };
+    })
   };
   const sender = { send: vi.fn().mockResolvedValue({ messageId: "wamid.1" }) };
   const textSender = { sendText: vi.fn().mockResolvedValue({ messageId: "wamid.text" }) };
-  const templates = { getActive: vi.fn().mockResolvedValue(definition) };
+  const templates = { getVersion: vi.fn().mockResolvedValue(definition) };
   const logs: Record<string, unknown>[] = [];
   const handler = createWhatsappRsvpWorker({
     repository: repository as never, sender: sender as never, textSender, templates,
@@ -67,6 +84,85 @@ describe("WhatsApp RSVP worker", () => {
     expect(sender.send).toHaveBeenCalledTimes(1);
   });
 
+  it("sends the purpose stored on the command even when invitation state changes", async () => {
+    const { handler, sender } = setup({
+      command: command({
+        templateId: "wedding_rsvp_reconfirmation_single",
+        stage: "reconfirmation"
+      }),
+      invitation: {
+        ...invitation,
+        guests: [
+          { guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "attending" as const },
+          { guestId: "g2", guestName: "Bruno", allowedPlusOnes: 0, rsvpStatus: "pending" as const }
+        ]
+      }
+    });
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: "wedding_rsvp_reconfirmation_single" }),
+      expect.anything(),
+      definition
+    );
+  });
+
+  it.each([
+    ["wedding_rsvp_reconfirmation_single", "reconfirmation"],
+    ["wedding_rsvp_pending_reminder_group", "pending"]
+  ] as const)("sends the persisted %s purpose without completing an opener", async (templateId, stage) => {
+    const { handler, sender, state } = setup({ command: command({ templateId, stage }) });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).toHaveBeenCalledWith(expect.objectContaining({ purpose: templateId }), expect.anything(), definition);
+    expect(state.invitation.whatsappFlowStatus).toBe("message_sent");
+    expect(state.invitation.whatsappFlowCompletedAt).toBeUndefined();
+  });
+
+  it("completes a matching complete-on-send follow-up only after provider success", async () => {
+    const { handler, sender, state } = setup({
+      command: command({
+        effect: "complete_on_send",
+        expectedFlowStatus: "attendance_declined",
+        templateId: "wedding_rsvp_declined_followup_single"
+      }),
+      invitation: { ...invitation, whatsappFlowStatus: "attendance_declined" as const }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(state.invitation.whatsappFlowStatus).toBe("completed");
+    expect(state.invitation.whatsappFlowCompletedAt).toBe("2026-08-17T12:00:00.000Z");
+  });
+
+  it("does not send a complete-on-send command after its expected status is stale", async () => {
+    const { handler, sender, state } = setup({
+      command: command({ effect: "complete_on_send", expectedFlowStatus: "attendance_declined" }),
+      invitation: { ...invitation, whatsappFlowStatus: "completed" as const }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(state.command.status).toBe("reconciliation_required");
+    expect(state.invitation.whatsappFlowStatus).toBe("completed");
+  });
+
+  it("does not let an opener overwrite a website-winning flow", async () => {
+    const { handler, sender, state } = setup({
+      command: command({ effect: "opener", expectedFlowStatus: "send_queued" }),
+      invitation: { ...invitation, whatsappFlowStatus: "website_followup_pending" as const }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(state.invitation.whatsappFlowStatus).toBe("website_followup_pending");
+    expect(state.command.status).toBe("reconciliation_required");
+  });
+
   it.each(["sent", "sending", "reconciliation_required"])("skips a command already %s", async (status) => {
     const { handler, sender } = setup({ command: command({ status, startedAt: "2026-08-17T11:59:00.000Z" }) });
     await handler({ Records: [record()] } as unknown as SQSEvent);
@@ -78,6 +174,25 @@ describe("WhatsApp RSVP worker", () => {
     await handler({ Records: [record()] } as unknown as SQSEvent);
     expect(sender.send).toHaveBeenCalledTimes(1);
     expect(state.command.retryCount).toBe(2);
+  });
+
+  it("reclaims a sending command when its queue visibility has just expired", async () => {
+    const { handler, sender, state } = setup({
+      command: command({ status: "sending", retryCount: 1, startedAt: "2026-08-17T11:58:00.000Z" })
+    });
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(state.command.status).toBe("sent");
+  });
+
+  it("retries a reclaimed opener already in sending state", async () => {
+    const { handler, sender, state } = setup({
+      command: command({ status: "sending", retryCount: 1, startedAt: "2026-08-17T11:55:00.000Z" }),
+      invitation: { ...invitation, whatsappFlowStatus: "sending" as const }
+    });
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(state.invitation.whatsappFlowStatus).toBe("message_sent");
   });
 
   it("reconciles a stale command after the attempt budget is exhausted", async () => {
@@ -97,6 +212,17 @@ describe("WhatsApp RSVP worker", () => {
     expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: "bad" }] });
     // The second copy is the same command and is correctly suppressed by the claim guard.
     expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails a permanent provider rejection without redrive", async () => {
+    const { handler, sender, state } = setup();
+    sender.send.mockRejectedValue(new WhatsappApiError("invalid template", "invalid_request", 400, false, 132000));
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [] });
+    expect(state.command.status).toBe("failed");
+    expect(sender.send).toHaveBeenCalledOnce();
   });
 
   it("fails permanently without redrive for missing phone", async () => {
@@ -119,6 +245,32 @@ describe("WhatsApp RSVP worker", () => {
     expect(result).toEqual({ batchItemFailures: [] });
     expect(state.command.status).toBe("reconciliation_required");
     expect(state.invitation.whatsappFlowStatus).toBe("reconciliation_required");
+  });
+
+  it("does not retry a provider-accepted send when local finalization fails", async () => {
+    const { handler, sender, state, repository } = setup();
+    repository.finalizeAcceptedWhatsappSend.mockRejectedValueOnce(new Error("DynamoDB unavailable"));
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [] });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(state.command.status).toBe("reconciliation_required");
+    expect(state.invitation.whatsappFlowStatus).toBe("reconciliation_required");
+  });
+
+  it("treats an idempotent finalization replay as a successful send", async () => {
+    const { handler, sender, repository, logs } = setup();
+    repository.finalizeAcceptedWhatsappSend.mockResolvedValueOnce({ outcome: "replayed" });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(logs).toContainEqual(expect.objectContaining({
+      metric: "WHATSAPP_RSVP_WORKER_OUTCOME",
+      outcome: "finalization_replayed",
+      effect: "opener"
+    }));
   });
 
   it("does not log phone numbers or message content", async () => {
@@ -145,10 +297,8 @@ describe("WhatsApp RSVP worker", () => {
     expect(state.invitation.whatsappFlowStatus).toBe("message_sent");
     expect(state.invitation.whatsappLastOutboundMessageId).toBe("wamid.rsvp");
     expect(state.invitation.whatsappFallbackSentAt).toBe("2026-08-17T12:00:00.000Z");
-    expect(repository.updateWhatsappFlow).toHaveBeenCalledWith(
-      "SW2748",
-      { whatsappFallbackSentAt: "2026-08-17T12:00:00.000Z" },
-      undefined
-    );
+    expect(repository.finalizeAcceptedWhatsappSend).toHaveBeenCalledWith(expect.objectContaining({
+      effect: "preserve", fallback: true, now: "2026-08-17T12:00:00.000Z"
+    }));
   });
 });

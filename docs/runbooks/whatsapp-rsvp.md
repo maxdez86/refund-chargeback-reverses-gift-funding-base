@@ -140,7 +140,7 @@ the `dev-` prefix separates tables, queues, and log groups. Approved deep links
 always point to `https://brimax.life/`, even from dev, so only controlled test
 numbers may receive dev messages.
 
-`wedding_rsvp_pending_reminder` is a MARKETING template subject to marketing
+`wedding_rsvp_pending_reminder_group` is a MARKETING template subject to marketing
 limits, opt-outs, and quality-based pausing. Its first production messages can
 affect the quality trajectory of the sending number. The other RSVP templates
 are Utility templates.

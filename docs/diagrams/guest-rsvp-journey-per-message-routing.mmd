@@ -1,0 +1,48 @@
+flowchart TD
+  Start([Admin sends RSVP WhatsApp. Journey starts]) --> Confirmed{Was anyone in this invitation<br/>already confirmed on the website?}
+
+  Confirmed -->|Yes| ReconfirmationAudience{Exactly one invited guest?}
+  ReconfirmationAudience -->|Yes| ReconfirmationSingle[Send reconfirmation message<br/>wedding_rsvp_reconfirmation_single]
+  ReconfirmationAudience -->|No| ReconfirmationGroup[Send reconfirmation message<br/>wedding_rsvp_reconfirmation]
+  ReconfirmationSingle --> ReconReply{Guest choice}
+  ReconfirmationGroup --> ReconReply
+
+  ReconReply -->|Confirm attendance| AttendingAudience{Exactly one invited guest?}
+  AttendingAudience -->|Yes| AttendingSingle[Send attending follow-up:<br/>celebration, parking and venue map<br/>wedding_rsvp_attending_followup_single]
+  AttendingAudience -->|No| AttendingGroup[Send attending follow-up:<br/>celebration, parking and venue map<br/>wedding_rsvp_attending_followup]
+  AttendingSingle --> EndAttending([Journey complete: attendance confirmed])
+  AttendingGroup --> EndAttending
+
+  ReconReply -->|Use website update link| WebsiteUpdate[Guest updates RSVP on the wedding website]
+  WebsiteUpdate --> WebsiteFollowupAudience{Exactly one invited guest?}
+  WebsiteFollowupAudience -->|Yes| WebsiteFollowupSingle[Send website-update attending follow-up:<br/>celebration, parking and venue map<br/>wedding_rsvp_attending_followup_website_single]
+  WebsiteFollowupAudience -->|No| WebsiteFollowupGroup[Send website-update attending follow-up:<br/>celebration, parking and venue map<br/>wedding_rsvp_attending_followup_website]
+  WebsiteFollowupSingle --> EndWebsite([Journey complete: website RSVP updated])
+  WebsiteFollowupGroup --> EndWebsite
+
+  ReconReply -->|Free text, media, unknown reply| Fallback[Send help message:<br/>RSVP assistance only; contact the couple by email]
+  Fallback --> EndFallback([Fallback Journey ends after one help response])
+
+  Confirmed -->|No| ReminderAudience{Exactly one invited guest?}
+  ReminderAudience -->|Yes| ReminderSingle[Send pending RSVP reminder<br/>wedding_rsvp_pending_reminder_single]
+  ReminderAudience -->|No| ReminderGroup[Send pending RSVP reminder<br/>wedding_rsvp_pending_reminder_group]
+  ReminderSingle --> PendingReply{Guest choice}
+  ReminderGroup --> PendingReply
+
+  PendingReply -->|Use website update link| WebsiteUpdate
+  PendingReply -->|Confirm attendance| AttendingAudience
+  PendingReply -->|Decline attendance| Decline[Record invitation as declined]
+  Decline --> DeclineFollowupAudience{Exactly one invited guest?}
+  DeclineFollowupAudience -->|Yes| DeclineFollowupSingle[Send decline follow-up<br/>with website link if plans change<br/>wedding_rsvp_declined_followup_single]
+  DeclineFollowupAudience -->|No| DeclineFollowupGroup[Send decline follow-up<br/>with website link if plans change<br/>wedding_rsvp_declined_followup]
+  DeclineFollowupSingle --> EndDeclined([Journey complete: declined])
+  DeclineFollowupGroup --> EndDeclined
+
+  PendingReply -->|Undecided| Undecided[Record invitation as undecided]
+  Undecided --> UndecidedFollowupAudience{Exactly one invited guest?}
+  UndecidedFollowupAudience -->|Yes| UndecidedFollowupSingle[Send undecided follow-up<br/>with website link to update later;<br/>a reminder will be sent soon<br/>wedding_rsvp_undecided_followup_single]
+  UndecidedFollowupAudience -->|No| UndecidedFollowupGroup[Send undecided follow-up<br/>with website link to update later;<br/>a reminder will be sent soon<br/>wedding_rsvp_undecided_followup]
+  UndecidedFollowupSingle --> EndUndecided([Journey complete: undecided])
+  UndecidedFollowupGroup --> EndUndecided
+
+  PendingReply -->|Free text, media, unknown reply| Fallback

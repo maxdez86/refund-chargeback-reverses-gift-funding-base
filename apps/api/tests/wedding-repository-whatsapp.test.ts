@@ -1,5 +1,5 @@
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
-import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 import { toHouseholdInvitation, toWhatsappRsvpStatus } from "../src/services/dynamodb/mappers";
 import { WeddingRepository } from "../src/services/dynamodb/repositories/wedding-repository";
@@ -39,6 +39,40 @@ const storedMessage = {
   SK: "MESSAGE",
   entityType: "WhatsappMessage"
 };
+
+const storedCommand = {
+  ...commandInput,
+  status: "sending",
+  effect: "opener",
+  retryCount: 1,
+  reconciliationStatus: "none",
+  PK: "WHATSAPP_COMMAND#cmd-1",
+  SK: "COMMAND",
+  entityType: "WhatsappCommand"
+};
+
+const invitationItem = {
+  PK: "INVITATION#SW2748",
+  SK: "INVITATION",
+  entityType: "Invitation",
+  invitationCode: "SW2748",
+  householdName: "Household",
+  whatsappFlowStatus: "message_sent",
+  whatsappLastOutboundMessageId: WAMID
+};
+
+const websiteOperation = {
+  websiteOperationId: "website-op-1",
+  websitePayloadDigest: "a".repeat(64),
+  websiteIdempotencyKeyDigest: "b".repeat(64)
+} as const;
+
+const websiteRequest = {
+  invitationCode: "SW2748",
+  submittedBy: "Household",
+  guestResponses: [{ guestId: "g1", status: "attending", isChildSixOrYounger: false }],
+  attendingGuestCount: 1
+} as const;
 
 describe("WeddingRepository WhatsApp invitation phone", () => {
   it("updates only invitation phone attributes with an existence guard", async () => {
@@ -116,6 +150,253 @@ describe("WeddingRepository WhatsApp invitation phone", () => {
       householdName: "",
       phoneNumber: undefined,
       guests: []
+    });
+  });
+});
+
+describe("WeddingRepository WhatsApp RSVP reservations", () => {
+  it("atomically reserves a branch and creates its follow-up command", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).reserveWhatsappBranch({
+      invitationCode: "SW2748",
+      expectedStatus: "message_sent",
+      status: "attendance_confirmed_whatsapp",
+      lastInboundMessageId: "wamid.inbound-1",
+      updatedAt: NOW,
+      attendance: [{ guestId: "g1", status: "attending", recordedAt: NOW }],
+      command: {
+        commandId: "branch-cmd-1",
+        invitationCode: "SW2748",
+        templateId: "wedding_rsvp_attending_followup_single",
+        templateVersion: 1,
+        stage: "followup",
+        status: "queued",
+        effect: "complete_on_send",
+        expectedFlowStatus: "attendance_confirmed_whatsapp",
+        createdAt: NOW
+      }
+    });
+
+    expect(send).toHaveBeenCalledOnce();
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.Update?.Key).toEqual({ PK: "INVITATION#SW2748", SK: "INVITATION" });
+    expect(items[0]?.Update?.ConditionExpression).toBe(
+      "attribute_exists(PK) AND #status = :expected"
+    );
+    expect(items[0]?.Update?.ExpressionAttributeValues).toMatchObject({
+      ":status": "attendance_confirmed_whatsapp",
+      ":expected": "message_sent",
+      ":inbound": "wamid.inbound-1"
+    });
+    expect(items[1]?.Put?.ConditionExpression).toBe("attribute_not_exists(PK)");
+    expect(items[1]?.Put?.Item).toMatchObject({
+      PK: "WHATSAPP_COMMAND#branch-cmd-1",
+      SK: "COMMAND",
+      GSI1PK: "INVITATION#SW2748",
+      entityType: "WhatsappCommand",
+      templateId: "wedding_rsvp_attending_followup_single"
+    });
+  });
+
+  it("atomically stores a WhatsApp single-decline RSVP with its branch reservation", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).reserveWhatsappBranch({
+      invitationCode: "SV2543",
+      expectedStatus: "message_sent",
+      status: "attendance_declined",
+      lastInboundMessageId: "wamid.decline-1",
+      updatedAt: NOW,
+      declinedRsvp: {
+        submittedBy: "whatsapp:wamid.decline-1",
+        guestResponses: [{ guestId: "SV2543--guest-01", status: "declined", isChildSixOrYounger: false }]
+      },
+      command: {
+        commandId: "branch-decline-1",
+        invitationCode: "SV2543",
+        templateId: "wedding_rsvp_declined_followup_single",
+        templateVersion: 1,
+        stage: "followup",
+        status: "queued",
+        effect: "complete_on_send",
+        expectedFlowStatus: "attendance_declined",
+        createdAt: NOW
+      }
+    });
+
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0]?.Put).toMatchObject({
+      ConditionExpression: "attribute_not_exists(PK)",
+      Item: {
+        PK: "INVITATION#SV2543",
+        SK: "RSVP#CURRENT",
+        entityType: "RsvpResponse",
+        invitationCode: "SV2543",
+        submittedBy: "whatsapp:wamid.decline-1",
+        guestResponses: [{ guestId: "SV2543--guest-01", status: "declined", isChildSixOrYounger: false }],
+        status: "declined",
+        attendingGuestCount: 0,
+        paidAttendingGuestCount: 0,
+        childSixOrYoungerAttendingCount: 0,
+        updatedAt: NOW
+      }
+    });
+    expect(items[1]?.Update?.ExpressionAttributeValues).toMatchObject({
+      ":status": "attendance_declined",
+      ":expected": "message_sent"
+    });
+    expect(items[2]?.Put?.Item).toMatchObject({
+      PK: "WHATSAPP_COMMAND#branch-decline-1",
+      templateId: "wedding_rsvp_declined_followup_single"
+    });
+  });
+
+  it("atomically stores every family guest as declined without website metadata", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).reserveWhatsappBranch({
+      invitationCode: "SW2748",
+      expectedStatus: "message_sent",
+      status: "attendance_declined",
+      lastInboundMessageId: "wamid.family-decline-1",
+      updatedAt: NOW,
+      declinedRsvp: {
+        submittedBy: "whatsapp:wamid.family-decline-1",
+        guestResponses: [
+          { guestId: "g1", status: "declined", isChildSixOrYounger: true },
+          { guestId: "g2", status: "declined", isChildSixOrYounger: false },
+          { guestId: "g3", status: "declined", isChildSixOrYounger: false }
+        ]
+      },
+      command: {
+        commandId: "branch-family-decline-1",
+        invitationCode: "SW2748",
+        templateId: "wedding_rsvp_declined_followup",
+        templateVersion: 1,
+        stage: "followup",
+        status: "queued",
+        effect: "complete_on_send",
+        expectedFlowStatus: "attendance_declined",
+        createdAt: NOW
+      }
+    });
+
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0]?.Put?.Item).toMatchObject({
+      PK: "INVITATION#SW2748",
+      SK: "RSVP#CURRENT",
+      entityType: "RsvpResponse",
+      submittedBy: "whatsapp:wamid.family-decline-1",
+      guestResponses: [
+        { guestId: "g1", status: "declined", isChildSixOrYounger: true },
+        { guestId: "g2", status: "declined", isChildSixOrYounger: false },
+        { guestId: "g3", status: "declined", isChildSixOrYounger: false }
+      ],
+      status: "declined",
+      attendingGuestCount: 0,
+      paidAttendingGuestCount: 0,
+      childSixOrYoungerAttendingCount: 0
+    });
+    expect(items[0]?.Put?.Item).not.toHaveProperty("websiteOperationId");
+    expect(items[0]?.Put?.Item).not.toHaveProperty("websitePayloadDigest");
+    expect(items[1]?.Update?.ExpressionAttributeValues).toMatchObject({
+      ":status": "attendance_declined",
+      ":expected": "message_sent"
+    });
+    expect(items[2]?.Put?.Item).toMatchObject({
+      PK: "WHATSAPP_COMMAND#branch-family-decline-1",
+      templateId: "wedding_rsvp_declined_followup"
+    });
+  });
+
+  it("atomically stores the RSVP, marks the website follow-up pending, and queues one command", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(repositoryWith(send).reserveWebsiteRsvp({
+      request: websiteRequest,
+      status: "attending",
+      operation: websiteOperation,
+      expectedWebsiteOperationId: websiteOperation.websiteOperationId,
+      updatedAt: NOW,
+      expectedStatus: "message_sent",
+      command: {
+        commandId: "website-op-1",
+        invitationCode: "SW2748",
+        templateId: "wedding_rsvp_attending_followup_website_single",
+        templateVersion: 1,
+        stage: "followup",
+        status: "queued",
+        effect: "complete_on_send",
+        expectedFlowStatus: "website_followup_pending",
+        createdAt: NOW
+      }
+    })).resolves.toBe(NOW);
+
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0]?.Put?.Item).toMatchObject({
+      PK: "INVITATION#SW2748",
+      SK: "RSVP#CURRENT",
+      entityType: "RsvpResponse",
+      websiteOperationId: "website-op-1",
+      attendingGuestCount: 1
+    });
+    expect(items[0]?.Put?.ConditionExpression).toContain("#operation = :expectedOperation");
+    expect(items[0]?.Put?.ExpressionAttributeValues).toEqual({ ":expectedOperation": "website-op-1" });
+    expect(items[1]?.Update?.ConditionExpression).toBe(
+      "attribute_exists(PK) AND #status = :expected"
+    );
+    expect(items[1]?.Update?.ExpressionAttributeValues).toMatchObject({
+      ":pending": "website_followup_pending",
+      ":expected": "message_sent"
+    });
+    expect(items[2]?.Put?.ConditionExpression).toBe("attribute_not_exists(PK)");
+  });
+
+  it("sends one transaction and leaves local state to DynamoDB when reservation fails", async () => {
+    const failure = new TransactionCanceledException({ message: "conditional race", $metadata: {} });
+    const send = vi.fn().mockRejectedValue(failure);
+
+    await expect(repositoryWith(send).reserveWhatsappBranch({
+      invitationCode: "SW2748",
+      expectedStatus: "message_sent",
+      status: "attendance_declined",
+      lastInboundMessageId: "wamid.inbound-2",
+      updatedAt: NOW,
+      command: {
+        commandId: "branch-cmd-2",
+        invitationCode: "SW2748",
+        templateId: "wedding_rsvp_declined_followup_single",
+        templateVersion: 1,
+        stage: "followup",
+        status: "queued",
+        effect: "complete_on_send",
+        expectedFlowStatus: "attendance_declined",
+        createdAt: NOW
+      }
+    })).rejects.toBe(failure);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("writes RSVP-only records with an idempotent operation condition", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).writeRsvpOnly({
+      request: websiteRequest,
+      status: "attending",
+      operation: websiteOperation,
+      expectedWebsiteOperationId: websiteOperation.websiteOperationId,
+      updatedAt: NOW
+    });
+
+    const command = send.mock.calls[0][0] as PutCommand;
+    expect(command.input.Item).toMatchObject({ PK: "INVITATION#SW2748", SK: "RSVP#CURRENT" });
+    expect(command.input.ConditionExpression).toContain("#operation = :expectedOperation");
+    expect(command.input.ExpressionAttributeValues).toEqual({
+      ":expectedOperation": "website-op-1"
     });
   });
 });
@@ -250,6 +531,116 @@ describe("WeddingRepository WhatsApp command records", () => {
 });
 
 describe("WeddingRepository WhatsApp message records", () => {
+  it.each([
+    ["opener", undefined, "message_sent"],
+    ["complete_on_send", "attendance_declined", "completed"],
+    ["preserve", undefined, undefined]
+  ] as const)("finalizes an accepted %s send in one transaction", async (effect, expectedFlowStatus, invitationStatus) => {
+    const expectedForCommand = expectedFlowStatus ?? (effect === "opener" ? "send_queued" : undefined);
+    const expectedForWorker = expectedFlowStatus ?? (effect === "opener" ? "sending" : undefined);
+    const commandForTest = { ...storedCommand, effect, expectedFlowStatus: expectedForCommand };
+    const send = vi.fn().mockImplementation(async (request: GetCommand | TransactWriteCommand) => {
+      if (request instanceof GetCommand) return { Item: commandForTest };
+      return {};
+    });
+    const result = await repositoryWith(send).finalizeAcceptedWhatsappSend({
+      commandId: "cmd-1",
+      invitationCode: "SW2748",
+      effect,
+      expectedFlowStatus: expectedForWorker,
+      fallback: false,
+      now: NOW,
+      message: { ...messageInput, commandId: "cmd-1" }
+    });
+
+    expect(result).toEqual({ outcome: "applied" });
+    const transaction = send.mock.calls.at(-1)?.[0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(invitationStatus ? 3 : 2);
+    expect(items[0]?.Put?.ConditionExpression).toBe("attribute_not_exists(PK)");
+    expect(items[1]?.Update?.ConditionExpression).toContain("#status = :sending");
+    if (invitationStatus) {
+      expect(items[2]?.Update?.ConditionExpression).toContain(
+        invitationStatus === "completed" ? "#status = :expected" : "#status = :sending"
+      );
+      expect(items[2]?.Update?.ExpressionAttributeValues).toMatchObject(
+        invitationStatus === "completed"
+          ? { ":completed": "completed", ":expected": expectedFlowStatus }
+          : { ":messageSent": "message_sent" }
+      );
+    }
+  });
+
+  it("finalizes a fallback without changing flow status or completion metadata", async () => {
+    const send = vi.fn().mockImplementation(async (request: GetCommand | TransactWriteCommand) => {
+      if (request instanceof GetCommand) return { Item: { ...storedCommand, effect: "preserve" } };
+      return {};
+    });
+    await repositoryWith(send).finalizeAcceptedWhatsappSend({
+      commandId: "cmd-1",
+      invitationCode: "SW2748",
+      effect: "preserve",
+      fallback: true,
+      now: NOW,
+      message: { ...messageInput, commandId: "cmd-1" }
+    });
+
+    const transaction = send.mock.calls.at(-1)?.[0] as TransactWriteCommand;
+    const flowUpdate = transaction.input.TransactItems?.[2]?.Update;
+    expect(flowUpdate?.UpdateExpression).toBe("SET #fallback = :fallback");
+    expect(flowUpdate?.ConditionExpression).toContain("attribute_not_exists(#fallback)");
+  });
+
+  it("recognizes a complete finalization replay", async () => {
+    const completeCommand = {
+      ...storedCommand,
+      status: "sent",
+      effect: "complete_on_send",
+      expectedFlowStatus: "attendance_declined",
+      providerMessageId: WAMID,
+      sentAt: NOW
+    };
+    const completeInvitation = {
+      ...invitationItem,
+      whatsappFlowStatus: "completed",
+      whatsappFlowCompletedAt: NOW
+    };
+    const send = vi.fn().mockImplementation(async (request: GetCommand | QueryCommand | TransactWriteCommand) => {
+      if (request instanceof TransactWriteCommand) throw new TransactionCanceledException({ message: "condition", $metadata: {} });
+      if (request instanceof QueryCommand) return { Items: [completeInvitation] };
+      if (request.input.Key?.PK?.startsWith("WHATSAPP_MESSAGE#")) return { Item: { ...storedMessage, commandId: "cmd-1" } };
+      return { Item: completeCommand };
+    });
+
+    await expect(repositoryWith(send).finalizeAcceptedWhatsappSend({
+      commandId: "cmd-1",
+      invitationCode: "SW2748",
+      effect: "complete_on_send",
+      expectedFlowStatus: "attendance_declined",
+      fallback: false,
+      now: NOW,
+      message: { ...messageInput, commandId: "cmd-1" }
+    })).resolves.toEqual({ outcome: "replayed" });
+  });
+
+  it("requires reconciliation for a partial or mismatched finalization", async () => {
+    const send = vi.fn().mockImplementation(async (request: GetCommand | QueryCommand | TransactWriteCommand) => {
+      if (request instanceof TransactWriteCommand) throw new TransactionCanceledException({ message: "condition", $metadata: {} });
+      if (request instanceof QueryCommand) return { Items: [invitationItem] };
+      if (request.input.Key?.PK?.startsWith("WHATSAPP_MESSAGE#")) return {};
+      return { Item: storedCommand };
+    });
+
+    await expect(repositoryWith(send).finalizeAcceptedWhatsappSend({
+      commandId: "cmd-1",
+      invitationCode: "SW2748",
+      effect: "opener",
+      fallback: false,
+      now: NOW,
+      message: { ...messageInput, commandId: "cmd-1" }
+    })).resolves.toMatchObject({ outcome: "reconciliation_required" });
+  });
+
   it("writes a message conditionally with the conversation index attached", async () => {
     const send = vi.fn().mockResolvedValue({});
 

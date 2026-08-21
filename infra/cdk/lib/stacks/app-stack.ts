@@ -664,6 +664,7 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(webhookProcessorFn);
     props.table.grantReadData(invitationGetFn);
     props.table.grantReadWriteData(rsvpFn);
+    whatsappRsvpQueue.grantSendMessages(rsvpFn);
     webhookQueue.grantSendMessages(asaasWebhookFn);
     webhookQueue.grantConsumeMessages(webhookProcessorFn);
     guestMessageNotificationQueue.grantSendMessages(createGuestMessagesFn);

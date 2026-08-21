@@ -3,25 +3,26 @@ import { InvitationCodeSchema } from "./invitation-code";
 
 export const WhatsappFlowStatusSchema = z.enum([
   "idle", "send_queued", "sending", "message_sent", "response_received",
-  "attendance_confirmed_whatsapp", "attendance_declined", "website_update_required",
+  "attendance_confirmed_whatsapp", "attendance_declined", "website_followup_pending", "website_update_required",
   "undecided", "completed", "failed", "reconciliation_required"
 ]);
 export const WhatsappFlowStageSchema = z.enum(["reconfirmation", "pending", "followup", "fallback"]);
 
 /** The business meaning of each persisted invitation flow status. */
 export const WHATSAPP_FLOW_STATUS_MEANINGS = {
-  idle: "No active WhatsApp confirmation attempt exists.",
-  send_queued: "An outbound confirmation command is queued for delivery.",
-  sending: "An outbound confirmation command is claimed by a worker.",
-  message_sent: "Meta accepted the outbound message and returned a provider message id.",
-  response_received: "An inbound response was durably recorded but not branched yet.",
-  attendance_confirmed_whatsapp: "Attendance was confirmed in WhatsApp-only state.",
-  attendance_declined: "The household declined attendance and any required follow-up was recorded.",
-  website_update_required: "The household must update its website RSVP.",
-  undecided: "The household is undecided and any required follow-up was recorded.",
-  completed: "The flow's branch-specific action and any required follow-up were recorded.",
-  failed: "A known permanent delivery or processing failure occurred.",
-  reconciliation_required: "Delivery or processing outcome is ambiguous and requires operator reconciliation."
+  idle: "No active journey.",
+  send_queued: "Opener command reserved/queued.",
+  sending: "Opener command claimed.",
+  message_sent: "Opener accepted and awaiting a guest action.",
+  response_received: "Inbound response recorded while branch work is being resolved.",
+  attendance_confirmed_whatsapp: "Attendance outcome recorded; attendance follow-up pending.",
+  attendance_declined: "Decline outcome recorded; decline follow-up pending.",
+  website_followup_pending: "Website RSVP stored; its selected follow-up is pending.",
+  website_update_required: "Legacy terminal value written by the old website path.",
+  undecided: "Undecided outcome recorded; undecided follow-up pending.",
+  completed: "Required follow-up accepted and durably finalized.",
+  failed: "Known permanent failure.",
+  reconciliation_required: "Provider/local outcome is ambiguous."
 } as const satisfies Record<WhatsappFlowStatus, string>;
 
 export const WhatsappAttendanceEntrySchema = z.object({
@@ -46,6 +47,7 @@ export const WhatsappFlowStateSchema = z.object({
 export const WhatsappCommandStatusSchema = z.enum([
   "queued", "sending", "sent", "failed", "queue_unavailable", "reconciliation_required"
 ]);
+export const WhatsappCommandEffectSchema = z.enum(["opener", "preserve", "complete_on_send"]);
 export const WhatsappMessageDirectionSchema = z.enum(["inbound", "outbound"]);
 // "received" is ours for inbound messages; the rest mirror Meta's status webhook values.
 export const WhatsappMessageStatusSchema = z.enum([
@@ -57,9 +59,16 @@ export const WHATSAPP_RSVP_TEMPLATE_PURPOSES = [
   "wedding_invitation",
   "wedding_rsvp_reconfirmation",
   "wedding_rsvp_attending_followup",
-  "wedding_rsvp_pending_reminder",
+  "wedding_rsvp_pending_reminder_group",
   "wedding_rsvp_declined_followup",
-  "wedding_rsvp_undecided_followup"
+  "wedding_rsvp_undecided_followup",
+  "wedding_rsvp_reconfirmation_single",
+  "wedding_rsvp_attending_followup_single",
+  "wedding_rsvp_pending_reminder_single",
+  "wedding_rsvp_attending_followup_website",
+  "wedding_rsvp_attending_followup_website_single",
+  "wedding_rsvp_undecided_followup_single",
+  "wedding_rsvp_declined_followup_single"
 ] as const;
 export const WhatsappRsvpTemplatePurposeSchema = z.enum(WHATSAPP_RSVP_TEMPLATE_PURPOSES);
 // The internal domain action a template quick reply maps to. The buttonId -> action map lives in
@@ -145,6 +154,8 @@ export const WhatsappRsvpCommandStatusResponseSchema = z.object({
   startedAt: z.string().datetime().optional(),
   lastAttemptAt: z.string().datetime().optional(),
   sentAt: z.string().datetime().optional(),
+  effect: WhatsappCommandEffectSchema.optional(),
+  expectedFlowStatus: WhatsappFlowStatusSchema.optional(),
   preserveFlowStatus: z.boolean().optional()
 }).strict();
 export const WhatsappPhoneUpdateResponseSchema = z.object({
@@ -182,6 +193,7 @@ export type WhatsappFlowStage = z.infer<typeof WhatsappFlowStageSchema>;
 export type WhatsappAttendanceEntry = z.infer<typeof WhatsappAttendanceEntrySchema>;
 export type WhatsappFlowState = z.infer<typeof WhatsappFlowStateSchema>;
 export type WhatsappCommandStatus = z.infer<typeof WhatsappCommandStatusSchema>;
+export type WhatsappCommandEffect = z.infer<typeof WhatsappCommandEffectSchema>;
 export type WhatsappMessageDirection = z.infer<typeof WhatsappMessageDirectionSchema>;
 export type WhatsappMessageStatus = z.infer<typeof WhatsappMessageStatusSchema>;
 export type WhatsappReconciliationStatus = z.infer<typeof WhatsappReconciliationStatusSchema>;

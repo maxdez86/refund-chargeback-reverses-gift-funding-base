@@ -3,13 +3,12 @@ import { pathToFileURL } from "node:url";
 import { parseWhatsappWebhook } from "../../apps/api/src/services/whatsapp/webhook-parser.ts";
 import { templatesByStage } from "../../apps/api/src/services/whatsapp/template-manifest.ts";
 
-export type WhatsappSimulatorBranch = "a1" | "b1" | "b2" | "b3" | "fallback" | "duplicate";
+export type WhatsappSimulatorBranch = "a1" | "b2" | "b3" | "fallback" | "duplicate";
 
 const branchButton = {
   a1: () => templatesByStage("reconfirmation")[0]?.buttons[0],
-  b1: () => templatesByStage("pending")[0]?.buttons[0],
-  b2: () => templatesByStage("pending")[0]?.buttons[1],
-  b3: () => templatesByStage("pending")[0]?.buttons[2]
+  b2: () => templatesByStage("pending").flatMap((entry) => entry.buttons).find((button) => button.action === "decline"),
+  b3: () => templatesByStage("pending").flatMap((entry) => entry.buttons).find((button) => button.action === "undecided")
 } as const;
 
 function option(argv: readonly string[], name: string, fallback?: string) {
@@ -25,8 +24,8 @@ export function parseWhatsappSimulatorArgs(argv: readonly string[]) {
   if (branch === "a2" || branch === "a2-website") {
     throw new Error("A2 is a website action, not a WhatsApp webhook event; use the website RSVP path.");
   }
-  if (!branch || !["a1", "b1", "b2", "b3", "fallback", "duplicate"].includes(branch)) {
-    throw new Error("Expected --branch a1, b1, b2, b3, fallback, or duplicate.");
+  if (!branch || !["a1", "b2", "b3", "fallback", "duplicate"].includes(branch)) {
+    throw new Error("Expected --branch a1, b2, b3, fallback, or duplicate.");
   }
   return {
     branch: branch as WhatsappSimulatorBranch,

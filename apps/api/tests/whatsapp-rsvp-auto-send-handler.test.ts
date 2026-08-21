@@ -46,7 +46,7 @@ describe("WhatsApp RSVP auto-send handler", () => {
       guests: [{ guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "attending" }]
     });
     queueTemplateMock.mockResolvedValue({
-      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_reconfirmation",
+      commandId: "cmd-1", invitationCode: "SW2748", templateId: "wedding_rsvp_reconfirmation_single",
       templateVersion: 1, status: "queued", replayed: false
     });
 
@@ -54,19 +54,19 @@ describe("WhatsApp RSVP auto-send handler", () => {
     const response = await handler(event({ headers: { "Idempotency-Key": "auto-key-1" } }), context);
 
     expect(response.statusCode).toBe(202);
-    expect(body(response)).toMatchObject({ templateId: "wedding_rsvp_reconfirmation" });
+    expect(body(response)).toMatchObject({ templateId: "wedding_rsvp_reconfirmation_single" });
     expect(queueTemplateMock).toHaveBeenCalledWith(
-      "SW2748", "wedding_rsvp_reconfirmation", "auto-key-1", { requestId: "req-auto-1" }
+      "SW2748", "wedding_rsvp_reconfirmation_single", "auto-key-1", { requestId: "req-auto-1" }
     );
   });
 
-  it("selects the pending reminder when no guest is attending", async () => {
+  it("selects the single pending reminder when no guest is attending", async () => {
     getInvitationMock.mockResolvedValue({
       invitationCode: "SW2748",
       guests: [{ guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "pending" }]
     });
     queueTemplateMock.mockResolvedValue({
-      commandId: "cmd-2", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder",
+      commandId: "cmd-2", invitationCode: "SW2748", templateId: "wedding_rsvp_pending_reminder_single",
       templateVersion: 1, status: "queued", replayed: false
     });
 
@@ -74,9 +74,30 @@ describe("WhatsApp RSVP auto-send handler", () => {
     const response = await handler(event(), context);
 
     expect(response.statusCode).toBe(202);
-    expect(body(response).templateId).toBe("wedding_rsvp_pending_reminder");
+    expect(body(response).templateId).toBe("wedding_rsvp_pending_reminder_single");
     expect(queueTemplateMock).toHaveBeenCalledWith(
-      "SW2748", "wedding_rsvp_pending_reminder", undefined, { requestId: "req-auto-1" }
+      "SW2748", "wedding_rsvp_pending_reminder_single", undefined, { requestId: "req-auto-1" }
+    );
+  });
+
+  it("keeps group routing for a multi-guest invitation with one attendee", async () => {
+    getInvitationMock.mockResolvedValue({
+      invitationCode: "SW2748",
+      guests: [
+        { guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "attending" },
+        { guestId: "g2", guestName: "Bruno", allowedPlusOnes: 0, rsvpStatus: "pending" }
+      ]
+    });
+    queueTemplateMock.mockResolvedValue({
+      commandId: "cmd-3", invitationCode: "SW2748", templateId: "wedding_rsvp_reconfirmation",
+      templateVersion: 1, status: "queued", replayed: false
+    });
+
+    const { handler } = await import("../src/functions/whatsapp-rsvp-auto-send/handler");
+    await handler(event(), context);
+
+    expect(queueTemplateMock).toHaveBeenCalledWith(
+      "SW2748", "wedding_rsvp_reconfirmation", undefined, { requestId: "req-auto-1" }
     );
   });
 
@@ -95,7 +116,10 @@ describe("WhatsApp RSVP auto-send handler", () => {
     expect(missing.statusCode).toBe(404);
     expect(body(missing)).toMatchObject({ code: "INVITATION_NOT_FOUND" });
 
-    getInvitationMock.mockResolvedValueOnce({ guests: [] });
+    getInvitationMock.mockResolvedValueOnce({
+      invitationCode: "SW2748",
+      guests: [{ guestId: "g1", guestName: "Ana", allowedPlusOnes: 0, rsvpStatus: "declined" }]
+    });
     queueTemplateMock.mockRejectedValueOnce(new AppError("Queue unavailable.", 503, "QUEUE_UNAVAILABLE"));
     const failed = await handler(event(), context);
     expect(failed.statusCode).toBe(503);

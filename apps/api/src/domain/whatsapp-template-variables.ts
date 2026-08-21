@@ -21,7 +21,9 @@ export const WHATSAPP_DERIVABLE_PARAMETER_KEYS: readonly WhatsappDerivableParame
 
 export const GUEST_LIST_SCOPE_BY_PURPOSE: Readonly<Record<string, "all" | "attending">> = {
   wedding_rsvp_reconfirmation: "attending",
-  wedding_rsvp_pending_reminder: "all"
+  wedding_rsvp_pending_reminder_group: "all",
+  wedding_rsvp_reconfirmation_single: "attending",
+  wedding_rsvp_pending_reminder_single: "all"
 };
 
 // 270 + 100 + 560 = 930, leaving headroom below Meta's approximately 1024-character body limit.
@@ -133,7 +135,7 @@ export function deriveTemplateParameters(
       : invitation.guests;
     if (selected.length === 0 && scope === "attending") {
       throw invalidState(
-        `Invitation has no confirmed guests for ${definition.purpose}; send wedding_rsvp_pending_reminder instead.`
+        `Invitation has no confirmed guests for ${definition.purpose}; send wedding_rsvp_pending_reminder_group instead.`
       );
     }
     const names = selected

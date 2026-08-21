@@ -32,7 +32,7 @@ const definition = (purpose: string, components: WhatsappStoredComponent[]) => (
 
 describe("WhatsApp template variables", () => {
   it("derives all four approved values", () => {
-    const result = deriveTemplateParameters(invitationFixture(), definition("wedding_rsvp_pending_reminder", [
+    const result = deriveTemplateParameters(invitationFixture(), definition("wedding_rsvp_pending_reminder_group", [
       { type: "body", parameters: [
         { key: "household_name", type: "text" },
         { key: "guests", type: "text" },
@@ -80,7 +80,7 @@ describe("WhatsApp template variables", () => {
     expect(deriveTemplateParameters(invitation, definition("wedding_rsvp_reconfirmation", [
       { type: "body", parameters: [{ key: "guests", type: "text" }] }
     ])).guests.text).toBe("Ana");
-    expect(deriveTemplateParameters(invitation, definition("wedding_rsvp_pending_reminder", [
+    expect(deriveTemplateParameters(invitation, definition("wedding_rsvp_pending_reminder_group", [
       { type: "body", parameters: [{ key: "guests", type: "text" }] }
     ])).guests.text).toBe("Ana, Bruno e Carla");
     expect(() => deriveTemplateParameters(invitationFixture({ guests: invitation.guests.map((guest) => ({ ...guest, rsvpStatus: "declined" })) }), definition("wedding_rsvp_reconfirmation", [
@@ -89,10 +89,10 @@ describe("WhatsApp template variables", () => {
   });
 
   it("sanitizes empty and inline whitespace values", () => {
-    expect(() => deriveTemplateParameters(invitationFixture({ householdName: "   " }), definition("wedding_rsvp_pending_reminder", [
+    expect(() => deriveTemplateParameters(invitationFixture({ householdName: "   " }), definition("wedding_rsvp_pending_reminder_group", [
       { type: "body", parameters: [{ key: "household_name", type: "text" }] }
     ]))).toThrow("household name is empty");
-    expect(deriveTemplateParameters(invitationFixture({ householdName: " Ana\n    Ribeiro\t" }), definition("wedding_rsvp_pending_reminder", [
+    expect(deriveTemplateParameters(invitationFixture({ householdName: " Ana\n    Ribeiro\t" }), definition("wedding_rsvp_pending_reminder_group", [
       { type: "body", parameters: [{ key: "household_name", type: "text" }] }
     ])).household_name.text).toBe("Ana");
   });
@@ -114,7 +114,7 @@ describe("WhatsApp template variables", () => {
         { key: "guests", type: "text" as const }
       ] }
     ];
-    const parameters = deriveTemplateParameters(invitationFixture(), definition("wedding_rsvp_pending_reminder", components));
+    const parameters = deriveTemplateParameters(invitationFixture(), definition("wedding_rsvp_pending_reminder_group", components));
     expect(bindComponents(components, parameters, "named")).toEqual([{
       type: "body",
       parameters: [
@@ -129,7 +129,7 @@ describe("WhatsApp template variables", () => {
   it("logs truncation without guest names", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const names = Array.from({ length: 100 }, (_, index) => ({ guestId: String(index), guestName: `Guest ${index} with a long family name`, allowedPlusOnes: 0, rsvpStatus: "pending" as const }));
-    deriveTemplateParameters(invitationFixture({ guests: names }), definition("wedding_rsvp_pending_reminder", [
+    deriveTemplateParameters(invitationFixture({ guests: names }), definition("wedding_rsvp_pending_reminder_group", [
       { type: "body", parameters: [{ key: "guests", type: "text" }] }
     ]));
     expect(info).toHaveBeenCalledWith(expect.stringContaining('"metric":"WHATSAPP_GUEST_LIST_TRUNCATED"'));

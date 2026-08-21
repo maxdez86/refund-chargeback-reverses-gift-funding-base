@@ -1,5 +1,7 @@
 import {
   WhatsappCommandStatusSchema,
+  WhatsappCommandEffectSchema,
+  WhatsappFlowStatusSchema,
   WhatsappFlowStageSchema,
   WhatsappMessageDirectionSchema,
   WhatsappMessageStatusSchema,
@@ -51,7 +53,7 @@ export const WhatsappMessageInputSchema = z.object({
   providerErrorTitle: z.string().min(1).max(256).optional()
 });
 
-export const WhatsappCommandInputSchema = z.object({
+const WhatsappCommandShapeSchema = z.object({
   commandId: z.string().min(1).max(512),
   invitationCode: z.string().min(1),
   templateId: z.string().min(1),
@@ -72,7 +74,24 @@ export const WhatsappCommandInputSchema = z.object({
   lastAttemptAt: isoTimestamp.optional(),
   lastAttemptReceiveCount: z.number().int().min(1).optional(),
   sentAt: isoTimestamp.optional()
+  ,effect: WhatsappCommandEffectSchema.optional()
+  ,expectedFlowStatus: WhatsappFlowStatusSchema.optional()
+  // Read compatibility for records deployed before the explicit effect field.
   ,preserveFlowStatus: z.boolean().optional()
+}).superRefine((value, context) => {
+  const effect = value.effect ?? (value.preserveFlowStatus === true ? "preserve" : "opener");
+  if (effect === "complete_on_send" && !value.expectedFlowStatus) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["expectedFlowStatus"], message: "complete_on_send commands require expectedFlowStatus" });
+  }
+});
+
+export const WhatsappCommandInputSchema = WhatsappCommandShapeSchema.transform((value) => {
+  const current = { ...value };
+  delete current.preserveFlowStatus;
+  return {
+    ...current,
+    effect: value.effect ?? (value.preserveFlowStatus === true ? "preserve" : "opener")
+  };
 });
 
 // Read-side shapes. Optional fields stay optional so a record written before a later step adds
@@ -91,10 +110,10 @@ export const WhatsappMessageItemSchema = WhatsappMessageInputSchema.extend({
   entityType: z.literal("WhatsappMessage")
 });
 
-export const WhatsappCommandItemSchema = WhatsappCommandInputSchema.extend({
+export const WhatsappCommandItemSchema = WhatsappCommandInputSchema.and(z.object({
   ...storedKeys,
   entityType: z.literal("WhatsappCommand")
-});
+}));
 export const WhatsappWebhookMarkerSchema = z.object({
   PK: z.string().min(1),
   SK: z.string().min(1),

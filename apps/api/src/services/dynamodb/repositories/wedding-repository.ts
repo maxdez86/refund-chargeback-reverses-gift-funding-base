@@ -1,4 +1,4 @@
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
   GetCommand,
@@ -16,6 +16,7 @@ import type {
   GuestProfile,
   HouseholdInvitation,
   RsvpSubmissionRequest,
+  RsvpStatus,
   WhatsappFlowStage,
   WhatsappFlowStatus
 } from "@brimax/contracts";
@@ -46,6 +47,7 @@ import {
   type WhatsappMessageInput,
   type WhatsappMessageItem
 } from "../whatsapp-items";
+import { RsvpResponseItemSchema, type RsvpResponseItem } from "../rsvp-items";
 import { GSI1_NAME, TABLE_PRIMARY_KEY, TABLE_SORT_KEY, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
@@ -88,6 +90,49 @@ export type WhatsappFlowUpdate = Partial<{
   whatsappAttendance: { guestId: string; status: "attending" | "declined"; recordedAt: string }[];
 }>;
 
+export type WhatsappAcceptedSendFinalizationInput = {
+  commandId: string;
+  invitationCode: string;
+  message: WhatsappMessageInput;
+  effect: "opener" | "preserve" | "complete_on_send";
+  expectedFlowStatus?: WhatsappFlowStatus;
+  now: string;
+  fallback: boolean;
+};
+
+export type WhatsappAcceptedSendFinalizationResult =
+  | { outcome: "applied" | "replayed" }
+  | { outcome: "reconciliation_required"; reason: string };
+
+export type RsvpOperationIdentity = {
+  websiteOperationId: string;
+  websitePayloadDigest: string;
+  websiteIdempotencyKeyDigest?: string;
+};
+
+type RsvpReservationInput = {
+  request: RsvpSubmissionRequest;
+  status: RsvpStatus;
+  operation: RsvpOperationIdentity;
+  updatedAt: string;
+  expectedWebsiteOperationId?: string;
+  expectedLegacyRsvp?: boolean;
+};
+
+type WhatsappBranchReservationInput = {
+  invitationCode: string;
+  expectedStatus: WhatsappFlowStatus;
+  status: WhatsappFlowStatus;
+  lastInboundMessageId: string;
+  updatedAt: string;
+  attendance?: { guestId: string; status: "attending" | "declined"; recordedAt: string }[];
+  declinedRsvp?: {
+    submittedBy: string;
+    guestResponses: RsvpSubmissionRequest["guestResponses"];
+  };
+  command: WhatsappCommandInput;
+};
+
 /**
  * A condition to AND onto an update. Placeholders must use the `#c`/`:c` prefixes so they cannot
  * collide with the `#n{i}`/`:v{i}` pairs that `buildSetExpression` generates.
@@ -118,6 +163,43 @@ type GuestMessageLookupItem = ItemRecord & {
   feedSK: string;
   messageId: string;
 };
+
+function rsvpItem(input: RsvpReservationInput): RsvpResponseItem {
+  const counts = deriveRsvpCounts(input.request);
+  return RsvpResponseItemSchema.parse({
+    ...rsvpKeys(input.request.invitationCode),
+    entityType: "RsvpResponse",
+    invitationCode: input.request.invitationCode,
+    submittedBy: input.request.submittedBy,
+    guestResponses: input.request.guestResponses,
+    attendingGuestCount: counts.attendingGuestCount,
+    paidAttendingGuestCount: counts.paidAttendingGuestCount,
+    childSixOrYoungerAttendingCount: counts.childSixOrYoungerAttendingCount,
+    note: input.request.note,
+    status: input.status,
+    updatedAt: input.updatedAt,
+    ...input.operation
+  });
+}
+
+function rsvpOperationCondition(input: Pick<RsvpReservationInput, "expectedWebsiteOperationId" | "expectedLegacyRsvp">) {
+  if (input.expectedWebsiteOperationId) {
+    return {
+      ConditionExpression: "#operation = :expectedOperation",
+      ExpressionAttributeNames: { "#operation": "websiteOperationId" },
+      ExpressionAttributeValues: { ":expectedOperation": input.expectedWebsiteOperationId }
+    };
+  }
+  if (input.expectedLegacyRsvp) {
+    return {
+      ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(#operation)",
+      ExpressionAttributeNames: { "#operation": "websiteOperationId" },
+    };
+  }
+  return {
+    ConditionExpression: "attribute_not_exists(PK)"
+  };
+}
 
 export class WeddingRepository {
   private readonly documentClient: DynamoDBDocumentClient;
@@ -159,6 +241,153 @@ export class WeddingRepository {
       guests: items.filter((item) => item.entityType === "InvitationGuest") as ItemRecord[],
       rsvp: items.find((item) => item.entityType === "RsvpResponse")
     });
+  }
+
+  async getRsvpResponse(invitationCode: string): Promise<RsvpResponseItem | null> {
+    const result = await this.documentClient.send(new GetCommand({
+      TableName: this.tableName,
+      Key: rsvpKeys(invitationCode),
+      ConsistentRead: true
+    }));
+    if (!result.Item) return null;
+    return RsvpResponseItemSchema.parse(result.Item);
+  }
+
+  async reserveWhatsappBranch(input: WhatsappBranchReservationInput) {
+    const command = WhatsappCommandInputSchema.parse(input.command);
+    const commandItem = {
+      ...command,
+      ...whatsappCommandKeys(command.commandId),
+      ...whatsappConversationCommandIndex(
+        command.invitationCode,
+        command.createdAt,
+        command.commandId
+      ),
+      entityType: "WhatsappCommand"
+    };
+    const names: Record<string, string> = {
+      "#status": "whatsappFlowStatus",
+      "#inbound": "whatsappLastInboundMessageId",
+      "#updated": "whatsappFlowUpdatedAt"
+    };
+    const values: Record<string, unknown> = {
+      ":status": input.status,
+      ":inbound": input.lastInboundMessageId,
+      ":updated": input.updatedAt,
+      ":expected": input.expectedStatus
+    };
+    let updateExpression = "SET #status = :status, #inbound = :inbound, #updated = :updated";
+    if (input.attendance) {
+      names["#attendance"] = "whatsappAttendance";
+      values[":attendance"] = input.attendance;
+      updateExpression += ", #attendance = :attendance";
+    }
+
+    const transactionItems: ConstructorParameters<typeof TransactWriteCommand>[0]["TransactItems"] = [];
+    if (input.declinedRsvp) {
+      const guestResponses = input.declinedRsvp.guestResponses;
+      transactionItems.push({
+        Put: {
+          TableName: this.tableName,
+          Item: RsvpResponseItemSchema.parse({
+            ...rsvpKeys(input.invitationCode),
+            entityType: "RsvpResponse",
+            invitationCode: input.invitationCode,
+            submittedBy: input.declinedRsvp.submittedBy,
+            guestResponses,
+            attendingGuestCount: 0,
+            paidAttendingGuestCount: 0,
+            childSixOrYoungerAttendingCount: 0,
+            status: "declined",
+            updatedAt: input.updatedAt
+          }),
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      });
+    }
+    transactionItems.push(
+      {
+        Update: {
+          TableName: this.tableName,
+          Key: invitationKeys(input.invitationCode),
+          UpdateExpression: updateExpression,
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+          ConditionExpression: "attribute_exists(PK) AND #status = :expected"
+        }
+      },
+      {
+        Put: {
+          TableName: this.tableName,
+          Item: commandItem,
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      }
+    );
+    await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactionItems }));
+  }
+
+  async reserveWebsiteRsvp(
+    input: RsvpReservationInput & { expectedStatus: WhatsappFlowStatus; command: WhatsappCommandInput }
+  ) {
+    const item = rsvpItem(input);
+    const command = WhatsappCommandInputSchema.parse(input.command);
+    const commandItem = {
+      ...command,
+      ...whatsappCommandKeys(command.commandId),
+      ...whatsappConversationCommandIndex(
+        command.invitationCode,
+        command.createdAt,
+        command.commandId
+      ),
+      entityType: "WhatsappCommand"
+    };
+    await this.documentClient.send(new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: this.tableName,
+            Item: item,
+            ...rsvpOperationCondition(input)
+          }
+        },
+        {
+          Update: {
+            TableName: this.tableName,
+            Key: invitationKeys(input.request.invitationCode),
+            UpdateExpression: "SET #status = :pending, #updated = :updated",
+            ExpressionAttributeNames: {
+              "#status": "whatsappFlowStatus",
+              "#updated": "whatsappFlowUpdatedAt"
+            },
+            ExpressionAttributeValues: {
+              ":pending": "website_followup_pending",
+              ":updated": input.updatedAt,
+              ":expected": input.expectedStatus
+            },
+            ConditionExpression: "attribute_exists(PK) AND #status = :expected"
+          }
+        },
+        {
+          Put: {
+            TableName: this.tableName,
+            Item: commandItem,
+            ConditionExpression: "attribute_not_exists(PK)"
+          }
+        }
+      ]
+    }));
+    return input.updatedAt;
+  }
+
+  async writeRsvpOnly(input: RsvpReservationInput) {
+    const item = rsvpItem(input);
+    await this.documentClient.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+      ...rsvpOperationCondition(input)
+    }));
+    return input.updatedAt;
   }
 
   async updateInvitationWhatsappPhone(invitationCode: string, phoneNumber: string) {
@@ -402,6 +631,156 @@ export class WeddingRepository {
         return { created: false };
       }
       throw error;
+    }
+  }
+
+  /**
+   * Finalizes a provider-accepted send without exposing transaction construction to callers.
+   * The provider message ID is the message identity, so a retry can only succeed when the
+   * command, message, and invitation already describe the same accepted send.
+   */
+  async finalizeAcceptedWhatsappSend(
+    input: WhatsappAcceptedSendFinalizationInput
+  ): Promise<WhatsappAcceptedSendFinalizationResult> {
+    const message = WhatsappMessageInputSchema.parse(input.message);
+    const command = await this.getWhatsappCommand(input.commandId);
+    if (!command || command.invitationCode !== input.invitationCode) {
+      return { outcome: "reconciliation_required", reason: "Accepted send command is missing or mismatched." };
+    }
+    const legacyCommand = command as typeof command & { preserveFlowStatus?: boolean };
+    const persistedEffect = command.effect ?? (legacyCommand.preserveFlowStatus === true ? "preserve" : "opener");
+    const persistedExpectedFlowStatus = command.expectedFlowStatus ?? (persistedEffect === "opener" ? "sending" : undefined);
+    if (persistedEffect !== input.effect ||
+        (input.effect === "complete_on_send" && persistedExpectedFlowStatus !== input.expectedFlowStatus)) {
+      return { outcome: "reconciliation_required", reason: "Accepted send effect or expected flow status does not match the command." };
+    }
+
+    const messageItem = {
+      ...message,
+      ...whatsappMessageKeys(message.messageId),
+      ...whatsappConversationMessageIndex(message.invitationCode, message.createdAt, message.messageId),
+      entityType: "WhatsappMessage"
+    };
+    const commandUpdate = {
+      TableName: this.tableName,
+      Key: whatsappCommandKeys(input.commandId),
+      UpdateExpression:
+        "SET #status = :sent, #providerMessageId = :providerMessageId, #sentAt = :sentAt, #updatedAt = :updatedAt, #reconciliationStatus = :none",
+      ExpressionAttributeNames: {
+        "#status": "status",
+        "#providerMessageId": "providerMessageId",
+        "#sentAt": "sentAt",
+        "#updatedAt": "updatedAt",
+        "#reconciliationStatus": "reconciliationStatus"
+      },
+      ExpressionAttributeValues: {
+        ":sent": "sent",
+        ":providerMessageId": message.messageId,
+        ":sentAt": input.now,
+        ":updatedAt": input.now,
+        ":none": "none",
+        ":sending": "sending"
+      },
+      ConditionExpression: "attribute_exists(PK) AND #status = :sending"
+    };
+
+    const items: ConstructorParameters<typeof TransactWriteCommand>[0]["TransactItems"] = [
+      {
+        Put: {
+          TableName: this.tableName,
+          Item: messageItem,
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      },
+      { Update: commandUpdate }
+    ];
+
+    if (input.effect === "opener") {
+      items.push({
+        Update: {
+          TableName: this.tableName,
+          Key: invitationKeys(input.invitationCode),
+          UpdateExpression: "SET #status = :messageSent, #lastOutbound = :messageId, #updated = :updated",
+          ExpressionAttributeNames: {
+            "#status": "whatsappFlowStatus",
+            "#lastOutbound": "whatsappLastOutboundMessageId",
+            "#updated": "whatsappFlowUpdatedAt"
+          },
+          ExpressionAttributeValues: {
+            ":messageSent": "message_sent",
+            ":messageId": message.messageId,
+            ":updated": input.now,
+            ":sending": "sending"
+          },
+          ConditionExpression: "attribute_exists(PK) AND #status = :sending"
+        }
+      });
+    } else if (input.effect === "complete_on_send") {
+      if (!input.expectedFlowStatus) {
+        throw new AppError("Complete-on-send finalization requires an expected flow status.", 500, "RECONCILIATION_REQUIRED");
+      }
+      items.push({
+        Update: {
+          TableName: this.tableName,
+          Key: invitationKeys(input.invitationCode),
+          UpdateExpression:
+            "SET #status = :completed, #lastOutbound = :messageId, #updated = :updated, #completedAt = :updated",
+          ExpressionAttributeNames: {
+            "#status": "whatsappFlowStatus",
+            "#lastOutbound": "whatsappLastOutboundMessageId",
+            "#updated": "whatsappFlowUpdatedAt",
+            "#completedAt": "whatsappFlowCompletedAt"
+          },
+          ExpressionAttributeValues: {
+            ":completed": "completed",
+            ":messageId": message.messageId,
+            ":updated": input.now,
+            ":expected": input.expectedFlowStatus
+          },
+          ConditionExpression: "attribute_exists(PK) AND #status = :expected"
+        }
+      });
+    } else if (input.fallback) {
+      items.push({
+        Update: {
+          TableName: this.tableName,
+          Key: invitationKeys(input.invitationCode),
+          UpdateExpression: "SET #fallback = :fallback",
+          ExpressionAttributeNames: { "#fallback": "whatsappFallbackSentAt" },
+          ExpressionAttributeValues: { ":fallback": input.now },
+          ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(#fallback)"
+        }
+      });
+    }
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({ TransactItems: items }));
+      return { outcome: "applied" };
+    } catch (error) {
+      if (!(error instanceof TransactionCanceledException)) throw error;
+
+      const [existingCommand, existingMessage, invitation] = await Promise.all([
+        this.getWhatsappCommand(input.commandId),
+        this.getWhatsappMessage(message.messageId),
+        this.getInvitationByCode(input.invitationCode)
+      ]);
+      const commandMatches = existingCommand?.invitationCode === input.invitationCode &&
+        existingCommand.status === "sent" && existingCommand.providerMessageId === message.messageId &&
+        (existingCommand.effect ?? ((existingCommand as typeof existingCommand & { preserveFlowStatus?: boolean }).preserveFlowStatus === true ? "preserve" : "opener")) === input.effect &&
+        (existingCommand.expectedFlowStatus ?? (input.effect === "opener" ? "sending" : undefined)) === input.expectedFlowStatus;
+      const messageMatches = existingMessage?.invitationCode === input.invitationCode &&
+        existingMessage.commandId === input.commandId && existingMessage.direction === "outbound" &&
+        existingMessage.status === "sent";
+      const invitationMatches = input.effect === "opener"
+        ? invitation?.whatsappFlowStatus === "message_sent" && invitation.whatsappLastOutboundMessageId === message.messageId
+        : input.effect === "complete_on_send"
+          ? invitation?.whatsappFlowStatus === "completed" &&
+            invitation.whatsappFlowCompletedAt === input.now &&
+            invitation.whatsappLastOutboundMessageId === message.messageId
+          : !input.fallback || Boolean(invitation?.whatsappFallbackSentAt);
+
+      if (commandMatches && messageMatches && invitationMatches) return { outcome: "replayed" };
+      return { outcome: "reconciliation_required", reason: "Accepted send finalization has partial or mismatched records." };
     }
   }
 

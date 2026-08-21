@@ -24,6 +24,14 @@ import {
 } from "../src/domain/whatsapp-template-variables";
 
 const entries = listTemplateManifestEntries();
+// Every purpose seeds at version 1 except the four whose version 1 is already stored in dev under
+// an older `createdAt`; see the version-2 note in template-manifest.ts.
+const EXPECTED_VERSIONS: Record<string, number> = {
+  wedding_rsvp_reconfirmation: 2,
+  wedding_rsvp_attending_followup: 2,
+  wedding_rsvp_declined_followup: 2,
+  wedding_rsvp_undecided_followup: 2
+};
 const NEW_RSVP_PURPOSES = WHATSAPP_RSVP_TEMPLATE_PURPOSES.filter(
   (purpose) => purpose !== "wedding_invitation"
 );
@@ -35,8 +43,8 @@ function buttonComponents(purpose: string) {
 }
 
 describe("WhatsApp template manifest", () => {
-  it("holds exactly the six known purposes, each keyed by its own definition purpose", () => {
-    expect(entries).toHaveLength(6);
+  it("holds exactly the thirteen known purposes, each keyed by its own definition purpose", () => {
+    expect(entries).toHaveLength(13);
     expect(Object.keys(WHATSAPP_TEMPLATE_MANIFEST).sort()).toEqual(
       [...WHATSAPP_RSVP_TEMPLATE_PURPOSES].sort()
     );
@@ -49,7 +57,7 @@ describe("WhatsApp template manifest", () => {
   it("carries definitions that are seedable as-is", () => {
     for (const entry of entries) {
       expect(WhatsappTemplateDefinitionSchema.safeParse(entry.definition).success).toBe(true);
-      expect(entry.definition.version).toBe(1);
+      expect(entry.definition.version).toBe(EXPECTED_VERSIONS[entry.definition.purpose] ?? 1);
       expect(entry.approvalStatus).toBe("approved");
       for (const component of entry.definition.components) {
         expect(WhatsappStoredComponentSchema.safeParse(component).success).toBe(true);
@@ -57,7 +65,7 @@ describe("WhatsApp template manifest", () => {
     }
   });
 
-  it("marks the five RSVP templates pt_BR and named, and wedding_invitation en and positional", () => {
+  it("marks all twelve RSVP templates pt_BR and named, and wedding_invitation en and positional", () => {
     for (const purpose of NEW_RSVP_PURPOSES) {
       const { definition, metaTemplateId } = getTemplateManifestEntry(purpose);
       expect(definition.language).toBe("pt_BR");
@@ -74,6 +82,28 @@ describe("WhatsApp template manifest", () => {
     expect(invitation.flowStage).toBeUndefined();
   });
 
+  it("records the twelve export Meta ids and normalizes PENDING to approved", () => {
+    const expected = {
+      wedding_rsvp_reconfirmation: "1065748079365393",
+      wedding_rsvp_attending_followup: "1099327752756506",
+      wedding_rsvp_pending_reminder_group: "1802419257592031",
+      wedding_rsvp_attending_followup_website: "1410677857628911",
+      wedding_rsvp_declined_followup: "2372473870257723",
+      wedding_rsvp_undecided_followup: "2064293954294492",
+      wedding_rsvp_reconfirmation_single: "1617584283318635",
+      wedding_rsvp_attending_followup_single: "1082082874330927",
+      wedding_rsvp_pending_reminder_single: "1659080989068863",
+      wedding_rsvp_attending_followup_website_single: "4611876665799667",
+      wedding_rsvp_undecided_followup_single: "2350419575764263",
+      wedding_rsvp_declined_followup_single: "1047921497652045"
+    } as const;
+    for (const [purpose, metaTemplateId] of Object.entries(expected)) {
+      const entry = getTemplateManifestEntry(purpose);
+      expect(entry.metaTemplateId).toBe(metaTemplateId);
+      expect(entry.approvalStatus).toBe("approved");
+    }
+  });
+
   it("declares body slots in the order Meta approved", () => {
     const bodySlots = (purpose: string) =>
       getTemplateManifestEntry(purpose)
@@ -85,10 +115,25 @@ describe("WhatsApp template manifest", () => {
       "invitation_code",
       "guests"
     ]);
-    expect(bodySlots("wedding_rsvp_pending_reminder")).toEqual(["household_name", "guests"]);
+    expect(bodySlots("wedding_rsvp_pending_reminder_group")).toEqual(["household_name", "guests"]);
     expect(bodySlots("wedding_rsvp_attending_followup")).toEqual(["household_name"]);
     expect(bodySlots("wedding_rsvp_declined_followup")).toEqual(["household_name"]);
     expect(bodySlots("wedding_rsvp_undecided_followup")).toEqual(["household_name"]);
+    expect(bodySlots("wedding_rsvp_reconfirmation_single")).toEqual([
+      "household_name",
+      "invitation_code",
+      "guests"
+    ]);
+    expect(bodySlots("wedding_rsvp_pending_reminder_single")).toEqual(["household_name", "guests"]);
+    for (const purpose of [
+      "wedding_rsvp_attending_followup_single",
+      "wedding_rsvp_attending_followup_website",
+      "wedding_rsvp_attending_followup_website_single",
+      "wedding_rsvp_undecided_followup_single",
+      "wedding_rsvp_declined_followup_single"
+    ]) {
+      expect(bodySlots(purpose)).toEqual(["household_name"]);
+    }
   });
 
   it("mixes a quick reply and a URL button on the reconfirmation template", () => {
@@ -103,16 +148,21 @@ describe("WhatsApp template manifest", () => {
     ]);
   });
 
-  it("gives the pending reminder three contiguous quick replies and the MARKETING category", () => {
-    const entry = getTemplateManifestEntry("wedding_rsvp_pending_reminder");
+  it("gives the pending reminder two quick replies, a dynamic URL, and the MARKETING category", () => {
+    const entry = getTemplateManifestEntry("wedding_rsvp_pending_reminder_group");
     expect(entry.category).toBe("MARKETING");
-    expect(buttonComponents("wedding_rsvp_pending_reminder").map((button) => button.index)).toEqual([0, 1, 2]);
+    expect(buttonComponents("wedding_rsvp_pending_reminder_group").map((button) => button.index)).toEqual([0, 1, 2]);
     expect(entry.buttons.map((button) => [button.index, button.buttonId, button.action])).toEqual([
-      [0, "rsvp_b1_attend_all", "attend_all"],
+      [0, "rsvp_b3_undecided", "undecided"],
       [1, "rsvp_b2_decline", "decline"],
-      [2, "rsvp_b3_undecided", "undecided"]
     ]);
-    expect(entries.filter((candidate) => candidate.category === "MARKETING")).toHaveLength(1);
+    expect(buttonComponents("wedding_rsvp_pending_reminder_group")[2]).toEqual({
+      type: "button",
+      subType: "url",
+      index: 2,
+      parameters: [{ key: "invitation_link_suffix", type: "text" }]
+    });
+    expect(entries.filter((candidate) => candidate.category === "MARKETING")).toHaveLength(4);
   });
 
   it("records the attending follow-up's maps link as a static button, never a component", () => {
@@ -144,9 +194,11 @@ describe("WhatsApp template manifest", () => {
     const buttonIds = entries.flatMap((entry) => entry.buttons.map((button) => button.buttonId));
     expect(buttonIds).toEqual([
       "rsvp_a1_confirm_all",
-      "rsvp_b1_attend_all",
+      "rsvp_b3_undecided",
       "rsvp_b2_decline",
-      "rsvp_b3_undecided"
+      "rsvp_single_a1_confirm_all",
+      "rsvp_single_b3_undecided",
+      "rsvp_single_b2_decline"
     ]);
     expect(new Set(buttonIds).size).toBe(buttonIds.length);
 
@@ -164,7 +216,7 @@ describe("WhatsApp template manifest", () => {
       expect(WhatsappFlowStageSchema.safeParse(entry.flowStage).success).toBe(true);
     }
     expect(flowStageForTemplate("wedding_rsvp_reconfirmation")).toBe("reconfirmation");
-    expect(flowStageForTemplate("wedding_rsvp_pending_reminder")).toBe("pending");
+    expect(flowStageForTemplate("wedding_rsvp_pending_reminder_group")).toBe("pending");
     expect(flowStageForTemplate("wedding_rsvp_declined_followup")).toBe("followup");
     expect(flowStageForTemplate("wedding_invitation")).toBeUndefined();
   });
@@ -193,9 +245,14 @@ describe("WhatsApp template manifest", () => {
     expect(templatesByStage("followup").map((entry) => entry.definition.purpose)).toEqual([
       "wedding_rsvp_attending_followup",
       "wedding_rsvp_declined_followup",
-      "wedding_rsvp_undecided_followup"
+      "wedding_rsvp_undecided_followup",
+      "wedding_rsvp_attending_followup_single",
+      "wedding_rsvp_attending_followup_website",
+      "wedding_rsvp_attending_followup_website_single",
+      "wedding_rsvp_undecided_followup_single",
+      "wedding_rsvp_declined_followup_single"
     ]);
-    expect(templatesByStage("reconfirmation")).toHaveLength(1);
+    expect(templatesByStage("reconfirmation")).toHaveLength(2);
     expect(templatesByStage("fallback")).toEqual([]);
 
     expect(() => getTemplateManifestEntry("wedding_rsvp_typo")).toThrow(WhatsappTemplateManifestError);

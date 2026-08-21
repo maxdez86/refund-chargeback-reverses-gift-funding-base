@@ -72,6 +72,40 @@ describe("WhatsApp item schemas", () => {
 
     expect(parsed.retryCount).toBe(0);
     expect(parsed.reconciliationStatus).toBe("none");
+    expect(parsed.effect).toBe("opener");
+  });
+
+  it("normalizes legacy command effects and validates complete-on-send preconditions", () => {
+    const legacyFallback = WhatsappCommandInputSchema.parse({
+      commandId: "cmd-legacy",
+      invitationCode: "SW2748",
+      templateId: "__whatsapp_fallback_text__",
+      status: "queued",
+      createdAt: NOW,
+      preserveFlowStatus: true
+    });
+    expect(legacyFallback.effect).toBe("preserve");
+    expect(legacyFallback).not.toHaveProperty("preserveFlowStatus");
+
+    const followup = WhatsappCommandInputSchema.parse({
+      commandId: "cmd-followup",
+      invitationCode: "SW2748",
+      templateId: "wedding_rsvp_declined_followup",
+      status: "queued",
+      createdAt: NOW,
+      effect: "complete_on_send",
+      expectedFlowStatus: "attendance_declined"
+    });
+    expect(followup.effect).toBe("complete_on_send");
+    expect(followup.expectedFlowStatus).toBe("attendance_declined");
+    expect(WhatsappCommandInputSchema.safeParse({
+      commandId: "cmd-invalid",
+      invitationCode: "SW2748",
+      templateId: "wedding_rsvp_declined_followup",
+      status: "queued",
+      createdAt: NOW,
+      effect: "complete_on_send"
+    }).success).toBe(false);
   });
 
   it("rejects a message ID that would produce an undefined partition key", () => {

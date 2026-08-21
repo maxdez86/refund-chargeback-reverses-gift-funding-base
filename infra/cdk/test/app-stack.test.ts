@@ -686,6 +686,22 @@ describe("AppStack", () => {
     expect(whatsappWebhookWorkerPolicyJson).toContain("sqs:ReceiveMessage");
     expect(whatsappWebhookWorkerPolicyJson).toContain("sqs:SendMessage");
 
+    const rsvpFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("RsvpFunction") && resource.Type === "AWS::Lambda::Function"
+    );
+    expect(rsvpFunctionEntry).toBeDefined();
+    const rsvpRoleLogicalId = (
+      rsvpFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const rsvpPolicy = Object.values(resources).find(
+      (resource) => resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(rsvpRoleLogicalId)
+    );
+    const rsvpPolicyJson = JSON.stringify(rsvpPolicy?.Properties?.PolicyDocument);
+    expect(rsvpPolicyJson).toContain("sqs:SendMessage");
+    expect(rsvpPolicyJson).not.toContain("sqs:ReceiveMessage");
+
     for (const resource of Object.values(template.findResources("AWS::Lambda::Function"))) {
       expect(resource.Properties).not.toHaveProperty("FunctionName");
     }

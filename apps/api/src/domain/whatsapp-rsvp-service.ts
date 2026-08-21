@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { InvitationCodeSchema, WhatsappRsvpCommandStatusResponseSchema, WhatsappRsvpSendResponseSchema, WhatsappPhoneUpdateResponseSchema, WhatsappRsvpStatusResponseSchema } from "@brimax/contracts";
 import type { WhatsappFlowStatus, WhatsappWebhookProcessingResult } from "@brimax/contracts";
 import { AppError } from "../lib/errors";
@@ -12,7 +12,9 @@ import type { WhatsappWebhookEvent } from "@brimax/contracts";
 import { WhatsappCloudApiClient } from "../services/whatsapp/client";
 import { canTransition, isTerminalFlowStatus, transitionCondition } from "./whatsapp-flow-state";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { isConditionalTransactionCancellation } from "../services/dynamodb/transaction-errors";
 import { WhatsappRsvpSendService } from "../services/whatsapp/rsvp-send-service";
+import type { WhatsappCommandInput } from "../services/dynamodb/whatsapp-items";
 import { whatsappPhoneDigits, whatsappPhonesMatch } from "./whatsapp-phone-match";
 
 export const WHATSAPP_FALLBACK_TEXT = "Ops! 😅 Como sou um assistente virtual novato, por enquanto só consigo ajudar com as confirmações de presença.\n\nPara qualquer outra dúvida, recadinho ou informação, por favor, envie um e-mail para casamento@brimax.life. A Brida e o Max vão adorar responder você por lá! 🤍";
@@ -35,12 +37,13 @@ export class WhatsappRsvpService {
     private readonly repository = new WeddingRepository(),
     private readonly templates = new WhatsappTemplateRepository(),
     private readonly client = new WhatsappCloudApiClient(),
-    private readonly sendService?: WhatsappRsvpSendService
+    private readonly sendService?: WhatsappRsvpSendService,
+    private readonly publish = enqueueWhatsappRsvp
   ) {}
 
   private async enqueueCommand(commandId: string) {
     try {
-      const result = await enqueueWhatsappRsvp(commandId, { requestId: "legacy-whatsapp-rsvp" });
+      const result = await this.publish(commandId, { requestId: "legacy-whatsapp-rsvp" });
       return result.status;
     } catch (error) {
       throw new AppError(
@@ -48,6 +51,42 @@ export class WhatsappRsvpService {
         503,
         "QUEUE_FAILURE"
       );
+    }
+  }
+
+  private deterministicBranchCommandId(eventId: string) {
+    return `branch-${createHash("sha256").update(eventId).digest("hex")}`;
+  }
+
+  private async publishReservedCommand(command: WhatsappCommandInput, requestId: string) {
+    try {
+      const queued = await this.publish(command.commandId, { requestId });
+      await this.repository.updateWhatsappCommand(command.commandId, {
+        status: queued.status,
+        enqueuedAt: queued.enqueuedAt,
+        updatedAt: queued.enqueuedAt
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Unable to enqueue WhatsApp RSVP command.";
+      await this.repository.updateWhatsappCommand(command.commandId, {
+        status: "failed",
+        failureReason: reason,
+        updatedAt: new Date().toISOString()
+      }, {
+        expression: "#status = :status",
+        names: { "#status": "status" },
+        values: { ":status": "queued" }
+      }).catch(() => undefined);
+      await this.repository.updateWhatsappFlow(command.invitationCode, {
+        whatsappFlowStatus: "failed",
+        whatsappFailureReason: reason,
+        whatsappFlowUpdatedAt: new Date().toISOString()
+      }, {
+        expression: "#status = :status",
+        names: { "#status": "whatsappFlowStatus" },
+        values: { ":status": command.expectedFlowStatus }
+      }).catch(() => undefined);
+      throw new AppError(reason, 503, "QUEUE_FAILURE");
     }
   }
 
@@ -127,7 +166,9 @@ export class WhatsappRsvpService {
       enqueuedAt: command.enqueuedAt,
       startedAt: command.startedAt,
       lastAttemptAt: command.lastAttemptAt,
-      sentAt: command.sentAt
+      sentAt: command.sentAt,
+      effect: command.effect,
+      expectedFlowStatus: command.expectedFlowStatus
     });
   }
 
@@ -139,7 +180,7 @@ export class WhatsappRsvpService {
     try {
       await this.repository.createWhatsappCommand({
         commandId, invitationCode, templateId: WHATSAPP_FALLBACK_TEMPLATE_ID,
-        status: "queued", stage: "fallback", preserveFlowStatus: true, createdAt: new Date().toISOString()
+        status: "queued", stage: "fallback", effect: "preserve", createdAt: new Date().toISOString()
       });
     } catch (error) {
       if (!(error instanceof ConditionalCheckFailedException)) throw error;
@@ -152,7 +193,7 @@ export class WhatsappRsvpService {
     invitationCode: string,
     templateId: string,
     idempotencyKey?: string,
-    options: { preserveFlowStatus?: boolean } = {}
+    options: { effect?: "opener" | "preserve" | "complete_on_send"; expectedFlowStatus?: WhatsappFlowStatus } = {}
   ) {
     if (this.sendService) {
       return this.sendService.queueTemplate(
@@ -176,16 +217,19 @@ export class WhatsappRsvpService {
       : randomUUID();
     const now = new Date().toISOString();
     const currentStatus = invitation.whatsappFlowStatus ?? "idle";
-    if (!options.preserveFlowStatus && isTerminalFlowStatus(currentStatus)) {
+    const effect = options.effect ?? "opener";
+    if (effect === "opener" && isTerminalFlowStatus(currentStatus)) {
       throw new AppError("WhatsApp flow is terminal; reset it before sending again.", 409, "INVALID_FLOW_TRANSITION");
     }
-    if (!options.preserveFlowStatus && !canTransition(currentStatus, "send_queued")) {
+    if (effect === "opener" && !canTransition(currentStatus, "send_queued")) {
       throw new AppError("WhatsApp flow already has an active send.", 409, "INVALID_FLOW_TRANSITION");
     }
     try {
       await this.repository.createWhatsappCommand({
         commandId, invitationCode, templateId, templateVersion: definition.version,
-        stage: flowStageForTemplate(templateId), status: "queued", preserveFlowStatus: options.preserveFlowStatus, createdAt: now
+        stage: flowStageForTemplate(templateId), status: "queued", effect,
+        expectedFlowStatus: effect === "opener" ? "send_queued" : options.expectedFlowStatus,
+        createdAt: now
       });
     } catch (error) {
       if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
@@ -207,7 +251,7 @@ export class WhatsappRsvpService {
       }
       throw error;
     }
-    if (!options.preserveFlowStatus) {
+    if (effect === "opener") {
       try {
         await this.repository.updateWhatsappFlow(invitationCode, {
           whatsappFlowStatus: "send_queued" satisfies WhatsappFlowStatus,
@@ -344,6 +388,16 @@ export class WhatsappRsvpService {
         branch: decision.kind === "branch" ? decision.action : decision.kind
       });
       if (decision.kind === "rejected") {
+        logWhatsappRsvp({
+          metric: "WHATSAPP_RSVP_STALE_INBOUND_REJECTION",
+          requestId,
+          eventId: incoming.eventId,
+          messageId: incoming.messageId,
+          invitationCode,
+          flowStatus: currentStatus,
+          reason: decision.reason,
+          outcome: "rejected"
+        });
         if (decision.reason === "consistency_conflict") {
           try {
             await this.repository.updateWhatsappFlow(invitationCode, {
@@ -369,22 +423,96 @@ export class WhatsappRsvpService {
           whatsappFlowStatus: decision.status,
           whatsappLastInboundMessageId: incoming.messageId,
           whatsappFlowUpdatedAt: now,
-          whatsappFlowCompletedAt: now,
           ...(decision.action === "attend_all" ? {
             whatsappAttendance: invitation.guests.map((guest) => ({ guestId: guest.guestId, status: "attending" as const, recordedAt: now }))
           } : {})
         };
+        const commandId = decision.templateId
+          ? this.deterministicBranchCommandId(incoming.eventId)
+          : undefined;
+        const definition = decision.templateId
+          ? await this.templates.getActive(decision.templateId)
+          : undefined;
+        if (decision.templateId && !definition) {
+          await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, {
+            status: "failed", failureReason: "WhatsApp follow-up template is not active."
+          });
+          return { outcome: "reconciliation_required", reason: "WhatsApp follow-up template is not active." };
+        }
+        const command: WhatsappCommandInput | undefined = decision.templateId && commandId && definition
+          ? {
+            commandId,
+            invitationCode,
+            templateId: decision.templateId,
+            templateVersion: definition.version,
+            stage: "followup",
+            status: "queued",
+            effect: "complete_on_send",
+            expectedFlowStatus: decision.status,
+            createdAt: now
+          }
+          : undefined;
+        const declinedRsvp = (buttonId === "rsvp_b2_decline" || buttonId === "rsvp_single_b2_decline") && invitation.guests.length > 0
+          ? {
+            submittedBy: `whatsapp:${incoming.messageId}`,
+            guestResponses: invitation.guests.map((guest) => ({
+              guestId: guest.guestId,
+              status: "declined" as const,
+              isChildSixOrYounger: guest.isChildSixOrYounger ?? false
+            }))
+          }
+          : undefined;
         try {
-          await this.repository.updateWhatsappFlow(invitationCode, values, transitionCondition(currentStatus));
+          if (!command) throw new AppError("WhatsApp follow-up command could not be prepared.", 500);
+          const existingCommand = await this.repository.getWhatsappCommand(command.commandId);
+          if (existingCommand && (
+            existingCommand.invitationCode !== command.invitationCode ||
+            existingCommand.templateId !== command.templateId ||
+            existingCommand.expectedFlowStatus !== command.expectedFlowStatus
+          )) {
+            throw new AppError("The inbound WhatsApp event conflicts with an existing branch command.", 409, "IDEMPOTENCY_CONFLICT");
+          }
+          await this.repository.reserveWhatsappBranch({
+            invitationCode,
+            expectedStatus: currentStatus,
+            status: values.whatsappFlowStatus,
+            lastInboundMessageId: incoming.messageId,
+            updatedAt: now,
+            attendance: values.whatsappAttendance,
+            ...(declinedRsvp ? { declinedRsvp } : {}),
+            command
+          });
         } catch (error) {
-          if (error instanceof ConditionalCheckFailedException) {
+          if (error instanceof ConditionalCheckFailedException || isConditionalTransactionCancellation(error)) {
+            logWhatsappRsvp({
+              metric: "WHATSAPP_RSVP_RACE",
+              requestId,
+              eventId: incoming.eventId,
+              invitationCode,
+              winner: "other_flow",
+              outcome: "stale_inbound_rejected"
+            });
             await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed", rejectionReason: "stale_flow" });
             return { outcome: "rejected", reason: "stale_flow" };
           }
           throw error;
         }
-        if (decision.templateId) {
-          await this.queueTemplate(invitationCode, decision.templateId, `branch-${invitationCode}-${decision.action}`, { preserveFlowStatus: true });
+        logWhatsappRsvp({
+          metric: "WHATSAPP_RSVP_RACE",
+          requestId,
+          eventId: incoming.eventId,
+          invitationCode,
+          winner: "whatsapp",
+          outcome: "branch_reserved"
+        });
+        try {
+          await this.publishReservedCommand(command, requestId);
+        } catch (error) {
+          await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, {
+            status: "processed",
+            failureReason: error instanceof Error ? error.message : "WhatsApp command publication failed."
+          });
+          return { outcome: "processed" };
         }
       }
       await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed" });

@@ -43,6 +43,9 @@ crash.log
 !.env.*.example
 .envrc
 
+# === Generated exports ===
+wedding_templates_export.json
+
 # === Editor / IDE ===
 .vscode/
 .idea/
