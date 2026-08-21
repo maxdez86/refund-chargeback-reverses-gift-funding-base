@@ -2,9 +2,11 @@ import { useEffect } from "react";
 import { AdminAuthGate } from "@/components/dashboard/AdminAuthGate";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { useAdminSession } from "@/hooks/use-admin-session";
+import { useDashboardFonts } from "@/hooks/use-dashboard-fonts";
 
 export default function Dashboard() {
   const adminSession = useAdminSession();
+  useDashboardFonts();
 
   useEffect(() => {
     const previousTitle = document.title;

@@ -1,148 +1,491 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AdminSessionResponse } from "@brimax/contracts";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Menu, X } from "lucide-react";
+import { useAdminDashboard } from "@/hooks/use-admin-dashboard";
+import { useDashboardRoute } from "@/hooks/use-dashboard-route";
+import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
 import {
-  CalendarCheck2,
-  LayoutDashboard,
-  LogOut,
-  MailOpen,
-  Menu,
-  MessageCircleMore,
-  SearchCheck
-} from "lucide-react";
-import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
-import { Button } from "@/components/ui/button";
+  formatDashboardHash,
+  routeForSection,
+  type DashboardSection
+} from "@/lib/admin-dashboard-route";
+import type { GuestFilter, InviteFilter, MessageFilter, GiftFilter, ChatFilter } from "@/lib/admin-dashboard-model";
+import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
+import { OverviewScreen } from "@/components/dashboard/screens/OverviewScreen";
+import { InvitesScreen } from "@/components/dashboard/screens/InvitesScreen";
+import { InviteDetailScreen } from "@/components/dashboard/screens/InviteDetailScreen";
+import { GuestsScreen } from "@/components/dashboard/screens/GuestsScreen";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+  GuestDetailScreen,
+  type GuestActionKind
+} from "@/components/dashboard/screens/GuestDetailScreen";
+import { MessagesScreen } from "@/components/dashboard/screens/MessagesScreen";
+import { GiftsScreen } from "@/components/dashboard/screens/GiftsScreen";
+import { WhatsappScreen } from "@/components/dashboard/screens/WhatsappScreen";
+import { GuestActionModal } from "@/components/dashboard/modals/GuestActionModal";
+import {
+  AddGuestsModal,
+  ConfirmAllModal,
+  DeleteInvitationModal,
+  NewInvitationModal,
+  PhoneModal,
+  SendWhatsappModal
+} from "@/components/dashboard/modals/InvitationModals";
+import { GiftEditorModal, NewGiftModal } from "@/components/dashboard/modals/GiftModals";
 
-const navigationItems = [
-  { id: "visao-geral", label: "Visão geral", icon: LayoutDashboard },
-  { id: "confirmacoes", label: "Confirmações", icon: CalendarCheck2 },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircleMore },
-  { id: "convites", label: "Convites", icon: SearchCheck },
-  { id: "recados", label: "Recados", icon: MailOpen }
-] as const;
+type ModalState =
+  | null
+  | { kind: "new-invitation" }
+  | { kind: "delete-invitation"; invitationCode: string }
+  | { kind: "guest-action"; guestId: string; action: GuestActionKind }
+  | { kind: "phone"; invitationCode: string }
+  | { kind: "confirm-all"; invitationCode: string }
+  | { kind: "add-guests"; invitationCode: string }
+  | { kind: "send"; invitationCode: string }
+  | { kind: "new-gift" };
 
-type DashboardShellProps = {
+export type DashboardShellProps = {
   session: AdminSessionResponse;
+  /** True when the session was not verified by the backend; shown as a banner. */
   preview: boolean;
   onSignOut: () => void;
+  source?: AdminDashboardSource;
 };
 
-export function DashboardShell({ session, preview, onSignOut }: DashboardShellProps) {
-  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState(() =>
-    navigationItems.some((item) => `#${item.id}` === window.location.hash)
-      ? window.location.hash.slice(1)
-      : "visao-geral"
-  );
+export function DashboardShell({ session, preview, onSignOut, source }: DashboardShellProps) {
+  const { route, navigate } = useDashboardRoute();
+  const { state, status, dispatch, guestRows, unreadByCode, demo } = useAdminDashboard({ source });
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [modal, setModal] = useState<ModalState>(null);
+  const [inviteFilter, setInviteFilter] = useState<InviteFilter>("Todos");
+  const [inviteQuery, setInviteQuery] = useState("");
+  const [guestFilter, setGuestFilter] = useState<GuestFilter>("Todos");
+  const [guestQuery, setGuestQuery] = useState("");
+  const [messageFilter, setMessageFilter] = useState<MessageFilter>("Todos");
+  const [messageQuery, setMessageQuery] = useState("");
+  const [giftFilter, setGiftFilter] = useState<GiftFilter>("Todos");
+  const [giftQuery, setGiftQuery] = useState("");
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("Todas");
+  const [chatQuery, setChatQuery] = useState("");
+
   const displayName = session.admin.name ?? session.admin.email;
+  const invitationBy = (code: string) =>
+    state.invitations.find((invitation) => invitation.invitationCode === code);
+  const guestBy = (guestId: string) => guestRows.find((guest) => guest.guestId === guestId);
 
-  useEffect(() => {
-    const syncActiveSection = () => {
-      const section = window.location.hash.slice(1);
-      if (navigationItems.some((item) => item.id === section)) setActiveSection(section);
-    };
-    window.addEventListener("hashchange", syncActiveSection);
-    return () => window.removeEventListener("hashchange", syncActiveSection);
-  }, []);
+  const goToSection = (section: DashboardSection) => {
+    navigate(routeForSection(section));
+    setDrawerOpen(false);
+  };
+  const openInvitation = (invitationCode: string) =>
+    navigate({ section: "convites", invitationCode });
+  const openGuest = (guestId: string) => navigate({ section: "convidados", guestId });
+  const openChat = (invitationCode: string) => {
+    dispatch({ type: "open-chat", invitationCode });
+    navigate({ section: "whatsapp", invitationCode });
+  };
 
-  const navigation = (
-    <nav aria-label="Navegação administrativa">
-      <ul className="space-y-1">
-        {navigationItems.map((item) => {
-          const Icon = item.icon;
-          const active = activeSection === item.id;
+  const closeModal = () => setModal(null);
+
+  const confirmGuestAction = () => {
+    if (modal?.kind !== "guest-action") return;
+    const guest = guestBy(modal.guestId);
+    if (!guest) return closeModal();
+
+    if (modal.action === "remove") {
+      // The primary guest cannot leave on their own — the flow becomes "delete the invitation".
+      if (guest.sortOrder === 1) {
+        setModal({ kind: "delete-invitation", invitationCode: guest.invitationCode });
+        return;
+      }
+      dispatch({ type: "remove-guest", guestId: guest.guestId });
+      closeModal();
+      navigate(routeForSection("convidados"));
+      return;
+    }
+
+    if (modal.action === "child") {
+      dispatch({ type: "set-guest-child", guestId: guest.guestId, isChild: !guest.isChild });
+      closeModal();
+      return;
+    }
+
+    dispatch({ type: "set-guest-status", guestId: guest.guestId, status: modal.action });
+    closeModal();
+  };
+
+  const renderScreen = () => {
+    if (status === "loading") {
+      return (
+        <p role="status" className="py-20 text-center text-sm text-admin-faint">
+          Carregando o painel…
+        </p>
+      );
+    }
+    if (status === "error") {
+      return (
+        <p role="alert" className="py-20 text-center text-sm text-admin-danger">
+          Não foi possível carregar os dados do painel.
+        </p>
+      );
+    }
+
+    switch (route.section) {
+      case "convites": {
+        const invitation = route.invitationCode ? invitationBy(route.invitationCode) : undefined;
+        if (invitation) {
           return (
-            <li key={item.id}>
-              <a
-                href={`#${item.id}`}
-                aria-current={active ? "location" : undefined}
-                onClick={() => {
-                  setActiveSection(item.id);
-                  setMobileNavigationOpen(false);
-                }}
-                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-[#d6ae64]/15 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {item.label}
-              </a>
-            </li>
+            <InviteDetailScreen
+              invitation={invitation}
+              backHref={formatDashboardHash(routeForSection("convites"))}
+              onBack={(event) => {
+                event.preventDefault();
+                navigate(routeForSection("convites"));
+              }}
+              onOpenGuest={openGuest}
+              onAskDelete={() =>
+                setModal({ kind: "delete-invitation", invitationCode: invitation.invitationCode })
+              }
+              onAskSend={() => setModal({ kind: "send", invitationCode: invitation.invitationCode })}
+              onChangePhone={() =>
+                setModal({ kind: "phone", invitationCode: invitation.invitationCode })
+              }
+              onConfirmAll={() =>
+                setModal({ kind: "confirm-all", invitationCode: invitation.invitationCode })
+              }
+              onAddGuests={() =>
+                setModal({ kind: "add-guests", invitationCode: invitation.invitationCode })
+              }
+            />
           );
-        })}
-      </ul>
-    </nav>
-  );
+        }
+        return (
+          <InvitesScreen
+            invitations={state.invitations}
+            filter={inviteFilter}
+            query={inviteQuery}
+            onFilterChange={setInviteFilter}
+            onQueryChange={setInviteQuery}
+            onOpenInvitation={openInvitation}
+            onNewInvitation={() => setModal({ kind: "new-invitation" })}
+          />
+        );
+      }
+
+      case "convidados": {
+        const guest = route.guestId ? guestBy(route.guestId) : undefined;
+        if (guest) {
+          return (
+            <GuestDetailScreen
+              guest={guest}
+              backHref={formatDashboardHash(routeForSection("convidados"))}
+              onBack={(event) => {
+                event.preventDefault();
+                navigate(routeForSection("convidados"));
+              }}
+              onOpenGuest={openGuest}
+              onOpenInvitation={openInvitation}
+              onGuestAction={(action) =>
+                setModal({ kind: "guest-action", guestId: guest.guestId, action })
+              }
+            />
+          );
+        }
+        return (
+          <GuestsScreen
+            guests={guestRows}
+            invitationCount={state.invitations.length}
+            filter={guestFilter}
+            query={guestQuery}
+            onFilterChange={setGuestFilter}
+            onQueryChange={setGuestQuery}
+            onOpenGuest={openGuest}
+          />
+        );
+      }
+
+      case "recados":
+        return (
+          <MessagesScreen
+            messages={state.guestMessages}
+            filter={messageFilter}
+            query={messageQuery}
+            onFilterChange={setMessageFilter}
+            onQueryChange={setMessageQuery}
+            onToggleHidden={(messageId) => dispatch({ type: "toggle-message-hidden", messageId })}
+          />
+        );
+
+      case "presentes":
+        return (
+          <GiftsScreen
+            gifts={state.gifts}
+            filter={giftFilter}
+            query={giftQuery}
+            onFilterChange={setGiftFilter}
+            onQueryChange={setGiftQuery}
+            onOpenGift={(giftId) => navigate({ section: "presentes", giftId })}
+            onNewGift={() => setModal({ kind: "new-gift" })}
+          />
+        );
+
+      case "whatsapp":
+        return (
+          <WhatsappScreen
+            invitations={state.invitations}
+            threads={state.threads}
+            unreadByCode={unreadByCode}
+            selectedCode={route.invitationCode}
+            filter={chatFilter}
+            query={chatQuery}
+            onFilterChange={setChatFilter}
+            onQueryChange={setChatQuery}
+            onSelect={openChat}
+            onClearSelection={() => navigate(routeForSection("whatsapp"))}
+            onOpenInvitation={openInvitation}
+            onSend={(invitationCode, text) => dispatch({ type: "send-chat", invitationCode, text })}
+          />
+        );
+
+      default:
+        return (
+          <OverviewScreen
+            state={state}
+            guestRows={guestRows}
+            unreadByCode={unreadByCode}
+            onNavigate={goToSection}
+          />
+        );
+    }
+  };
+
+  const sidebarProps = {
+    active: route.section,
+    counts: {
+      invitations: state.invitations.length,
+      guests: guestRows.length,
+      gifts: state.gifts.length
+    },
+    onNavigate: goToSection,
+    displayName,
+    email: session.admin.email,
+    onSignOut
+  };
+
+  const openGift = route.section === "presentes" && route.giftId
+    ? state.gifts.find((gift) => gift.id === route.giftId)
+    : undefined;
 
   return (
-    <div className="dashboard-canvas min-h-screen bg-background text-foreground">
-      <a href="#conteudo-principal" className="sr-only z-[60] rounded-md bg-background px-4 py-2 focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Pular para o conteúdo</a>
+    <div className="admin-shell flex min-h-screen bg-admin-canvas text-admin-ink">
+      <a
+        href="#conteudo-principal"
+        className="sr-only z-50 rounded-md bg-admin-surface px-4 py-2 focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Pular para o conteúdo
+      </a>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/80 bg-background/90 px-4 backdrop-blur lg:hidden">
-        <div>
-          <p className="font-serif text-xl leading-none">Brimax</p>
-          <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-[#9f7a34]">Administração</p>
-        </div>
-        <Button variant="outline" size="icon" className="size-11" aria-label="Abrir navegação" onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
-      </header>
-
-      <Dialog open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
-        <DialogContent className="left-auto right-0 top-0 h-[100dvh] max-w-[20rem] translate-x-0 translate-y-0 content-start rounded-none border-y-0 border-r-0 p-6 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right">
-          <DialogHeader className="pr-8 text-left">
-            <DialogTitle className="font-serif text-2xl">Administração</DialogTitle>
-            <DialogDescription>Navegue pelas áreas do painel Brimax.</DialogDescription>
-          </DialogHeader>
-          <div className="mt-5">{navigation}</div>
-        </DialogContent>
-      </Dialog>
-
-      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-border/80 bg-card/75 px-5 py-7 lg:flex">
-        <a href="#visao-geral" className="px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <p className="font-serif text-3xl leading-none">Brimax</p>
-          <p className="mt-2 text-[10px] uppercase tracking-[0.25em] text-[#9f7a34]">Administração</p>
-        </a>
-        <div className="mt-10 flex-1">{navigation}</div>
-        <IdentityBlock displayName={displayName} email={session.admin.email} />
-        <Button variant="ghost" className="mt-3 min-h-11 justify-start" onClick={onSignOut}><LogOut /> Sair</Button>
+      <aside className="hidden lg:flex">
+        <AdminSidebar
+          {...sidebarProps}
+          variant="desktop"
+          collapsed={collapsed}
+          onToggleCollapsed={() => setCollapsed((current) => !current)}
+        />
       </aside>
 
-      <div className="lg:pl-64">
-        {preview && (
-          <div role="status" className="border-b border-[#d6ae64]/35 bg-[#d6ae64]/12 px-4 py-2.5 text-center text-xs font-medium text-[#76551f]">
-            Dados de demonstração · autorização do backend não verificada
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 flex-none items-center justify-between border-b border-admin-line bg-admin-canvas/90 px-4 backdrop-blur lg:hidden">
+          <div>
+            <p className="font-admin-serif text-xl leading-none">Brimax</p>
+            <p className="mt-1 text-[10px] font-medium tracking-[0.2em] text-admin-gold">
+              ADMINISTRAÇÃO
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="flex size-11 items-center justify-center rounded-lg border border-admin-line-strong bg-admin-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ink"
+          >
+            <Menu className="size-5" strokeWidth={1.7} aria-hidden="true" />
+            <span className="sr-only">Abrir navegação</span>
+          </button>
+        </header>
+
+        <DialogPrimitive.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgb(20_30_25/0.42)]" />
+            <DialogPrimitive.Content className="admin-shell fixed inset-y-0 right-0 z-50 w-[min(20rem,90vw)] overflow-y-auto bg-admin-subtle text-admin-ink shadow-[0_0_60px_rgb(20_30_25/0.3)]">
+              <DialogPrimitive.Title className="sr-only">Administração</DialogPrimitive.Title>
+              <DialogPrimitive.Description className="sr-only">
+                Navegue pelas áreas do painel Brimax.
+              </DialogPrimitive.Description>
+              <DialogPrimitive.Close className="absolute right-4 top-4 z-10 flex size-11 items-center justify-center rounded-full border border-admin-line-strong bg-admin-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ink">
+                <X className="size-4" strokeWidth={1.7} aria-hidden="true" />
+                <span className="sr-only">Fechar navegação</span>
+              </DialogPrimitive.Close>
+              <AdminSidebar {...sidebarProps} variant="drawer" collapsed={false} />
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+
+        {(preview || demo) && (
+          <div
+            role="status"
+            className="flex-none border-b border-admin-line-gold bg-admin-warn-bg px-4 py-2.5 text-center text-xs font-medium text-admin-gold"
+          >
+            Dados de demonstração · o painel ainda não consulta os endpoints administrativos
           </div>
         )}
-        <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
-          <div className="mb-8 flex items-center justify-between gap-4 lg:justify-end">
-            <div className="lg:hidden"><IdentityBlock displayName={displayName} email={session.admin.email} compact /></div>
-            <Button variant="outline" className="min-h-11 lg:hidden" onClick={onSignOut}><LogOut /> Sair</Button>
-          </div>
-          <main id="conteudo-principal" tabIndex={-1}>
-            <DashboardOverview preview={preview} />
-          </main>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-export function getAdminInitials(displayName: string) {
-  const words = displayName.includes("@") ? [displayName.split("@")[0]] : displayName.trim().split(/\s+/);
-  return words.slice(0, 2).map((word) => word.charAt(0).toUpperCase()).join("") || "A";
-}
-
-function IdentityBlock({ displayName, email, compact = false }: { displayName: string; email: string; compact?: boolean }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">{getAdminInitials(displayName)}</span>
-      <div className={compact ? "hidden min-w-0 sm:block" : "min-w-0"}>
-        <p className="truncate text-sm font-medium">{displayName}</p>
-        <p className="truncate text-xs text-muted-foreground">{email}</p>
+        <main
+          id="conteudo-principal"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-5 pb-20 pt-8 sm:px-10 lg:px-[60px] lg:pb-20 lg:pt-[52px]"
+        >
+          {renderScreen()}
+        </main>
       </div>
+
+      {modal?.kind === "new-invitation" && (
+        <NewInvitationModal
+          onCancel={closeModal}
+          onCreate={(draft) => {
+            dispatch({ type: "create-invitation", ...draft });
+            closeModal();
+            setInviteFilter("Todos");
+            setInviteQuery("");
+            navigate(routeForSection("convites"));
+          }}
+        />
+      )}
+
+      {modal?.kind === "delete-invitation" &&
+        (() => {
+          const invitation = invitationBy(modal.invitationCode);
+          if (!invitation) return null;
+          return (
+            <DeleteInvitationModal
+              invitation={invitation}
+              onCancel={closeModal}
+              onConfirm={() => {
+                dispatch({ type: "delete-invitation", invitationCode: invitation.invitationCode });
+                closeModal();
+                navigate(routeForSection("convites"));
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "guest-action" &&
+        (() => {
+          const guest = guestBy(modal.guestId);
+          if (!guest) return null;
+          return (
+            <GuestActionModal
+              guest={guest}
+              kind={modal.action}
+              onCancel={closeModal}
+              onConfirm={confirmGuestAction}
+            />
+          );
+        })()}
+
+      {modal?.kind === "phone" &&
+        (() => {
+          const invitation = invitationBy(modal.invitationCode);
+          if (!invitation) return null;
+          return (
+            <PhoneModal
+              invitation={invitation}
+              onCancel={closeModal}
+              onSave={(phoneNumber) => {
+                dispatch({
+                  type: "update-phone",
+                  invitationCode: invitation.invitationCode,
+                  phoneNumber
+                });
+                closeModal();
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "confirm-all" &&
+        (() => {
+          const invitation = invitationBy(modal.invitationCode);
+          if (!invitation) return null;
+          return (
+            <ConfirmAllModal
+              invitation={invitation}
+              onCancel={closeModal}
+              onSave={(guestIds) => {
+                dispatch({
+                  type: "confirm-guests",
+                  invitationCode: invitation.invitationCode,
+                  guestIds
+                });
+                closeModal();
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "add-guests" &&
+        (() => {
+          const invitation = invitationBy(modal.invitationCode);
+          if (!invitation) return null;
+          return (
+            <AddGuestsModal
+              invitation={invitation}
+              onCancel={closeModal}
+              onSave={(rows) => {
+                dispatch({ type: "add-guests", invitationCode: invitation.invitationCode, rows });
+                closeModal();
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "send" &&
+        (() => {
+          const invitation = invitationBy(modal.invitationCode);
+          if (!invitation) return null;
+          return (
+            <SendWhatsappModal
+              invitation={invitation}
+              onCancel={closeModal}
+              onSend={(mode) => {
+                dispatch({ type: "queue-send", invitationCode: invitation.invitationCode, mode });
+                closeModal();
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "new-gift" && (
+        <NewGiftModal
+          onCancel={closeModal}
+          onCreate={(values) => {
+            dispatch({ type: "create-gift", ...values });
+            closeModal();
+          }}
+        />
+      )}
+
+      {openGift && (
+        <GiftEditorModal
+          gift={openGift}
+          onCancel={() => navigate(routeForSection("presentes"))}
+          onSave={(values) => {
+            dispatch({ type: "save-gift", giftId: openGift.id, ...values });
+            navigate(routeForSection("presentes"));
+          }}
+        />
+      )}
     </div>
   );
 }

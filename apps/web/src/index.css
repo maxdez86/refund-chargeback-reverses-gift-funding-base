@@ -48,6 +48,98 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+ * Administrative dashboard palette.
+ *
+ * The panel is a separate surface from the guest-facing site: warmer paper, deep
+ * green-black ink, and a single gold accent. Tokens live here so screens under
+ * `src/components/dashboard/` never hard-code a hex value.
+ */
+@theme {
+  --font-admin-sans: "Geist", "Inter", "Helvetica Neue", Helvetica, sans-serif;
+  --font-admin-serif: "EB Garamond", "Cormorant Garamond", Georgia, serif;
+
+  /* Surfaces */
+  --color-admin-canvas: #fbfaf7;
+  --color-admin-surface: #ffffff;
+  --color-admin-subtle: #fcfbf8;
+  --color-admin-sunken: #f4f1ea;
+  --color-admin-row-hover: #faf8f3;
+  --color-admin-inset-hover: #f7f4ed;
+  --color-admin-shade: #f7f5f0;
+  --color-admin-shade-soft: #faf9f6;
+
+  /* Ink */
+  --color-admin-ink: #1d2a24;
+  --color-admin-ink-hover: #2a3b33;
+  --color-admin-ink-soft: #5b6862;
+  --color-admin-nav: #48564f;
+  --color-admin-slate: #6c7a73;
+  --color-admin-muted: #7b8880;
+  --color-admin-faint: #8e9b94;
+  --color-admin-fainter: #9aa6a0;
+  --color-admin-disabled: #8e9b94;
+
+  /* Gold accent */
+  --color-admin-gold: #8a6a22;
+  --color-admin-gold-deep: #6e521a;
+  --color-admin-gold-tint: #f5efe3;
+  --color-admin-gold-pale: #fbf6ec;
+  --color-admin-gold-ink: #5f4713;
+
+  /* Status tones */
+  --color-admin-ok-bg: #eaf2ec;
+  --color-admin-ok-fg: #2f6b4f;
+  --color-admin-warn-bg: #f7f0df;
+  --color-admin-warn-fg: #8a6a22;
+  --color-admin-err-bg: #f6eae7;
+  --color-admin-err-fg: #8e4034;
+  --color-admin-info-bg: #e9eff5;
+  --color-admin-info-fg: #2b5f86;
+  --color-admin-mute-bg: #f1eee6;
+  --color-admin-mute-fg: #6c7a73;
+  --color-admin-role-bg: #edebf7;
+  --color-admin-role-fg: #4b4487;
+
+  /* Destructive */
+  --color-admin-danger: #8e4034;
+  --color-admin-danger-hover: #7a3529;
+  --color-admin-danger-ink: #7a392f;
+  --color-admin-danger-soft: #fbf0ed;
+  --color-admin-danger-tint: #f9efec;
+  --color-admin-danger-face: #fdf7f5;
+  --color-admin-danger-edge: rgb(142 64 52 / 0.28);
+  --color-admin-field-error: #c0705f;
+
+  /* Lines */
+  --color-admin-line: rgb(29 42 36 / 0.09);
+  --color-admin-line-soft: rgb(29 42 36 / 0.055);
+  --color-admin-line-strong: rgb(29 42 36 / 0.14);
+  --color-admin-line-gold: rgb(138 106 34 / 0.3);
+
+  /* Funding bars and controls */
+  --color-admin-track: #f1eee6;
+  --color-admin-bar-paid: #2f6b4f;
+  --color-admin-bar-reserved: #d8c48a;
+  --color-admin-toggle-off: #d8d4c9;
+  --color-admin-send-off: #e7e3d8;
+  --color-admin-bubble-out: #f3efe4;
+
+  /* Gift placeholder tiles, picked by hashing the gift id. */
+  --color-admin-tile-1-bg: #efe7d8;
+  --color-admin-tile-1-fg: #8a6a22;
+  --color-admin-tile-2-bg: #e7ede8;
+  --color-admin-tile-2-fg: #3e6b55;
+  --color-admin-tile-3-bg: #eae7f0;
+  --color-admin-tile-3-fg: #584f89;
+  --color-admin-tile-4-bg: #f2e6e2;
+  --color-admin-tile-4-fg: #8e5a48;
+  --color-admin-tile-5-bg: #e5ebf1;
+  --color-admin-tile-5-fg: #3d6285;
+  --color-admin-tile-6-bg: #edeae3;
+  --color-admin-tile-6-fg: #6c7a73;
+}
+
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -160,6 +252,24 @@ section[id] {
   background:
     radial-gradient(circle at top right, rgb(214 174 100 / 0.11), transparent 32rem),
     hsl(var(--background));
+}
+
+/* The dashboard owns its own type scale; headings here are not the site's serif. */
+.admin-shell {
+  font-family: var(--font-admin-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3 {
+  font-family: var(--font-admin-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.admin-shell .admin-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-reduced-motion: reduce) {

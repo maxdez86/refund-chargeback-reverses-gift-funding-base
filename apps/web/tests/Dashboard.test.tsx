@@ -24,7 +24,7 @@ vi.mock("@/components/dashboard/GoogleSignInButton", () => ({
 }));
 
 import Dashboard from "@/pages/Dashboard";
-import { getAdminInitials } from "@/components/dashboard/DashboardShell";
+import { getAdminInitials } from "@/components/dashboard/AdminSidebar";
 
 const config = {
   stage: "dev" as const,
@@ -36,6 +36,21 @@ const baseActions = {
   acceptCredential: vi.fn(),
   retry: vi.fn(),
   signOut: vi.fn()
+};
+
+const authenticatedSession: AdminSessionState = {
+  status: "authenticated",
+  preview: true,
+  session: {
+    authenticated: true,
+    stage: "dev",
+    admin: {
+      subject: "subject",
+      email: "casamento@brimax.life",
+      hostedDomain: "brimax.life",
+      name: "Casamento Brimax"
+    }
+  }
 };
 
 describe("administrative dashboard", () => {
@@ -54,36 +69,28 @@ describe("administrative dashboard", () => {
     expect(baseActions.acceptCredential).toHaveBeenCalledWith("credential");
   });
 
-  it("renders a responsive authenticated shell with clearly labelled fixtures", () => {
-    useAdminSessionMock.mockReturnValue({
-      ...baseActions,
-      config,
-      state: {
-        status: "authenticated",
-        preview: true,
-        session: {
-          authenticated: true,
-          stage: "dev",
-          admin: {
-            subject: "subject",
-            email: "casamento@brimax.life",
-            hostedDomain: "brimax.life",
-            name: "Casamento Brimax"
-          }
-        }
-      }
-    });
+  it("lands on the overview with the demonstration banner and live counters", async () => {
+    useAdminSessionMock.mockReturnValue({ ...baseActions, config, state: authenticatedSession });
     render(<Dashboard />);
 
-    expect(screen.getByRole("heading", { name: "Visão geral" })).toBeInTheDocument();
-    expect(screen.getByText(/Dados de demonstração · autorização do backend não verificada/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Nenhum dado disponível")).toHaveLength(4);
+    expect(await screen.findByRole("heading", { name: "Visão geral" })).toBeInTheDocument();
+    expect(screen.getByText(/Dados de demonstração/i)).toBeInTheDocument();
+    // Eight fixture invitations covering fourteen people.
+    expect(screen.getByRole("button", { name: /CONVITES\s*8/ })).toBeInTheDocument();
     expect(screen.getAllByRole("navigation", { name: "Navegação administrativa" })).not.toHaveLength(0);
+  });
+
+  it("opens the mobile navigation drawer and closes it on selection", async () => {
+    useAdminSessionMock.mockReturnValue({ ...baseActions, config, state: authenticatedSession });
+    render(<Dashboard />);
+    await screen.findByRole("heading", { name: "Visão geral" });
+
     fireEvent.click(screen.getByRole("button", { name: "Abrir navegação" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("link", { name: "WhatsApp" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("link", { name: "WhatsApp" }));
+    fireEvent.click(within(dialog).getByRole("link", { name: /WhatsApp/ }));
+
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "WhatsApp" })).toBeInTheDocument();
   });
 
   it.each([
