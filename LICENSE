@@ -1,21 +1,64 @@
-MIT License
+BRIMAX LIFE PROPRIETARY SOFTWARE LICENSE
 
-Copyright (c) 2026 maxdez86
+Copyright (c) 2026 MAXUEL GUIMARAES REIS CONSULTORIA EM TECNOLOGIA DA INFORMACAO
+CNPJ 42.781.389/0001-08
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Original author: Maxuel Guimarães Reis.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+All rights reserved.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1. Ownership
+
+The Brimax Life software, source code, object code, documentation, infrastructure
+code, configuration, tests, designs, and related materials (the "Software") are
+owned by MAXUEL GUIMARAES REIS CONSULTORIA EM TECNOLOGIA DA INFORMACAO, subject
+to the rights of third parties and contributors identified in the repository.
+
+Maxuel Guimarães Reis is the original author and founder. This notice does not
+transfer or waive any ownership rights.
+
+2. No public license
+
+This repository is private and access to it is confidential. Access to the
+repository, a clone, a fork, a pull request, an issue, a build artifact, or any
+other copy of the Software does not grant a license or transfer ownership.
+
+3. Prohibited use
+
+Unless the Company has granted prior written permission, no person may copy,
+use, execute, reproduce, modify, adapt, translate, merge, publish, distribute,
+redistribute, sublicense, sell, rent, lease, provide as a service, create a
+derivative or competing product from, or commercially exploit the Software or
+any substantial part of it.
+
+A developer's access ends when the applicable employment, services, or
+contributor relationship ends. After access ends, the developer must not use,
+retain, disclose, commercialize, or make available any copy of the Software,
+except where a written agreement or mandatory law expressly permits it.
+
+4. Contributor and third-party rights
+
+Contributions are accepted only under a written agreement approved by the
+Company. That agreement must address confidentiality, intellectual-property
+assignment, pre-existing materials, third-party materials, and return or
+deletion of copies. Third-party components and materials remain subject to
+their own licenses and are not relicensed by this notice.
+
+5. Written permission
+
+Any exception must be in a written license or agreement signed by an authorized
+representative of the Company. A permission for one version, customer, person,
+or purpose does not grant permission for any other version, customer, person,
+or purpose.
+
+6. Disclaimer and limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS" WITHOUT WARRANTIES OF ANY KIND. THE COMPANY AND THE AUTHOR ARE NOT
+LIABLE FOR ANY CLAIM, DAMAGE, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION
+WITH THE SOFTWARE, EXCEPT TO THE EXTENT LIABILITY CANNOT LAWFULLY BE EXCLUDED.
+
+This proprietary notice is intended to be interpreted under applicable law,
+including Brazilian law, without limiting the Company's ability to enforce its
+rights in other jurisdictions. It is not a substitute for a negotiated
+employment, services, confidentiality, or commercial license agreement.

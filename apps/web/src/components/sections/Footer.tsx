@@ -57,6 +57,11 @@ export function Footer() {
             <span>@brimaxLife</span>
           </a>
         </div>
+
+        <p className="mt-4 text-center text-xs text-[#fbf7f0]/50">
+          Plataforma de RSVP desenvolvida e operada por MAXUEL GUIMARAES REIS
+          CONSULTORIA EM TECNOLOGIA DA INFORMACAO - CNPJ 42.781.389/0001-08
+        </p>
       </div>
     </footer>
   );
