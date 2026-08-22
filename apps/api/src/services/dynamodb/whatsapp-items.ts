@@ -4,7 +4,12 @@ import {
   WhatsappFlowStatusSchema,
   WhatsappFlowStageSchema,
   WhatsappMessageDirectionSchema,
+  WhatsappMessageTypeSchema,
+  WhatsappMessageCorrelationStatusSchema,
   WhatsappMessageStatusSchema,
+  WhatsappSendAttemptDispositionSchema,
+  WhatsappTimestampSourceSchema,
+  WhatsappTextBodySchema,
   WhatsappReconciliationStatusSchema
 } from "@brimax/contracts";
 import { z } from "zod";
@@ -30,14 +35,19 @@ export class WhatsappItemCorruptError extends AppError {
 const isoTimestamp = z.string().datetime();
 const providerId = z.string().min(1).max(512);
 
-export const WhatsappMessageInputSchema = z.object({
+const WhatsappMessageShapeSchema = z.object({
   messageId: providerId,
-  invitationCode: z.string().min(1),
+  invitationCode: z.string().min(1).optional(),
   direction: WhatsappMessageDirectionSchema,
+  messageType: WhatsappMessageTypeSchema.optional(),
+  correlationStatus: WhatsappMessageCorrelationStatusSchema.optional(),
   status: WhatsappMessageStatusSchema,
   createdAt: isoTimestamp,
+  persistedAt: isoTimestamp.optional(),
+  timestampSource: WhatsappTimestampSourceSchema.optional(),
   updatedAt: isoTimestamp.optional(),
   statusUpdatedAt: isoTimestamp.optional(),
+  statusTimestampSource: WhatsappTimestampSourceSchema.optional(),
   commandId: z.string().min(1).optional(),
   templateId: z.string().min(1).optional(),
   templateVersion: z.number().int().positive().optional(),
@@ -47,11 +57,46 @@ export const WhatsappMessageInputSchema = z.object({
   senderPhone: WhatsappRecipientSchema.optional(),
   replyContextMessageId: providerId.optional(),
   buttonId: z.string().min(1).max(256).optional(),
-  body: z.string().min(1).max(4096).optional(),
+  body: WhatsappTextBodySchema.optional(),
   providerErrorCode: z.union([z.number().int(), z.string().min(1)]).optional(),
   providerErrorCategory: z.string().min(1).max(128).optional(),
   providerErrorTitle: z.string().min(1).max(256).optional()
 });
+
+function validateMessageCorrelation(
+  value: z.infer<typeof WhatsappMessageShapeSchema>,
+  context: z.RefinementCtx
+) {
+  const correlationStatus = value.correlationStatus ?? (value.invitationCode ? "matched" : "unmatched_sender");
+  if (correlationStatus === "matched" && !value.invitationCode) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["invitationCode"],
+      message: "Matched WhatsApp messages require an invitationCode."
+    });
+  }
+  if (correlationStatus !== "matched" && value.invitationCode) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["invitationCode"],
+      message: "Unassigned WhatsApp messages cannot carry an invitationCode."
+    });
+  }
+}
+
+function normalizeMessage<T extends z.infer<typeof WhatsappMessageShapeSchema>>(value: T) {
+  return {
+    ...value,
+    messageType: value.messageType ?? (value.body ? "text" as const : value.templateId ? "template" as const : "unknown" as const),
+    correlationStatus: value.correlationStatus ?? (value.invitationCode ? "matched" as const : "unmatched_sender" as const),
+    persistedAt: value.persistedAt ?? value.createdAt,
+    timestampSource: value.timestampSource ?? "processing" as const
+  };
+}
+
+export const WhatsappMessageInputSchema = WhatsappMessageShapeSchema
+  .superRefine(validateMessageCorrelation)
+  .transform(normalizeMessage);
 
 const WhatsappCommandShapeSchema = z.object({
   commandId: z.string().min(1).max(512),
@@ -74,6 +119,7 @@ const WhatsappCommandShapeSchema = z.object({
   lastAttemptAt: isoTimestamp.optional(),
   lastAttemptReceiveCount: z.number().int().min(1).optional(),
   sentAt: isoTimestamp.optional()
+  ,sendAttemptDisposition: WhatsappSendAttemptDispositionSchema.optional()
   ,effect: WhatsappCommandEffectSchema.optional()
   ,expectedFlowStatus: WhatsappFlowStatusSchema.optional()
   // Read compatibility for records deployed before the explicit effect field.
@@ -105,10 +151,10 @@ const storedKeys = {
   GSI1SK: z.string().min(1).optional()
 };
 
-export const WhatsappMessageItemSchema = WhatsappMessageInputSchema.extend({
+export const WhatsappMessageItemSchema = WhatsappMessageShapeSchema.extend({
   ...storedKeys,
   entityType: z.literal("WhatsappMessage")
-});
+}).superRefine(validateMessageCorrelation).transform(normalizeMessage);
 
 export const WhatsappCommandItemSchema = WhatsappCommandInputSchema.and(z.object({
   ...storedKeys,
@@ -129,6 +175,7 @@ export const WhatsappWebhookMarkerSchema = z.object({
   processingStartedAt: isoTimestamp.optional(),
   lastAttemptAt: isoTimestamp.optional(),
   processingStatus: z.enum(["pending", "processing", "processed", "failed"]),
+  retryDisposition: z.enum(["retryable", "terminal"]).optional(),
   receivedAt: isoTimestamp.optional(),
   processedAt: isoTimestamp.optional(),
   updatedAt: isoTimestamp.optional(),

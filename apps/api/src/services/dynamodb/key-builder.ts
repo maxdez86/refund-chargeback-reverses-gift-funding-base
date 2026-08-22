@@ -189,6 +189,20 @@ export function whatsappConversationMessageIndex(
   };
 }
 
+export function whatsappUnassignedMessageIndex(createdAt: string, messageId: string) {
+  return {
+    GSI1PK: whatsappUnassignedMessageIndexPrefix().GSI1PK,
+    GSI1SK: `${WHATSAPP_CONVERSATION_PREFIX}${createdAt}#MESSAGE#${messageId}`
+  };
+}
+
+export function whatsappUnassignedMessageIndexPrefix() {
+  return {
+    GSI1PK: "WHATSAPP#UNASSIGNED",
+    GSI1SK: WHATSAPP_CONVERSATION_PREFIX
+  };
+}
+
 export function whatsappConversationCommandIndex(
   invitationCode: string,
   createdAt: string,

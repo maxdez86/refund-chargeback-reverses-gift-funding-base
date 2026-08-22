@@ -258,7 +258,9 @@ describe("WhatsApp RSVP service", () => {
     expect(repository.updateWhatsappFlow).not.toHaveBeenCalled();
     expect(repository.putWhatsappMessage).toHaveBeenCalledWith(expect.objectContaining({
       direction: "inbound",
-      body: "Tenho uma dúvida"
+      body: "Tenho uma dúvida",
+      senderPhone: undefined,
+      correlationStatus: "matched"
     }));
   });
 
@@ -639,5 +641,281 @@ describe("WhatsApp RSVP service", () => {
     await service.queueFallbackText("SW2748", "whatsapp:message:wamid.free_text_3");
 
     expect(repository.updateWhatsappFlow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ambiguous_sender", ["SW2748", "SV2543"]],
+    ["unmatched_sender", []]
+  ] as const)("retains %s inbound text outside invitation conversations", async (correlationStatus, codes) => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      getWhatsappMessage: vi.fn().mockResolvedValue(undefined),
+      getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(codes),
+      getInvitationByCode: vi.fn(),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.handleWebhookEvent({
+      eventId: `whatsapp:message:wamid.${correlationStatus}`,
+      type: "text",
+      messageId: `wamid.${correlationStatus}`,
+      timestamp: "1603059201",
+      senderWaId: "5511963656517",
+      body: "private retained text",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-unassigned")).resolves.toEqual({ outcome: "ignored", reason: "unknown_message" });
+
+    expect(repository.putWhatsappMessage).toHaveBeenCalledWith(expect.objectContaining({
+      invitationCode: undefined,
+      correlationStatus,
+      messageType: "text",
+      senderPhone: "5511963656517",
+      body: "private retained text",
+      createdAt: "2020-10-18T22:13:21.000Z",
+      timestampSource: "provider"
+    }));
+  });
+
+  it("retains a sender mismatch without attaching it to the referenced invitation", async () => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "SW2748", direction: "outbound" }),
+      getInvitationByCode: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", phoneNumber: "5511963656517", guests: []
+      }),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.mismatch",
+      type: "text",
+      messageId: "wamid.mismatch",
+      senderWaId: "5511999999999",
+      replyContextMessageId: "wamid.outbound",
+      body: "private mismatch text",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-mismatch")).resolves.toEqual({ outcome: "ignored", reason: "wrong_sender" });
+
+    expect(repository.putWhatsappMessage).toHaveBeenCalledWith(expect.objectContaining({
+      invitationCode: undefined,
+      correlationStatus: "sender_mismatch",
+      senderPhone: "5511999999999"
+    }));
+  });
+
+  it("retains a sender-less contextual reply as unmatched without driving RSVP", async () => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "SW2748", direction: "outbound" }),
+      getInvitationByCode: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", phoneNumber: "5511963656517", guests: []
+      }),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
+      updateWhatsappFlow: vi.fn()
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.no-sender",
+      type: "text",
+      messageId: "wamid.no-sender",
+      replyContextMessageId: "wamid.outbound",
+      body: "private sender-less text",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-no-sender")).resolves.toEqual({ outcome: "ignored", reason: "unknown_message" });
+
+    expect(repository.putWhatsappMessage).toHaveBeenCalledWith(expect.objectContaining({
+      invitationCode: undefined,
+      correlationStatus: "unmatched_sender",
+      senderPhone: undefined,
+      body: "private sender-less text"
+    }));
+    expect(repository.updateWhatsappFlow).not.toHaveBeenCalled();
+  });
+
+  it("keeps a status webhook retryable until the outbound message exists", async () => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      applyWhatsappMessageStatus: vi.fn().mockResolvedValue("missing"),
+      markWebhookEventProcessed: vi.fn()
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.handleWebhookEvent({
+      type: "status_delivered",
+      eventId: "whatsapp:status:wamid.pending:delivered:1603059201",
+      messageId: "wamid.pending",
+      timestamp: "1603059201",
+      status: "delivered",
+      errors: [],
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "statuses", itemIndex: 0 }
+    }, "request-status")).rejects.toMatchObject({ statusCode: 503 });
+
+    expect(repository.markWebhookEventProcessed).not.toHaveBeenCalled();
+    expect(repository.applyWhatsappMessageStatus).toHaveBeenCalledWith("wamid.pending", expect.objectContaining({
+      statusUpdatedAt: "2020-10-18T22:13:21.000Z",
+      statusTimestampSource: "provider"
+    }));
+  });
+
+  it("transitions the invitation only when a failed provider status is applied", async () => {
+    const appliedRepository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      applyWhatsappMessageStatus: vi.fn().mockResolvedValue("applied"),
+      getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "SW2748" }),
+      getInvitationByCode: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", whatsappFlowStatus: "message_sent"
+      }),
+      updateWhatsappFlow: vi.fn().mockResolvedValue(undefined),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const appliedService = new WhatsappRsvpService(appliedRepository as never, {} as never, {} as never);
+    const statusEvent = {
+      type: "status_failed" as const,
+      eventId: "whatsapp:status:wamid.failed:failed:1603059201",
+      messageId: "wamid.failed",
+      timestamp: "1603059201",
+      status: "failed" as const,
+      errors: [{ code: 131000, title: "Provider failure" }],
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "statuses" as const, itemIndex: 0 }
+    };
+
+    await expect(appliedService.handleWebhookEvent(statusEvent, "request-failed")).resolves.toEqual({ outcome: "processed" });
+    expect(appliedRepository.updateWhatsappFlow).toHaveBeenCalledOnce();
+
+    const ignoredRepository = {
+      ...appliedRepository,
+      applyWhatsappMessageStatus: vi.fn().mockResolvedValue("ignored"),
+      getWhatsappMessage: vi.fn(),
+      getInvitationByCode: vi.fn(),
+      updateWhatsappFlow: vi.fn(),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const ignoredService = new WhatsappRsvpService(ignoredRepository as never, {} as never, {} as never);
+    await expect(ignoredService.handleWebhookEvent({
+      ...statusEvent,
+      eventId: "whatsapp:status:wamid.failed:failed:1603059202"
+    }, "request-failed-ignored")).resolves.toEqual({ outcome: "processed" });
+    expect(ignoredRepository.getWhatsappMessage).not.toHaveBeenCalled();
+    expect(ignoredRepository.updateWhatsappFlow).not.toHaveBeenCalled();
+  });
+
+  it("retries the invitation failure transition when identical status evidence was already applied", async () => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn()
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false),
+      getWebhookEvent: vi.fn().mockResolvedValue({ processingStatus: "failed" }),
+      applyWhatsappMessageStatus: vi.fn()
+        .mockResolvedValueOnce("applied")
+        .mockResolvedValueOnce("already_applied"),
+      getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "SW2748" }),
+      getInvitationByCode: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", whatsappFlowStatus: "message_sent"
+      }),
+      updateWhatsappFlow: vi.fn()
+        .mockRejectedValueOnce(new Error("DynamoDB unavailable"))
+        .mockResolvedValueOnce(undefined),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+    const event = {
+      type: "status_failed" as const,
+      eventId: "whatsapp:status:wamid.retry-failed:failed:1603059201",
+      messageId: "wamid.retry-failed",
+      timestamp: "1603059201",
+      status: "failed" as const,
+      errors: [{ code: 131000, title: "Provider failure" }],
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "statuses" as const, itemIndex: 0 }
+    };
+
+    await expect(service.handleWebhookEvent(event, "request-failed-first"))
+      .rejects.toThrow("DynamoDB unavailable");
+    expect(repository.markWebhookEventProcessed).not.toHaveBeenCalled();
+
+    await expect(service.handleWebhookEvent(event, "request-failed-retry"))
+      .resolves.toEqual({ outcome: "processed" });
+    expect(repository.applyWhatsappMessageStatus).toHaveBeenCalledTimes(2);
+    expect(repository.updateWhatsappFlow).toHaveBeenCalledTimes(2);
+    expect(repository.markWebhookEventProcessed).toHaveBeenCalledOnce();
+  });
+
+  it("retains an unknown-invitation reply without indexing it under the stale code", async () => {
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "DELETED1", direction: "outbound" }),
+      getInvitationByCode: vi.fn().mockResolvedValue(null),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.unknown-invitation",
+      type: "text",
+      messageId: "wamid.unknown-invitation",
+      senderWaId: "5511963656517",
+      replyContextMessageId: "wamid.outbound-deleted",
+      body: "private retained text",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-unknown-invitation")).resolves.toEqual({
+      outcome: "ignored",
+      reason: "unknown_invitation"
+    });
+
+    expect(repository.putWhatsappMessage).toHaveBeenCalledWith(expect.objectContaining({
+      invitationCode: undefined,
+      correlationStatus: "unknown_invitation"
+    }));
+  });
+
+  it("continues processing a retry after the original message write succeeded", async () => {
+    const invitation = {
+      invitationCode: "SW2748",
+      phoneNumber: "5511963656517",
+      whatsappFlowStatus: "message_sent" as const,
+      guests: []
+    };
+    const repository = {
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(false),
+      getWebhookEvent: vi.fn().mockResolvedValue({ processingStatus: "failed" }),
+      getWhatsappMessage: vi.fn().mockResolvedValue(undefined),
+      getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(["SW2748"]),
+      getInvitationByCode: vi.fn().mockResolvedValue(invitation),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: false }),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+    const queueFallback = vi.spyOn(service, "queueFallbackText").mockResolvedValue("cmd-fallback" as never);
+
+    await expect(service.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.partial-retry",
+      type: "text",
+      messageId: "wamid.partial-retry",
+      senderWaId: "5511963656517",
+      body: "original private text",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-partial-retry")).resolves.toEqual({ outcome: "processed" });
+
+    expect(repository.putWhatsappMessage).toHaveBeenCalledOnce();
+    expect(queueFallback).toHaveBeenCalledOnce();
+    expect(repository.markWebhookEventProcessed).toHaveBeenCalledWith(
+      "whatsapp",
+      "whatsapp:message:wamid.partial-retry",
+      { status: "processed" }
+    );
   });
 });

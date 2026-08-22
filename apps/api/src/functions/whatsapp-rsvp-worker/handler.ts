@@ -21,7 +21,7 @@ import { WhatsappCloudApiClient } from "../../services/whatsapp/client";
 const WhatsappWorkerMessageSchema = z.object({ commandId: z.string().min(1).max(512) }).strict();
 const MAX_RECEIVE_COUNT = 10_000;
 
-type WorkerRepository = Pick<WeddingRepository, "getWhatsappCommand" | "getInvitationByCode" | "claimWhatsappCommand" | "updateWhatsappCommand" | "updateWhatsappFlow" | "finalizeAcceptedWhatsappSend">;
+type WorkerRepository = Pick<WeddingRepository, "getWhatsappCommand" | "getInvitationByCode" | "claimWhatsappCommand" | "markWhatsappCommandAttemptInFlight" | "updateWhatsappCommand" | "updateWhatsappFlow" | "finalizeAcceptedWhatsappSend">;
 type WorkerTemplates = Pick<WhatsappTemplateRepository, "getVersion">;
 type WorkerSender = Pick<WhatsappTemplateMessageService, "send">;
 type TextSender = Pick<WhatsappCloudApiClient, "sendText">;
@@ -74,11 +74,13 @@ async function reconcile(
   log: (entry: Record<string, unknown>) => void,
   condition = conditionForSending(),
   effect: "opener" | "preserve" | "complete_on_send" = "opener",
-  expectedFlowStatus?: WhatsappFlowStatus
+  expectedFlowStatus?: WhatsappFlowStatus,
+  providerMessageId?: string
 ) {
   try {
     await repository.updateWhatsappCommand(commandId, {
-      status: "reconciliation_required", reconciliationStatus: "required", failureReason: reason, updatedAt: now
+      status: "reconciliation_required", reconciliationStatus: "required", failureReason: reason,
+      providerMessageId, updatedAt: now
     }, condition);
     if (effect !== "preserve" && expectedFlowStatus) {
       await repository.updateWhatsappFlow(invitationCode, {
@@ -150,6 +152,28 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
   const claimed = await dependencies.repository.claimWhatsappCommand(commandId, { now: attemptAt, receiveCount: currentReceiveCount, reclaimBefore });
 
   if (!claimed) {
+    if (
+      command.status === "sending" &&
+      (command.sendAttemptDisposition === "in_flight" || command.sendAttemptDisposition === undefined) &&
+      stale(command.startedAt, reclaimBefore)
+    ) {
+      const staleInvitation = await dependencies.repository.getInvitationByCode(String(command.invitationCode));
+      if (staleInvitation) {
+        await reconcile(
+          dependencies.repository,
+          staleInvitation.invitationCode,
+          commandId,
+          "WhatsApp send attempt became stale with an unknown provider outcome.",
+          attemptAt,
+          log,
+          undefined,
+          effect,
+          expectedFlowStatus,
+          command.providerMessageId
+        );
+      }
+      return false;
+    }
     if (command.status === "sending" && command.retryCount >= WHATSAPP_WORKER_MAX_ATTEMPTS && stale(command.startedAt, reclaimBefore)) {
       const staleInvitation = await dependencies.repository.getInvitationByCode(String(command.invitationCode));
       if (staleInvitation) {
@@ -244,7 +268,8 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
     if (classification.outcome === "retryable") {
       await dependencies.repository.updateWhatsappCommand(commandId, {
         failureReason: reason, providerErrorCategory: classification.category,
-        providerErrorCode: classification.providerCode, updatedAt: attemptAt
+        providerErrorCode: classification.providerCode, sendAttemptDisposition: "safe_to_retry",
+        updatedAt: attemptAt
       }, conditionForSending());
       log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, retryCount: command.retryCount + 1, receiveCount: currentReceiveCount, outcome: "retryable", category: classification.category });
       return true;
@@ -260,16 +285,109 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
 
   if (!invitation.phoneNumber) return handleFailure(new Error("WhatsApp command invitation has no phone number."));
   if (!definition && command.templateId !== WHATSAPP_FALLBACK_TEMPLATE_ID) return handleFailure(new Error("WhatsApp command template is no longer active."));
+  const textSender = dependencies.textSender;
+  if (command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID && !textSender) {
+    return handleFailure(new Error("WhatsApp text sender is not configured."));
+  }
+
+  const parameters = definition ? deriveTemplateParameters(invitation, definition) : undefined;
+  const markedInFlight = await dependencies.repository.markWhatsappCommandAttemptInFlight(commandId, attemptAt);
+  if (!markedInFlight) {
+    log({
+      metric: "WHATSAPP_RSVP_WORKER_SKIPPED",
+      commandId,
+      invitationCode: invitation.invitationCode,
+      outcome: "attempt_ownership_lost"
+    });
+    return false;
+  }
 
   let result: { messageId: string };
   try {
     if (command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID) {
-      if (!dependencies.textSender) throw new Error("WhatsApp text sender is not configured.");
-      result = await dependencies.textSender.sendText({ to: invitation.phoneNumber, text: { body: WHATSAPP_FALLBACK_TEXT } }, { requestId: commandId });
+      let acceptedMessageId: string | undefined;
+      try {
+        const accepted = await textSender!.sendText(
+          { to: invitation.phoneNumber, text: { body: WHATSAPP_FALLBACK_TEXT } },
+          { requestId: commandId },
+          async (providerResult) => {
+            acceptedMessageId = providerResult.messageId;
+            const finalization = await dependencies.repository.finalizeAcceptedWhatsappSend({
+              commandId,
+              invitationCode: invitation.invitationCode,
+              effect,
+              expectedFlowStatus,
+              now: attemptAt,
+              fallback: true,
+              message: {
+                messageId: providerResult.messageId,
+                invitationCode: invitation.invitationCode,
+                direction: "outbound",
+                messageType: "text",
+                correlationStatus: "matched",
+                status: "sent",
+                commandId,
+                templateId: command.templateId,
+                templateVersion: command.templateVersion,
+                stage: command.stage,
+                body: WHATSAPP_FALLBACK_TEXT,
+                createdAt: attemptAt,
+                persistedAt: attemptAt,
+                timestampSource: "processing"
+              }
+            });
+            return { ...providerResult, finalization };
+          }
+        );
+        if (accepted.finalization.outcome === "reconciliation_required") {
+          await reconcile(
+            dependencies.repository, invitation.invitationCode, commandId,
+            accepted.finalization.reason, attemptAt, log, undefined, effect,
+            expectedFlowStatus, accepted.messageId
+          );
+          return false;
+        }
+        log({
+          metric: "WHATSAPP_RSVP_WORKER_OUTCOME",
+          commandId,
+          invitationCode: invitation.invitationCode,
+          templateId: command.templateId,
+          effect,
+          wamid: accepted.messageId,
+          retryCount: command.retryCount + 1,
+          receiveCount: currentReceiveCount,
+          outcome: accepted.finalization.outcome === "replayed" ? "finalization_replayed" : "sent"
+        });
+        return false;
+      } catch (error) {
+        if (!acceptedMessageId) return handleFailure(error);
+        try {
+          await reconcile(
+            dependencies.repository,
+            invitation.invitationCode,
+            commandId,
+            `WhatsApp provider accepted the text message but local persistence failed: ${error instanceof Error ? error.message : String(error)}`,
+            attemptAt,
+            log,
+            undefined,
+            effect,
+            expectedFlowStatus,
+            acceptedMessageId
+          );
+        } catch {
+          log({
+            metric: "WHATSAPP_RSVP_WORKER_FINALIZATION_UNRECORDED",
+            commandId,
+            invitationCode: invitation.invitationCode,
+            messageId: acceptedMessageId,
+            outcome: "reconciliation_required"
+          });
+        }
+        return false;
+      }
     } else {
-      const parameters = deriveTemplateParameters(invitation, definition!);
       result = await dependencies.sender.send(
-        { purpose: String(command.templateId), to: invitation.phoneNumber, parameters },
+        { purpose: String(command.templateId), to: invitation.phoneNumber, parameters: parameters! },
         { requestId: commandId },
         definition!
       );
@@ -288,7 +406,9 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
       fallback: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID,
       message: {
       messageId: result.messageId, invitationCode: invitation.invitationCode, direction: "outbound", status: "sent",
-      commandId, templateId: command.templateId, templateVersion: command.templateVersion, stage: command.stage, body: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID ? WHATSAPP_FALLBACK_TEXT : undefined, createdAt: attemptAt
+      messageType: "template", correlationStatus: "matched", commandId, templateId: command.templateId,
+      templateVersion: command.templateVersion, stage: command.stage, createdAt: attemptAt,
+      persistedAt: attemptAt, timestampSource: "processing"
       }
     });
     if (finalization.outcome === "reconciliation_required") {
@@ -309,17 +429,30 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
     log({ metric: "WHATSAPP_RSVP_WORKER_OUTCOME", commandId, invitationCode: invitation.invitationCode, templateId: command.templateId, effect, wamid: result.messageId, retryCount: command.retryCount + 1, receiveCount: currentReceiveCount, outcome: finalization.outcome === "replayed" ? "finalization_replayed" : "sent" });
     return false;
   } catch (error) {
-    await reconcile(
-      dependencies.repository,
-      invitation.invitationCode,
-      commandId,
-      `WhatsApp provider accepted the message but local persistence failed: ${error instanceof Error ? error.message : String(error)}`,
-      attemptAt,
-      log,
-      undefined,
-      effect,
-      expectedFlowStatus
-    );
+    try {
+      await reconcile(
+        dependencies.repository,
+        invitation.invitationCode,
+        commandId,
+        `WhatsApp provider accepted the message but local persistence failed: ${error instanceof Error ? error.message : String(error)}`,
+        attemptAt,
+        log,
+        undefined,
+        effect,
+        expectedFlowStatus,
+        result.messageId
+      );
+    } catch {
+      // Meta accepted the send. A local outage must not turn this record into an SQS retry and
+      // risk a duplicate guest message; the in-flight command will reconcile when storage returns.
+      log({
+        metric: "WHATSAPP_RSVP_WORKER_FINALIZATION_UNRECORDED",
+        commandId,
+        invitationCode: invitation.invitationCode,
+        messageId: result.messageId,
+        outcome: "reconciliation_required"
+      });
+    }
     return false;
   }
 }
@@ -328,7 +461,20 @@ export function createWhatsappRsvpWorker(dependencies: WhatsappRsvpWorkerDepende
   return async (event: SQSEvent) => {
     const batchItemFailures: { itemIdentifier: string }[] = [];
     for (const record of event.Records) {
-      if (await processRecord(record, dependencies)) batchItemFailures.push({ itemIdentifier: record.messageId });
+      try {
+        if (await processRecord(record, dependencies)) {
+          batchItemFailures.push({ itemIdentifier: record.messageId });
+        }
+      } catch (error) {
+        const log = dependencies.log ?? ((entry: Record<string, unknown>) => console.info(JSON.stringify(entry)));
+        log({
+          metric: "WHATSAPP_RSVP_WORKER_RECORD_FAILURE",
+          messageId: record.messageId,
+          outcome: "retryable_failure",
+          errorName: error instanceof Error ? error.name : "UnknownError"
+        });
+        batchItemFailures.push({ itemIdentifier: record.messageId });
+      }
     }
     return { batchItemFailures };
   };

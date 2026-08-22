@@ -10,6 +10,7 @@ import {
   WhatsappCommandItemSchema,
   WhatsappMessageInputSchema,
   WhatsappMessageItemSchema,
+  WhatsappWebhookMarkerSchema,
   parseStoredWhatsappItem
 } from "../src/services/dynamodb/whatsapp-items";
 
@@ -129,7 +130,7 @@ describe("WhatsApp item schemas", () => {
         { PK: `WHATSAPP_MESSAGE#${WAMID}`, SK: "MESSAGE", status: "delivered" },
         "WhatsApp message"
       )
-    ).toThrow(/invitationCode/);
+    ).toThrow(/messageId/);
   });
 
   it("accepts a stored record written before the optional fields existed", () => {
@@ -150,5 +151,64 @@ describe("WhatsApp item schemas", () => {
 
     expect(parsed.retryCount).toBe(0);
     expect(parsed.providerMessageId).toBeUndefined();
+  });
+
+  it("normalizes legacy message metadata without rewriting the stored record", () => {
+    const parsed = parseStoredWhatsappItem(
+      WhatsappMessageItemSchema,
+      {
+        ...({
+          messageId: WAMID,
+          invitationCode: "SW2748",
+          direction: "inbound",
+          status: "received",
+          body: "legacy text",
+          createdAt: NOW
+        }),
+        PK: `WHATSAPP_MESSAGE#${WAMID}`,
+        SK: "MESSAGE",
+        entityType: "WhatsappMessage"
+      },
+      "WhatsApp message"
+    );
+
+    expect(parsed).toMatchObject({
+      messageType: "text",
+      correlationStatus: "matched",
+      persistedAt: NOW,
+      timestampSource: "processing"
+    });
+  });
+
+  it("counts retained text in Unicode code points", () => {
+    const base = {
+      messageId: WAMID,
+      invitationCode: "SW2748",
+      direction: "inbound",
+      status: "received",
+      createdAt: NOW
+    } as const;
+
+    expect(WhatsappMessageInputSchema.safeParse({
+      ...base,
+      body: "😀".repeat(4096)
+    }).success).toBe(true);
+    expect(WhatsappMessageInputSchema.safeParse({
+      ...base,
+      body: "😀".repeat(4097)
+    }).success).toBe(false);
+  });
+
+  it("accepts legacy webhook markers without a retry disposition", () => {
+    const marker = parseStoredWhatsappItem(
+      WhatsappWebhookMarkerSchema,
+      {
+        PK: "WEBHOOK#whatsapp#event-1",
+        SK: "EVENT",
+        processingStatus: "failed"
+      },
+      "WhatsApp webhook marker"
+    );
+    expect(marker.retryDisposition).toBeUndefined();
   });
 });

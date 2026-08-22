@@ -247,7 +247,11 @@ export class WhatsappCloudApiClient {
     }
   }
 
-  async sendText(input: { to: string; text: { body: string } }, context: { requestId: string }) {
+  async sendText<T>(
+    input: { to: string; text: { body: string } },
+    context: { requestId: string },
+    onAccepted: (result: { messageId: string; recipientWaId?: string }) => Promise<T>
+  ): Promise<T> {
     const validated = WhatsappSendTextInputSchema.parse(input);
     const phoneNumberId = WhatsappPhoneNumberIdSchema.parse(this.getPhoneNumberId().trim());
     const accessToken = (await this.getAccessToken()).trim();
@@ -255,6 +259,7 @@ export class WhatsappCloudApiClient {
     const url = `${GRAPH_API_BASE_URL}/${WHATSAPP_GRAPH_API_VERSION}/${encodeURIComponent(phoneNumberId)}/messages`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    let accepted: { messageId: string; recipientWaId?: string } | undefined;
     try {
       const response = await this.fetchImpl(url, {
         method: "POST",
@@ -270,7 +275,7 @@ export class WhatsappCloudApiClient {
       }
       const success = WhatsappSuccessResponseSchema.safeParse(parsed);
       if (!success.success) throw new WhatsappApiError("WhatsApp returned an invalid text response.", "invalid_response", response.status, false);
-      return { messageId: success.data.messages[0].id, recipientWaId: success.data.contacts?.[0]?.wa_id };
+      accepted = { messageId: success.data.messages[0].id, recipientWaId: success.data.contacts?.[0]?.wa_id };
     } catch (error) {
       if (error instanceof WhatsappApiError) throw error;
       if (error instanceof AppError) throw error;
@@ -279,5 +284,9 @@ export class WhatsappCloudApiClient {
       clearTimeout(timeout);
       console.info(JSON.stringify({ metric: "WHATSAPP_TEXT_REQUEST", requestId: context.requestId }));
     }
+    // Persistence is a required part of the application text-send boundary. Keeping this callback
+    // outside the provider-error catch prevents a DynamoDB failure from being misclassified as a
+    // transport failure whose delivery outcome is unknown.
+    return onAccepted(accepted!);
   }
 }

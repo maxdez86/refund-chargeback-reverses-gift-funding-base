@@ -16,9 +16,21 @@ import { isConditionalTransactionCancellation } from "../services/dynamodb/trans
 import { WhatsappRsvpSendService } from "../services/whatsapp/rsvp-send-service";
 import type { WhatsappCommandInput } from "../services/dynamodb/whatsapp-items";
 import { whatsappPhoneDigits, whatsappPhonesMatch } from "./whatsapp-phone-match";
+import { normalizeWhatsappTimestamp } from "./whatsapp-timestamp";
 
 export const WHATSAPP_FALLBACK_TEXT = "Ops! 😅 Como sou um assistente virtual novato, por enquanto só consigo ajudar com as confirmações de presença.\n\nPara qualquer outra dúvida, recadinho ou informação, por favor, envie um e-mail para casamento@brimax.life. A Brida e o Max vão adorar responder você por lá! 🤍";
 export const WHATSAPP_FALLBACK_TEMPLATE_ID = "__whatsapp_fallback_text__";
+
+export class WhatsappStatusMessageMissingError extends AppError {
+  constructor() {
+    super(
+      "WhatsApp status arrived before its message was persisted.",
+      503,
+      "WHATSAPP_STATUS_MESSAGE_MISSING"
+    );
+    this.name = "WhatsappStatusMessageMissingError";
+  }
+}
 
 function logWhatsappRsvp(entry: Record<string, unknown>) {
   console.info(JSON.stringify(entry));
@@ -291,10 +303,25 @@ export class WhatsappRsvpService {
         await this.repository.markWebhookEventProcessed("whatsapp", event.eventId, { status: "processed" });
         return { outcome: "ignored", reason: "missing_message" };
       }
-      const applied = await this.repository.updateWhatsappMessage(event.messageId, { status: event.status, statusUpdatedAt: new Date().toISOString(), providerErrorCode: event.errors[0]?.code, providerErrorTitle: event.errors[0]?.title, providerErrorCategory: event.type === "status_failed" ? "provider" : undefined });
-      if (applied.applied && event.type === "status_failed") {
+      const processedAt = new Date().toISOString();
+      const statusTime = normalizeWhatsappTimestamp(event.timestamp, processedAt);
+      const statusApplication = await this.repository.applyWhatsappMessageStatus(event.messageId, {
+        status: event.status,
+        statusUpdatedAt: statusTime.timestamp,
+        statusTimestampSource: statusTime.source,
+        updatedAt: processedAt,
+        providerErrorCode: event.errors[0]?.code,
+        providerErrorTitle: event.errors[0]?.title,
+        providerErrorCategory: event.type === "status_failed" ? "provider" : undefined
+      });
+      if (
+        (statusApplication === "applied" || statusApplication === "already_applied") &&
+        event.type === "status_failed"
+      ) {
         const message = await this.repository.getWhatsappMessage(event.messageId);
-        const invitation = message ? await this.repository.getInvitationByCode(message.invitationCode) : null;
+        const invitation = message?.invitationCode
+          ? await this.repository.getInvitationByCode(message.invitationCode)
+          : null;
         const currentStatus = invitation?.whatsappFlowStatus;
         if (invitation && currentStatus && canTransition(currentStatus, "failed")) {
           await this.repository.updateWhatsappFlow(invitation.invitationCode, {
@@ -304,11 +331,11 @@ export class WhatsappRsvpService {
           }, transitionCondition(currentStatus));
         }
       }
-      await this.repository.markWebhookEventProcessed("whatsapp", event.eventId, { status: "processed" });
-      if (!applied.applied) {
+      if (statusApplication === "missing") {
         logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: event.eventId, messageId: event.messageId, outcome: "unmapped" });
-        return { outcome: "ignored", reason: "unknown_message" };
+        throw new WhatsappStatusMessageMissingError();
       }
+      await this.repository.markWebhookEventProcessed("whatsapp", event.eventId, { status: "processed" });
       logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: event.eventId, messageId: event.messageId, outcome: "matched" });
       return { outcome: "processed" };
     }
@@ -334,48 +361,95 @@ export class WhatsappRsvpService {
           return { outcome: "duplicate" };
         }
       }
-      const outbound = replyContextMessageId ? await this.repository.getWhatsappMessage(replyContextMessageId) : undefined;
-      let invitation = outbound ? await this.repository.getInvitationByCode(String(outbound.invitationCode)) : null;
-      let invitationCode = outbound ? String(outbound.invitationCode) : undefined;
-      if (!outbound && senderWaId && "getInvitationsByWhatsappPhone" in this.repository) {
+      const referencedMessage = replyContextMessageId
+        ? await this.repository.getWhatsappMessage(replyContextMessageId)
+        : undefined;
+      // Older stored records and several compatibility callers predate the direction field. They
+      // remain valid reply-context anchors unless explicitly known to be inbound.
+      const outbound = referencedMessage && referencedMessage.direction !== "inbound"
+        ? referencedMessage
+        : undefined;
+      let invitation = outbound?.invitationCode
+        ? await this.repository.getInvitationByCode(outbound.invitationCode)
+        : null;
+      let invitationCode = outbound?.invitationCode;
+      let correlationStatus: "matched" | "ambiguous_sender" | "unmatched_sender" | "sender_mismatch" | "unknown_invitation" = "unmatched_sender";
+
+      if (outbound && !invitation) {
+        correlationStatus = "unknown_invitation";
+      } else if (outbound && invitation) {
+        correlationStatus = !senderWaId
+          ? "unmatched_sender"
+          : invitation.phoneNumber && whatsappPhonesMatch(senderWaId, invitation.phoneNumber)
+            ? "matched"
+            : "sender_mismatch";
+      } else if (senderWaId && "getInvitationsByWhatsappPhone" in this.repository) {
         // Several invitations may legitimately share one number, so the ambiguity check below stays.
         const codes = new Set(await this.repository.getInvitationsByWhatsappPhone(whatsappPhoneDigits(senderWaId)));
         if (codes.size === 1) {
           invitationCode = [...codes][0];
           invitation = await this.repository.getInvitationByCode(invitationCode);
+          correlationStatus = !invitation
+            ? "unknown_invitation"
+            : invitation.phoneNumber && whatsappPhonesMatch(senderWaId, invitation.phoneNumber)
+              ? "matched"
+              : "sender_mismatch";
         }
         if (codes.size > 1) {
-          logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: incoming.eventId, messageId: incoming.messageId, outcome: "ambiguous" });
-          await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed", failureReason: "ambiguous_sender_phone" });
-          return { outcome: "ignored", reason: "unknown_message" };
+          correlationStatus = "ambiguous_sender";
+          invitation = null;
+          invitationCode = undefined;
         }
       }
-      if (!outbound) {
-        if (invitation && senderWaId && !whatsappPhonesMatch(senderWaId, invitation.phoneNumber)) {
-          await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed" });
-          return { outcome: "ignored", reason: "wrong_sender" };
-        }
-        if (!invitation || !invitationCode) {
-          logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: incoming.eventId, messageId: incoming.messageId, outcome: "unmapped" });
-          await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed" });
-          return { outcome: "ignored", reason: "unknown_message" };
-        }
-      }
-      invitationCode = invitationCode ?? String(outbound?.invitationCode);
-      invitation = invitation ?? await this.repository.getInvitationByCode(invitationCode);
-      if (!invitation) {
-        logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: incoming.eventId, messageId: incoming.messageId, outcome: "unknown_invitation" });
-        await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed" });
-        return { outcome: "ignored", reason: "unknown_invitation" };
-      }
-      if (!invitation.phoneNumber || (senderWaId && !whatsappPhonesMatch(senderWaId, invitation.phoneNumber))) {
-        logWhatsappRsvp({ metric: "WHATSAPP_RSVP_INBOUND_CORRELATION", requestId, eventId: incoming.eventId, messageId: incoming.messageId, outcome: "wrong_sender", invitationCode });
-        await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, { status: "processed" });
-        return { outcome: "ignored", reason: "wrong_sender" };
-      }
-      const currentStatus = invitation.whatsappFlowStatus ?? "idle";
       const now = new Date().toISOString();
-      await this.repository.putWhatsappMessage({ messageId: incoming.messageId, invitationCode, direction: "inbound", status: "received", senderPhone: senderWaId, replyContextMessageId, buttonId: incoming.type === "button_reply" ? incoming.buttonId : undefined, body: incoming.type === "text" ? incoming.body : undefined, createdAt: now });
+      const eventTime = normalizeWhatsappTimestamp(incoming.timestamp, now);
+      const normalizedSender = senderWaId ? whatsappPhoneDigits(senderWaId) : undefined;
+      const matched = correlationStatus === "matched" && Boolean(invitation && invitationCode);
+      await this.repository.putWhatsappMessage({
+        messageId: incoming.messageId,
+        invitationCode: matched ? invitationCode : undefined,
+        direction: "inbound",
+        messageType: incoming.type,
+        correlationStatus: matched ? "matched" : correlationStatus,
+        status: "received",
+        senderPhone: !matched && normalizedSender && WhatsappRecipientSchema.safeParse(normalizedSender).success
+          ? normalizedSender
+          : undefined,
+        replyContextMessageId,
+        buttonId: incoming.type === "button_reply" ? incoming.buttonId : undefined,
+        body: incoming.type === "text" ? incoming.body : undefined,
+        createdAt: eventTime.timestamp,
+        persistedAt: now,
+        timestampSource: eventTime.source
+      });
+
+      if (!matched || !invitation || !invitationCode) {
+        const outcome = correlationStatus === "ambiguous_sender" ? "ambiguous"
+          : correlationStatus === "sender_mismatch" ? "wrong_sender"
+            : correlationStatus === "unknown_invitation" ? "unknown_invitation"
+              : "unmapped";
+        logWhatsappRsvp({
+          metric: "WHATSAPP_RSVP_INBOUND_CORRELATION",
+          requestId,
+          eventId: incoming.eventId,
+          messageId: incoming.messageId,
+          outcome
+        });
+        await this.repository.markWebhookEventProcessed("whatsapp", incoming.eventId, {
+          status: "processed",
+          failureReason: correlationStatus
+        });
+        return {
+          outcome: "ignored",
+          reason: correlationStatus === "sender_mismatch"
+            ? "wrong_sender"
+            : correlationStatus === "unknown_invitation"
+              ? "unknown_invitation"
+              : "unknown_message"
+        };
+      }
+
+      const currentStatus = invitation.whatsappFlowStatus ?? "idle";
       const buttonId = incoming.type === "button_reply" ? incoming.buttonId : undefined;
       const decision = decideWhatsappRsvpBranch(invitation, buttonId, currentStatus);
       logWhatsappRsvp({

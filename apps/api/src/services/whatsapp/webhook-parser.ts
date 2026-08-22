@@ -220,7 +220,9 @@ function normalizeMessage(
   if (messageType === "text") {
     const text = isRecord(item.text) ? item.text : undefined;
     const body = stringValue(text?.body);
-    if (body === undefined) return invalidItem(envelope, value, source, "malformed_text", item);
+    if (body === undefined || body.length === 0 || Array.from(body).length > 4096) {
+      return invalidItem(envelope, value, source, "malformed_text", item);
+    }
     return { ...common, type: "text", body };
   }
 

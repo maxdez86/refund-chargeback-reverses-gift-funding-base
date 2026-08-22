@@ -48,7 +48,7 @@ describe("WhatsApp RSVP log hygiene and correlation", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const repository = {
       recordWebhookEventIfNew: async () => true,
-      updateWhatsappMessage: async () => ({ applied: false }),
+      applyWhatsappMessageStatus: async () => "applied" as const,
       markWebhookEventProcessed: async () => undefined
     };
     const service = new WhatsappRsvpService(repository as never, {
@@ -71,6 +71,34 @@ describe("WhatsApp RSVP log hygiene and correlation", () => {
     expect(serialized).toContain("wamid.1");
     expect(serialized).not.toContain("5511963656517");
     expect(serialized).not.toContain("private message body");
+    info.mockRestore();
+  });
+
+  it("does not log retained unassigned sender or body data", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const repository = {
+      recordWebhookEventIfNew: async () => true,
+      getWhatsappMessage: async () => undefined,
+      getInvitationsByWhatsappPhone: async () => [],
+      putWhatsappMessage: async () => ({ created: true }),
+      markWebhookEventProcessed: async () => undefined
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await service.handleWebhookEvent({
+      type: "text",
+      eventId: "whatsapp:message:wamid.private-unassigned",
+      messageId: "wamid.private-unassigned",
+      senderWaId: "5511963656517",
+      body: "private retained message body",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "request-unassigned");
+
+    const serialized = info.mock.calls.map(([line]) => String(line)).join("\n");
+    expect(serialized).toContain("wamid.private-unassigned");
+    expect(serialized).not.toContain("5511963656517");
+    expect(serialized).not.toContain("private retained message body");
     info.mockRestore();
   });
 });

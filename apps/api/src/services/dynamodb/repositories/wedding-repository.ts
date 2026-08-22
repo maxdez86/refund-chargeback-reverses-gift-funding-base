@@ -18,7 +18,9 @@ import type {
   RsvpSubmissionRequest,
   RsvpStatus,
   WhatsappFlowStage,
-  WhatsappFlowStatus
+  WhatsappFlowStatus,
+  WhatsappMessageStatus,
+  WhatsappTimestampSource
 } from "@brimax/contracts";
 import { dynamoDbDocumentClient } from "../client";
 import {
@@ -32,6 +34,8 @@ import {
   whatsappConversationCommandIndex,
   whatsappConversationIndexPrefix,
   whatsappConversationMessageIndex,
+  whatsappUnassignedMessageIndex,
+  whatsappUnassignedMessageIndexPrefix,
   whatsappMessageKeys,
   whatsappInvitationPhoneLookupKeys
 } from "../key-builder";
@@ -77,7 +81,6 @@ export const WHATSAPP_WEBHOOK_EVENT_TTL_SECONDS = 30 * 86_400;
  * compile error.
  */
 export type WhatsappCommandUpdate = Partial<Omit<WhatsappCommandInput, "commandId">>;
-export type WhatsappMessageUpdate = Partial<Omit<WhatsappMessageInput, "messageId">>;
 export type WhatsappFlowUpdate = Partial<{
   whatsappFlowStatus: WhatsappFlowStatus;
   whatsappFlowStage: WhatsappFlowStage;
@@ -148,6 +151,39 @@ export const WHATSAPP_QUEUE_VISIBILITY_TIMEOUT_MS = 120_000;
 export const WHATSAPP_RECLAIM_MARGIN_MS = 30_000;
 
 type WhatsappConversationEntry = WhatsappMessageItem | WhatsappCommandItem;
+
+export type WhatsappStatusApplicationResult = "applied" | "already_applied" | "ignored" | "missing";
+
+export type WhatsappStatusApplicationInput = {
+  status: Exclude<WhatsappMessageStatus, "received">;
+  statusUpdatedAt: string;
+  statusTimestampSource: WhatsappTimestampSource;
+  updatedAt: string;
+  providerErrorCode?: number | string;
+  providerErrorTitle?: string;
+  providerErrorCategory?: string;
+};
+
+const WHATSAPP_STATUS_RANK: Record<WhatsappMessageStatus, number> = {
+  received: -1,
+  sent: 0,
+  failed: 1,
+  delivered: 2,
+  read: 3
+};
+
+function shouldApplyWhatsappStatus(
+  current: WhatsappMessageItem,
+  incoming: WhatsappStatusApplicationInput
+) {
+  if (current.direction !== "outbound") return false;
+  const currentRank = WHATSAPP_STATUS_RANK[current.status];
+  const incomingRank = WHATSAPP_STATUS_RANK[incoming.status];
+  if (incomingRank < currentRank) return false;
+  if (!current.statusUpdatedAt) return true;
+  if (incoming.statusUpdatedAt > current.statusUpdatedAt) return true;
+  return incoming.statusUpdatedAt === current.statusUpdatedAt && incomingRank > currentRank;
+}
 
 type GuestMessageFeedItem = ItemRecord & {
   entityType: "GuestMessage";
@@ -552,14 +588,15 @@ export class WeddingRepository {
         UpdateExpression:
           "SET #status = :sending, #startedAt = :now, #lastAttemptAt = :now, " +
           "#lastAttemptReceiveCount = :receiveCount, #updatedAt = :now, " +
-          "#retryCount = if_not_exists(#retryCount, :zero) + :one",
+          "#retryCount = if_not_exists(#retryCount, :zero) + :one, #sendAttemptDisposition = :notStarted",
         ExpressionAttributeNames: {
           "#status": "status",
           "#startedAt": "startedAt",
           "#lastAttemptAt": "lastAttemptAt",
           "#lastAttemptReceiveCount": "lastAttemptReceiveCount",
           "#updatedAt": "updatedAt",
-          "#retryCount": "retryCount"
+          "#retryCount": "retryCount",
+          "#sendAttemptDisposition": "sendAttemptDisposition"
         },
         ExpressionAttributeValues: {
           ":sending": "sending",
@@ -570,13 +607,43 @@ export class WeddingRepository {
           ":reclaimBefore": input.reclaimBefore,
           ":zero": 0,
           ":one": 1,
+          ":notStarted": "not_started",
+          ":safeToRetry": "safe_to_retry",
           ":maxAttempts": WHATSAPP_WORKER_MAX_ATTEMPTS
         },
         ConditionExpression:
           "((#status = :queued OR #status = :queueUnavailable) AND " +
           "(attribute_not_exists(#retryCount) OR #retryCount < :maxAttempts)) OR " +
-          "(#status = :sending AND #startedAt < :reclaimBefore AND " +
+          "(#status = :sending AND (#sendAttemptDisposition = :safeToRetry OR #sendAttemptDisposition = :notStarted) AND #startedAt < :reclaimBefore AND " +
           "(attribute_not_exists(#retryCount) OR #retryCount < :maxAttempts))"
+      }));
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) return false;
+      throw error;
+    }
+  }
+
+  async markWhatsappCommandAttemptInFlight(commandId: string, attemptAt: string): Promise<boolean> {
+    try {
+      await this.documentClient.send(new UpdateCommand({
+        TableName: this.tableName,
+        Key: whatsappCommandKeys(commandId),
+        UpdateExpression: "SET #disposition = :inFlight, #updatedAt = :attemptAt",
+        ExpressionAttributeNames: {
+          "#status": "status",
+          "#disposition": "sendAttemptDisposition",
+          "#lastAttemptAt": "lastAttemptAt",
+          "#updatedAt": "updatedAt"
+        },
+        ExpressionAttributeValues: {
+          ":sending": "sending",
+          ":notStarted": "not_started",
+          ":inFlight": "in_flight",
+          ":attemptAt": attemptAt
+        },
+        ConditionExpression:
+          "#status = :sending AND #disposition = :notStarted AND #lastAttemptAt = :attemptAt"
       }));
       return true;
     } catch (error) {
@@ -610,17 +677,16 @@ export class WeddingRepository {
    */
   async putWhatsappMessage(input: WhatsappMessageInput): Promise<{ created: boolean }> {
     const message = WhatsappMessageInputSchema.parse(input);
+    const conversationIndex = message.correlationStatus === "matched" && message.invitationCode
+      ? whatsappConversationMessageIndex(message.invitationCode, message.createdAt, message.messageId)
+      : whatsappUnassignedMessageIndex(message.createdAt, message.messageId);
     try {
       await this.documentClient.send(new PutCommand({
         TableName: this.tableName,
         Item: {
           ...message,
           ...whatsappMessageKeys(message.messageId),
-          ...whatsappConversationMessageIndex(
-            message.invitationCode,
-            message.createdAt,
-            message.messageId
-          ),
+          ...conversationIndex,
           entityType: "WhatsappMessage"
         },
         ConditionExpression: "attribute_not_exists(PK)"
@@ -643,6 +709,12 @@ export class WeddingRepository {
     input: WhatsappAcceptedSendFinalizationInput
   ): Promise<WhatsappAcceptedSendFinalizationResult> {
     const message = WhatsappMessageInputSchema.parse(input.message);
+    if (
+      message.correlationStatus !== "matched" ||
+      message.invitationCode !== input.invitationCode
+    ) {
+      return { outcome: "reconciliation_required", reason: "Accepted send message is not matched to its command invitation." };
+    }
     const command = await this.getWhatsappCommand(input.commandId);
     if (!command || command.invitationCode !== input.invitationCode) {
       return { outcome: "reconciliation_required", reason: "Accepted send command is missing or mismatched." };
@@ -665,13 +737,14 @@ export class WeddingRepository {
       TableName: this.tableName,
       Key: whatsappCommandKeys(input.commandId),
       UpdateExpression:
-        "SET #status = :sent, #providerMessageId = :providerMessageId, #sentAt = :sentAt, #updatedAt = :updatedAt, #reconciliationStatus = :none",
+        "SET #status = :sent, #providerMessageId = :providerMessageId, #sentAt = :sentAt, #updatedAt = :updatedAt, #reconciliationStatus = :none REMOVE #sendAttemptDisposition",
       ExpressionAttributeNames: {
         "#status": "status",
         "#providerMessageId": "providerMessageId",
         "#sentAt": "sentAt",
         "#updatedAt": "updatedAt",
-        "#reconciliationStatus": "reconciliationStatus"
+        "#reconciliationStatus": "reconciliationStatus",
+        "#sendAttemptDisposition": "sendAttemptDisposition"
       },
       ExpressionAttributeValues: {
         ":sent": "sent",
@@ -794,31 +867,86 @@ export class WeddingRepository {
     return parseStoredWhatsappItem(WhatsappMessageItemSchema, result.Item, "WhatsApp message");
   }
 
-  /**
-   * Guarded by `attribute_exists(PK)`: an unguarded UpdateItem on a missing key would CREATE a
-   * stub holding only the status, which then blocks the real conditional put of the message
-   * record. A status webhook that outruns the send returns `{ applied: false }` instead.
-   */
-  async updateWhatsappMessage(
+  /** Applies provider status evidence monotonically without creating phantom message records. */
+  async applyWhatsappMessageStatus(
     messageId: string,
-    values: WhatsappMessageUpdate
-  ): Promise<{ applied: boolean }> {
-    const expression = buildSetExpression(values);
-    if (!expression) return { applied: false };
-    try {
-      await this.documentClient.send(new UpdateCommand({
-        TableName: this.tableName,
-        Key: whatsappMessageKeys(messageId),
-        ...expression,
-        ConditionExpression: "attribute_exists(PK)"
-      }));
-      return { applied: true };
-    } catch (error) {
-      if (error instanceof ConditionalCheckFailedException) {
-        return { applied: false };
+    input: WhatsappStatusApplicationInput
+  ): Promise<WhatsappStatusApplicationResult> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.getWhatsappMessage(messageId);
+      if (!current) return "missing";
+      if (
+        current.direction === "outbound" &&
+        current.status === input.status &&
+        current.statusUpdatedAt === input.statusUpdatedAt
+      ) return "already_applied";
+      if (!shouldApplyWhatsappStatus(current, input)) return "ignored";
+
+      const names: Record<string, string> = {
+        "#status": "status",
+        "#statusUpdatedAt": "statusUpdatedAt",
+        "#statusTimestampSource": "statusTimestampSource",
+        "#updatedAt": "updatedAt"
+      };
+      const values: Record<string, unknown> = {
+        ":status": input.status,
+        ":statusUpdatedAt": input.statusUpdatedAt,
+        ":statusTimestampSource": input.statusTimestampSource,
+        ":updatedAt": input.updatedAt,
+        ":expectedStatus": current.status
+      };
+      const setParts = [
+        "#status = :status",
+        "#statusUpdatedAt = :statusUpdatedAt",
+        "#statusTimestampSource = :statusTimestampSource",
+        "#updatedAt = :updatedAt"
+      ];
+      const removeParts: string[] = [];
+      if (input.status === "failed") {
+        for (const [field, value] of Object.entries({
+          providerErrorCode: input.providerErrorCode,
+          providerErrorTitle: input.providerErrorTitle,
+          providerErrorCategory: input.providerErrorCategory
+        })) {
+          if (value === undefined) continue;
+          const name = `#${field}`;
+          const token = `:${field}`;
+          names[name] = field;
+          values[token] = value;
+          setParts.push(`${name} = ${token}`);
+        }
+      } else {
+        for (const field of ["providerErrorCode", "providerErrorTitle", "providerErrorCategory"]) {
+          const name = `#${field}`;
+          names[name] = field;
+          removeParts.push(name);
+        }
       }
-      throw error;
+      if (current.statusUpdatedAt) values[":expectedStatusUpdatedAt"] = current.statusUpdatedAt;
+
+      try {
+        await this.documentClient.send(new UpdateCommand({
+          TableName: this.tableName,
+          Key: whatsappMessageKeys(messageId),
+          UpdateExpression: `SET ${setParts.join(", ")}${removeParts.length ? ` REMOVE ${removeParts.join(", ")}` : ""}`,
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+          ConditionExpression:
+            "attribute_exists(PK) AND #status = :expectedStatus AND " +
+            (current.statusUpdatedAt
+              ? "#statusUpdatedAt = :expectedStatusUpdatedAt"
+              : "attribute_not_exists(#statusUpdatedAt)")
+        }));
+        return "applied";
+      } catch (error) {
+        if (!(error instanceof ConditionalCheckFailedException)) throw error;
+      }
     }
+    throw new AppError(
+      "WhatsApp message status changed concurrently too many times.",
+      503,
+      "WHATSAPP_STATUS_CONFLICT"
+    );
   }
 
   /**
@@ -848,6 +976,26 @@ export class WeddingRepository {
 
     return {
       entries,
+      nextCursor: encodeCursor(result.LastEvaluatedKey as ItemRecord | undefined)
+    };
+  }
+
+  /** Internal operational view; unassigned content is never exposed by invitation APIs. */
+  async listUnassignedWhatsappMessages(options: { limit?: number; cursor?: string | null } = {}) {
+    const index = whatsappUnassignedMessageIndexPrefix();
+    const result = await this.documentClient.send(new QueryCommand({
+      TableName: this.tableName,
+      IndexName: GSI1_NAME,
+      KeyConditionExpression: "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)",
+      ExpressionAttributeValues: { ":gsi1pk": index.GSI1PK, ":prefix": index.GSI1SK },
+      ExclusiveStartKey: decodeCursor(options.cursor, "unassigned WhatsApp messages"),
+      Limit: options.limit ?? 50
+    }));
+
+    return {
+      entries: ((result.Items ?? []) as ItemRecord[]).map((item) =>
+        parseStoredWhatsappItem(WhatsappMessageItemSchema, item, "WhatsApp message")
+      ),
       nextCursor: encodeCursor(result.LastEvaluatedKey as ItemRecord | undefined)
     };
   }
@@ -1057,7 +1205,12 @@ export class WeddingRepository {
   async markWebhookEventProcessed(
     provider: string,
     eventId: string,
-    outcome: { status: "processed" | "failed"; failureReason?: string; rejectionReason?: string }
+    outcome: {
+      status: "processed" | "failed";
+      failureReason?: string;
+      rejectionReason?: string;
+      retryDisposition?: "retryable" | "terminal";
+    }
   ) {
     const updatedAt = new Date().toISOString();
     const expression = buildSetExpression({
@@ -1066,7 +1219,8 @@ export class WeddingRepository {
       updatedAt,
       failureReason: outcome.failureReason,
       processingOutcome: outcome.rejectionReason ? "rejected" : "processed",
-      rejectionReason: outcome.rejectionReason
+      rejectionReason: outcome.rejectionReason,
+      retryDisposition: outcome.retryDisposition
     });
     try {
       await this.documentClient.send(

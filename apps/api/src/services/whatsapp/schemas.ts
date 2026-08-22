@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { WhatsappTemplatePurposeSchema as SharedWhatsappTemplatePurposeSchema } from "@brimax/contracts";
+import {
+  WhatsappTemplatePurposeSchema as SharedWhatsappTemplatePurposeSchema,
+  WhatsappTextBodySchema
+} from "@brimax/contracts";
 
 export const WHATSAPP_GRAPH_API_VERSION = "v25.0";
 
@@ -146,7 +149,7 @@ export const WhatsappSendTemplateInputSchema = z.object({
 
 export const WhatsappSendTextInputSchema = z.object({
   to: WhatsappRecipientSchema,
-  text: z.object({ body: z.string().min(1).max(4096) })
+  text: z.object({ body: WhatsappTextBodySchema })
 });
 
 export type WhatsappSendTemplateInput = z.infer<typeof WhatsappSendTemplateInputSchema>;

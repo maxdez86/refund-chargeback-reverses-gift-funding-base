@@ -321,6 +321,27 @@ describe("parseWhatsappWebhook", () => {
     ]);
   });
 
+  it("accepts the exact text limit and sanitizes empty or oversized text events", () => {
+    const result = accepted(envelope({
+      messages: [
+        message({ id: "max", type: "text", text: { body: "x".repeat(4096) } }),
+        message({ id: "unicode-max", type: "text", text: { body: "😀".repeat(4096) } }),
+        message({ id: "spaces", type: "text", text: { body: "   " } }),
+        message({ id: "empty", type: "text", text: { body: "" } }),
+        message({ id: "oversized", type: "text", text: { body: "x".repeat(4097) } }),
+        message({ id: "unicode-oversized", type: "text", text: { body: "😀".repeat(4097) } })
+      ]
+    }));
+
+    expect(result.events[0]).toMatchObject({ type: "text", body: "x".repeat(4096) });
+    expect(result.events[1]).toMatchObject({ type: "text", body: "😀".repeat(4096) });
+    expect(result.events[2]).toMatchObject({ type: "text", body: "   " });
+    expect(result.events[3]).toMatchObject({ type: "invalid_payload", reason: "malformed_text" });
+    expect(result.events[4]).toMatchObject({ type: "invalid_payload", reason: "malformed_text" });
+    expect(result.events[5]).toMatchObject({ type: "invalid_payload", reason: "malformed_text" });
+    expect(JSON.stringify(result.events.slice(3))).not.toContain("x".repeat(100));
+  });
+
   it.each([
     ["non-object", null, "not_object"],
     ["wrong object", { object: "page", entry: [{}] }, "wrong_object"],

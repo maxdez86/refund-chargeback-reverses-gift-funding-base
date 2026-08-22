@@ -186,7 +186,10 @@ export function createWhatsappWebhookHandler(dependencies: WhatsappWebhookDepend
     );
     if (!accepted) {
       const existing = await dependencies.repository.getWebhookEvent("whatsapp", parsedEvent.eventId);
-      if (existing?.processingStatus !== "pending" && existing?.processingStatus !== "failed") continue;
+      if (
+        existing?.retryDisposition === "terminal" ||
+        (existing?.processingStatus !== "pending" && existing?.processingStatus !== "failed")
+      ) continue;
     }
     await dependencies.enqueue(parsedEvent.eventId);
     console.info(JSON.stringify({ metric: "WHATSAPP_WEBHOOK_QUEUED", requestId: event.requestContext.requestId, eventType: parsedEvent.type, duplicate: !accepted }));

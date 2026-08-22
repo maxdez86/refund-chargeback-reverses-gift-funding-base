@@ -11,6 +11,8 @@ import {
   whatsappConversationCommandIndex,
   whatsappConversationIndexPrefix,
   whatsappConversationMessageIndex,
+  whatsappUnassignedMessageIndex,
+  whatsappUnassignedMessageIndexPrefix,
   whatsappMessageKeys,
   whatsappTemplateActivationKeys,
   whatsappTemplateActiveKeys,
@@ -109,6 +111,14 @@ describe("DynamoDB key builders", () => {
     });
     expect(whatsappConversationIndexPrefix("SW2748")).toEqual({
       GSI1PK: "INVITATION#SW2748",
+      GSI1SK: "WHATSAPP#"
+    });
+    expect(whatsappUnassignedMessageIndex("2026-08-17T12:00:00.000Z", WAMID)).toEqual({
+      GSI1PK: "WHATSAPP#UNASSIGNED",
+      GSI1SK: `WHATSAPP#2026-08-17T12:00:00.000Z#MESSAGE#${WAMID}`
+    });
+    expect(whatsappUnassignedMessageIndexPrefix()).toEqual({
+      GSI1PK: "WHATSAPP#UNASSIGNED",
       GSI1SK: "WHATSAPP#"
     });
   });

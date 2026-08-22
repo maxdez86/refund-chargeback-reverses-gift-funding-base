@@ -40,8 +40,27 @@ function setup(overrides: Record<string, unknown> = {}) {
     claimWhatsappCommand: vi.fn().mockImplementation(async (_id, input) => {
       if (state.command.status === "sent" || state.command.status === "failed" || state.command.status === "reconciliation_required") return false;
       const old = state.command.status === "sending";
-      if (old && (!state.command.startedAt || state.command.startedAt >= input.reclaimBefore || state.command.retryCount >= 5)) return false;
-      state.command = { ...state.command, status: "sending", startedAt: input.now, retryCount: (state.command.retryCount ?? 0) + 1 };
+      if (old && (
+        !["safe_to_retry", "not_started"].includes(String(state.command.sendAttemptDisposition)) ||
+        !state.command.startedAt || state.command.startedAt >= input.reclaimBefore || state.command.retryCount >= 5
+      )) return false;
+      state.command = {
+        ...state.command,
+        status: "sending",
+        sendAttemptDisposition: "not_started",
+        startedAt: input.now,
+        lastAttemptAt: input.now,
+        retryCount: (state.command.retryCount ?? 0) + 1
+      };
+      return true;
+    }),
+    markWhatsappCommandAttemptInFlight: vi.fn().mockImplementation(async (_id, attemptAt) => {
+      if (
+        state.command.status !== "sending" ||
+        state.command.sendAttemptDisposition !== "not_started" ||
+        state.command.lastAttemptAt !== attemptAt
+      ) return false;
+      state.command = { ...state.command, sendAttemptDisposition: "in_flight" };
       return true;
     }),
     updateWhatsappCommand: vi.fn().mockImplementation(async (_id, values) => { state.command = { ...state.command, ...values }; }),
@@ -65,7 +84,11 @@ function setup(overrides: Record<string, unknown> = {}) {
     })
   };
   const sender = { send: vi.fn().mockResolvedValue({ messageId: "wamid.1" }) };
-  const textSender = { sendText: vi.fn().mockResolvedValue({ messageId: "wamid.text" }) };
+  const textSender = {
+    sendText: vi.fn().mockImplementation(async (_input, _context, onAccepted) =>
+      onAccepted({ messageId: "wamid.text" })
+    )
+  };
   const templates = { getVersion: vi.fn().mockResolvedValue(definition) };
   const logs: Record<string, unknown>[] = [];
   const handler = createWhatsappRsvpWorker({
@@ -170,15 +193,32 @@ describe("WhatsApp RSVP worker", () => {
   });
 
   it("reclaims stale sending commands and increments the attempt", async () => {
-    const { handler, sender, state } = setup({ command: command({ status: "sending", retryCount: 1, startedAt: "2026-08-17T11:55:00.000Z" }) });
+    const { handler, sender, state } = setup({ command: command({ status: "sending", sendAttemptDisposition: "safe_to_retry", retryCount: 1, startedAt: "2026-08-17T11:55:00.000Z" }) });
     await handler({ Records: [record()] } as unknown as SQSEvent);
     expect(sender.send).toHaveBeenCalledTimes(1);
     expect(state.command.retryCount).toBe(2);
   });
 
+  it("reclaims a stale not-started attempt because Meta was never called", async () => {
+    const { handler, sender, state } = setup({
+      command: command({
+        status: "sending",
+        sendAttemptDisposition: "not_started",
+        retryCount: 1,
+        startedAt: "2026-08-17T11:55:00.000Z"
+      }),
+      invitation: { ...invitation, whatsappFlowStatus: "sending" as const }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).toHaveBeenCalledOnce();
+    expect(state.command.status).toBe("sent");
+  });
+
   it("reclaims a sending command when its queue visibility has just expired", async () => {
     const { handler, sender, state } = setup({
-      command: command({ status: "sending", retryCount: 1, startedAt: "2026-08-17T11:58:00.000Z" })
+      command: command({ status: "sending", sendAttemptDisposition: "safe_to_retry", retryCount: 1, startedAt: "2026-08-17T11:58:00.000Z" })
     });
     await handler({ Records: [record()] } as unknown as SQSEvent);
     expect(sender.send).toHaveBeenCalledTimes(1);
@@ -187,7 +227,7 @@ describe("WhatsApp RSVP worker", () => {
 
   it("retries a reclaimed opener already in sending state", async () => {
     const { handler, sender, state } = setup({
-      command: command({ status: "sending", retryCount: 1, startedAt: "2026-08-17T11:55:00.000Z" }),
+      command: command({ status: "sending", sendAttemptDisposition: "safe_to_retry", retryCount: 1, startedAt: "2026-08-17T11:55:00.000Z" }),
       invitation: { ...invitation, whatsappFlowStatus: "sending" as const }
     });
     await handler({ Records: [record()] } as unknown as SQSEvent);
@@ -196,11 +236,31 @@ describe("WhatsApp RSVP worker", () => {
   });
 
   it("reconciles a stale command after the attempt budget is exhausted", async () => {
-    const { handler, sender, state, logs } = setup({ command: command({ status: "sending", retryCount: 5, startedAt: "2026-08-17T11:55:00.000Z" }) });
+    const { handler, sender, state, logs } = setup({
+      command: command({ status: "sending", sendAttemptDisposition: "safe_to_retry", retryCount: 5, startedAt: "2026-08-17T11:55:00.000Z" }),
+      invitation: { ...invitation, whatsappFlowStatus: "sending" as const }
+    });
     await handler({ Records: [record()] } as unknown as SQSEvent);
     expect(sender.send).not.toHaveBeenCalled();
     expect(state.command.status).toBe("reconciliation_required");
     expect(logs.some((entry) => entry.metric === "WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED")).toBe(true);
+  });
+
+  it("reconciles a stale in-flight attempt instead of resending it", async () => {
+    const { handler, sender, state } = setup({
+      command: command({
+        status: "sending",
+        sendAttemptDisposition: "in_flight",
+        retryCount: 1,
+        startedAt: "2026-08-17T11:55:00.000Z"
+      }),
+      invitation: { ...invitation, whatsappFlowStatus: "sending" as const }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(state.command.status).toBe("reconciliation_required");
   });
 
   it("returns only retryable records as batch failures", async () => {
@@ -212,6 +272,58 @@ describe("WhatsApp RSVP worker", () => {
     expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: "bad" }] });
     // The second copy is the same command and is correctly suppressed by the claim guard.
     expect(sender.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates an unexpected record failure and continues the batch", async () => {
+    const { handler, repository, sender, state } = setup();
+    repository.getWhatsappCommand
+      .mockRejectedValueOnce(new Error("DynamoDB unavailable"))
+      .mockImplementation(async () => state.command);
+
+    const result = await handler({
+      Records: [record("command-bad", "bad"), record("command-1", "good")]
+    } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: "bad" }] });
+    expect(sender.send).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a pre-provider template lookup failure safe to retry", async () => {
+    const { handler, templates, sender, state } = setup();
+    templates.getVersion.mockRejectedValue(new Error("DynamoDB unavailable"));
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [{ itemIdentifier: "message-1" }] });
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(state.command).toMatchObject({
+      status: "sending",
+      sendAttemptDisposition: "not_started"
+    });
+  });
+
+  it("marks the exact attempt in flight before invoking Meta", async () => {
+    const { handler, repository, sender } = setup();
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(repository.markWhatsappCommandAttemptInFlight).toHaveBeenCalledWith(
+      "command-1",
+      "2026-08-17T12:00:00.000Z"
+    );
+    expect(repository.markWhatsappCommandAttemptInFlight.mock.invocationCallOrder[0]).toBeLessThan(
+      sender.send.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it("does not call Meta after losing exact attempt ownership", async () => {
+    const { handler, repository, sender } = setup();
+    repository.markWhatsappCommandAttemptInFlight.mockResolvedValue(false);
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [] });
+    expect(sender.send).not.toHaveBeenCalled();
   });
 
   it("fails a permanent provider rejection without redrive", async () => {
@@ -291,7 +403,11 @@ describe("WhatsApp RSVP worker", () => {
     expect(sender.send).not.toHaveBeenCalled();
     expect(textSender.sendText).toHaveBeenCalledWith(
       expect.objectContaining({ text: { body: WHATSAPP_FALLBACK_TEXT } }),
-      expect.anything()
+      expect.anything(),
+      expect.any(Function)
+    );
+    expect(repository.markWhatsappCommandAttemptInFlight.mock.invocationCallOrder[0]).toBeLessThan(
+      textSender.sendText.mock.invocationCallOrder[0]!
     );
     expect(state.command.status).toBe("sent");
     expect(state.invitation.whatsappFlowStatus).toBe("message_sent");
@@ -300,5 +416,22 @@ describe("WhatsApp RSVP worker", () => {
     expect(repository.finalizeAcceptedWhatsappSend).toHaveBeenCalledWith(expect.objectContaining({
       effect: "preserve", fallback: true, now: "2026-08-17T12:00:00.000Z"
     }));
+  });
+
+  it("never retries fallback text after provider acceptance when finalization fails", async () => {
+    const { handler, textSender, repository, state } = setup({
+      command: command({ templateId: WHATSAPP_FALLBACK_TEMPLATE_ID, stage: "fallback", preserveFlowStatus: true }),
+      invitation: { ...invitation, whatsappFlowStatus: "message_sent" as const }
+    });
+    repository.finalizeAcceptedWhatsappSend.mockRejectedValueOnce(new Error("DynamoDB unavailable"));
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [] });
+    expect(textSender.sendText).toHaveBeenCalledOnce();
+    expect(state.command).toMatchObject({
+      status: "reconciliation_required",
+      providerMessageId: "wamid.text"
+    });
   });
 });

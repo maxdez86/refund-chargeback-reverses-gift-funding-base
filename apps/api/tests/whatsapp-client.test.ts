@@ -15,9 +15,49 @@ it("sends a text message through the WhatsApp Cloud API", async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
     messaging_product: "whatsapp", messages: [{ id: "wamid.text" }]
   }), { status: 200, headers: { "content-type": "application/json" } }));
-  const result = await client(fetchMock).sendText({ to: baseInput.to, text: { body: "hello" } }, { requestId: "text-request" });
+  const persist = vi.fn(async (accepted) => accepted);
+  const result = await client(fetchMock).sendText(
+    { to: baseInput.to, text: { body: "hello" } },
+    { requestId: "text-request" },
+    persist
+  );
   expect(result.messageId).toBe("wamid.text");
+  expect(persist).toHaveBeenCalledWith({ messageId: "wamid.text", recipientWaId: undefined });
   expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).type).toBe("text");
+});
+
+it("does not misclassify accepted-send persistence failures as provider failures", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    messaging_product: "whatsapp", messages: [{ id: "wamid.text-accepted" }]
+  }), { status: 200 }));
+  const persistenceFailure = new Error("DynamoDB unavailable");
+
+  await expect(client(fetchMock).sendText(
+    { to: baseInput.to, text: { body: "hello" } },
+    { requestId: "text-persistence-failure" },
+    async () => { throw persistenceFailure; }
+  )).rejects.toBe(persistenceFailure);
+
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it("validates outbound text by Unicode code points", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    messaging_product: "whatsapp", messages: [{ id: "wamid.unicode" }]
+  }), { status: 200 }));
+  const api = client(fetchMock);
+
+  await expect(api.sendText(
+    { to: baseInput.to, text: { body: "😀".repeat(4096) } },
+    { requestId: "unicode-max" },
+    async (accepted) => accepted
+  )).resolves.toMatchObject({ messageId: "wamid.unicode" });
+  await expect(api.sendText(
+    { to: baseInput.to, text: { body: "😀".repeat(4097) } },
+    { requestId: "unicode-oversized" },
+    async (accepted) => accepted
+  )).rejects.toBeDefined();
+  expect(fetchMock).toHaveBeenCalledOnce();
 });
 
 function client(fetchImpl: typeof fetch, overrides: { token?: string; phoneId?: string; timeoutMs?: number } = {}) {

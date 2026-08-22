@@ -515,8 +515,11 @@ describe("WeddingRepository WhatsApp command records", () => {
 
     const command = send.mock.calls[0][0] as UpdateCommand;
     expect(command.input.UpdateExpression).toContain("#retryCount = if_not_exists(#retryCount, :zero) + :one");
+    expect(command.input.UpdateExpression).toContain("#sendAttemptDisposition = :notStarted");
     expect(command.input.ConditionExpression).toContain("#status = :sending");
     expect(command.input.ConditionExpression).toContain("#startedAt < :reclaimBefore");
+    expect(command.input.ConditionExpression).toContain("#sendAttemptDisposition = :safeToRetry");
+    expect(command.input.ConditionExpression).toContain("#sendAttemptDisposition = :notStarted");
     expect(command.input.ExpressionAttributeNames).toMatchObject({
       "#status": "status",
       "#lastAttemptAt": "lastAttemptAt",
@@ -526,6 +529,22 @@ describe("WeddingRepository WhatsApp command records", () => {
       ":receiveCount": 2,
       ":reclaimBefore": "2026-08-17T11:57:30.000Z",
       ":maxAttempts": 5
+    });
+  });
+
+  it("marks only the exact claimed attempt in flight", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).markWhatsappCommandAttemptInFlight("cmd-1", NOW);
+
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.UpdateExpression).toContain("#disposition = :inFlight");
+    expect(command.input.ConditionExpression).toBe(
+      "#status = :sending AND #disposition = :notStarted AND #lastAttemptAt = :attemptAt"
+    );
+    expect(command.input.ExpressionAttributeValues).toMatchObject({
+      ":notStarted": "not_started",
+      ":inFlight": "in_flight",
+      ":attemptAt": NOW
     });
   });
 });
@@ -670,39 +689,182 @@ describe("WeddingRepository WhatsApp message records", () => {
     });
   });
 
-  it("guards a status update so it cannot conjure a phantom message record", async () => {
-    // An unguarded UpdateItem on a missing key CREATES the item. A status webhook that outruns
-    // the send would leave a stub holding only the status, which then blocks the real
-    // conditional put of the message record.
+  it("indexes unassigned messages outside every invitation conversation", async () => {
     const send = vi.fn().mockResolvedValue({});
 
-    const result = await repositoryWith(send).updateWhatsappMessage(WAMID, {
-      status: "delivered",
-      statusUpdatedAt: NOW
+    await repositoryWith(send).putWhatsappMessage({
+      messageId: "wamid.unassigned",
+      direction: "inbound",
+      messageType: "text",
+      correlationStatus: "ambiguous_sender",
+      status: "received",
+      senderPhone: "5511963656517",
+      body: "private retained text",
+      createdAt: NOW,
+      persistedAt: NOW,
+      timestampSource: "provider"
     });
 
-    const command = send.mock.calls[0][0] as UpdateCommand;
-    expect(result).toEqual({ applied: true });
-    expect(command.input.ConditionExpression).toBe("attribute_exists(PK)");
+    const command = send.mock.calls[0][0] as PutCommand;
+    expect(command.input.Item).toMatchObject({
+      PK: "WHATSAPP_MESSAGE#wamid.unassigned",
+      GSI1PK: "WHATSAPP#UNASSIGNED",
+      GSI1SK: `WHATSAPP#${NOW}#MESSAGE#wamid.unassigned`,
+      correlationStatus: "ambiguous_sender"
+    });
+    expect(command.input.Item).not.toHaveProperty("invitationCode");
+  });
+
+  it("applies a status with an optimistic guard so it cannot conjure a phantom record", async () => {
+    const send = vi.fn()
+      .mockResolvedValueOnce({ Item: storedMessage })
+      .mockResolvedValueOnce({});
+
+    const result = await repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: "delivered",
+      statusUpdatedAt: NOW,
+      statusTimestampSource: "provider",
+      updatedAt: NOW
+    });
+
+    const command = send.mock.calls[1][0] as UpdateCommand;
+    expect(result).toBe("applied");
+    expect(command.input.ConditionExpression).toContain("attribute_exists(PK)");
+    expect(command.input.ConditionExpression).toContain("#status = :expectedStatus");
+    expect(command.input.ConditionExpression).toContain("attribute_not_exists(#statusUpdatedAt)");
     expect(command.input.Key).toEqual({ PK: `WHATSAPP_MESSAGE#${WAMID}`, SK: "MESSAGE" });
-    expect(command.input.UpdateExpression).toBe("SET #n0 = :v0, #n1 = :v1");
+    expect(command.input.UpdateExpression).toContain("#status = :status");
   });
 
-  it("reports a status update for an unknown message as not applied", async () => {
-    const send = vi.fn().mockRejectedValue(conditionalFailure());
-
-    await expect(
-      repositoryWith(send).updateWhatsappMessage(WAMID, { status: "delivered" })
-    ).resolves.toEqual({ applied: false });
-  });
-
-  it("sends nothing when every message value is undefined", async () => {
+  it("reports a status update for an unknown message as missing", async () => {
     const send = vi.fn().mockResolvedValue({});
 
-    const result = await repositoryWith(send).updateWhatsappMessage(WAMID, { status: undefined });
+    await expect(
+      repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+        status: "delivered",
+        statusUpdatedAt: NOW,
+        statusTimestampSource: "provider",
+        updatedAt: NOW
+      })
+    ).resolves.toBe("missing");
+    expect(send).toHaveBeenCalledOnce();
+  });
 
-    expect(send).not.toHaveBeenCalled();
-    expect(result).toEqual({ applied: false });
+  it("reports identical persisted status evidence as already applied", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Item: { ...storedMessage, status: "failed", statusUpdatedAt: NOW }
+    });
+
+    await expect(repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: "failed",
+      statusUpdatedAt: NOW,
+      statusTimestampSource: "provider",
+      updatedAt: "2026-08-17T12:01:00.000Z",
+      providerErrorCategory: "provider"
+    })).resolves.toBe("already_applied");
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a sent status that would regress a delivered message", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Item: { ...storedMessage, status: "delivered", statusUpdatedAt: NOW }
+    });
+
+    const result = await repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: "sent",
+      statusUpdatedAt: "2026-08-17T12:01:00.000Z",
+      statusTimestampSource: "provider",
+      updatedAt: "2026-08-17T12:01:01.000Z"
+    });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(result).toBe("ignored");
+  });
+
+  it.each([
+    ["delivered", "read", "2026-08-17T11:59:59.000Z"],
+    ["read", "failed", "2026-08-17T12:01:00.000Z"],
+    ["delivered", "failed", "2026-08-17T12:01:00.000Z"]
+  ] as const)("ignores %s -> %s when chronology or evidence would regress", async (currentStatus, incomingStatus, incomingAt) => {
+    const send = vi.fn().mockResolvedValue({
+      Item: { ...storedMessage, status: currentStatus, statusUpdatedAt: NOW }
+    });
+
+    await expect(repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: incomingStatus,
+      statusUpdatedAt: incomingAt,
+      statusTimestampSource: "provider",
+      updatedAt: "2026-08-17T12:02:00.000Z"
+    })).resolves.toBe("ignored");
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["sent", "delivered", NOW],
+    ["sent", "failed", "2026-08-17T12:01:00.000Z"],
+    ["failed", "delivered", "2026-08-17T12:01:00.000Z"],
+    ["delivered", "read", "2026-08-17T12:01:00.000Z"]
+  ] as const)("applies progressive status %s -> %s", async (currentStatus, incomingStatus, incomingAt) => {
+    const send = vi.fn()
+      .mockResolvedValueOnce({
+        Item: {
+          ...storedMessage,
+          status: currentStatus,
+          statusUpdatedAt: NOW,
+          providerErrorCategory: currentStatus === "failed" ? "provider" : undefined
+        }
+      })
+      .mockResolvedValueOnce({});
+
+    await expect(repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: incomingStatus,
+      statusUpdatedAt: incomingAt,
+      statusTimestampSource: "provider",
+      updatedAt: "2026-08-17T12:02:00.000Z",
+      providerErrorCategory: incomingStatus === "failed" ? "provider" : undefined
+    })).resolves.toBe("applied");
+    const update = send.mock.calls[1][0] as UpdateCommand;
+    if (currentStatus === "failed") {
+      expect(update.input.UpdateExpression).toContain("REMOVE #providerErrorCode");
+    }
+  });
+
+  it("uses status evidence for legacy records without statusUpdatedAt", async () => {
+    const ignored = vi.fn().mockResolvedValue({
+      Item: { ...storedMessage, status: "read" }
+    });
+    await expect(repositoryWith(ignored).applyWhatsappMessageStatus(WAMID, {
+      status: "sent",
+      statusUpdatedAt: NOW,
+      statusTimestampSource: "provider",
+      updatedAt: NOW
+    })).resolves.toBe("ignored");
+
+    const applied = vi.fn()
+      .mockResolvedValueOnce({ Item: { ...storedMessage, status: "sent" } })
+      .mockResolvedValueOnce({});
+    await expect(repositoryWith(applied).applyWhatsappMessageStatus(WAMID, {
+      status: "delivered",
+      statusUpdatedAt: NOW,
+      statusTimestampSource: "provider",
+      updatedAt: NOW
+    })).resolves.toBe("applied");
+  });
+
+  it("re-reads after a concurrent status update before applying stronger evidence", async () => {
+    const send = vi.fn()
+      .mockResolvedValueOnce({ Item: { ...storedMessage, status: "sent", statusUpdatedAt: NOW } })
+      .mockRejectedValueOnce(conditionalFailure())
+      .mockResolvedValueOnce({ Item: { ...storedMessage, status: "delivered", statusUpdatedAt: NOW } })
+      .mockResolvedValueOnce({});
+
+    await expect(repositoryWith(send).applyWhatsappMessageStatus(WAMID, {
+      status: "read",
+      statusUpdatedAt: "2026-08-17T12:01:00.000Z",
+      statusTimestampSource: "provider",
+      updatedAt: "2026-08-17T12:01:01.000Z"
+    })).resolves.toBe("applied");
+    expect(send).toHaveBeenCalledTimes(4);
   });
 
   it("reads a message consistently and returns undefined for a miss", async () => {
@@ -819,5 +981,38 @@ describe("WeddingRepository WhatsApp conversation listing", () => {
     await expect(
       repositoryWith(send).listWhatsappConversation("SW2748", { cursor: "!!!not-base64-json" })
     ).rejects.toMatchObject({ name: "AppError", statusCode: 400 });
+  });
+
+  it("queries unassigned messages without mixing them into invitation timelines", async () => {
+    const unassigned = {
+      messageId: "wamid.unassigned",
+      direction: "inbound",
+      messageType: "text",
+      correlationStatus: "unmatched_sender",
+      status: "received",
+      senderPhone: "5511963656517",
+      body: "private retained text",
+      createdAt: NOW,
+      persistedAt: NOW,
+      timestampSource: "provider",
+      PK: "WHATSAPP_MESSAGE#wamid.unassigned",
+      SK: "MESSAGE",
+      GSI1PK: "WHATSAPP#UNASSIGNED",
+      GSI1SK: `WHATSAPP#${NOW}#MESSAGE#wamid.unassigned`,
+      entityType: "WhatsappMessage"
+    };
+    const send = vi.fn().mockResolvedValue({ Items: [unassigned] });
+
+    const result = await repositoryWith(send).listUnassignedWhatsappMessages({ limit: 10 });
+
+    const command = send.mock.calls[0][0] as QueryCommand;
+    expect(command.input.ExpressionAttributeValues).toEqual({
+      ":gsi1pk": "WHATSAPP#UNASSIGNED",
+      ":prefix": "WHATSAPP#"
+    });
+    expect(result.entries[0]).toMatchObject({
+      messageId: "wamid.unassigned",
+      correlationStatus: "unmatched_sender"
+    });
   });
 });

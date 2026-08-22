@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WhatsappTextBodySchema } from "./whatsapp-rsvp";
 
 export const AsaasWebhookResponseSchema = z.object({
   ok: z.literal(true),
@@ -72,7 +73,7 @@ const WhatsappListReplyEventSchema = WhatsappMessageEventBaseSchema.extend({
 
 const WhatsappTextEventSchema = WhatsappMessageEventBaseSchema.extend({
   type: z.literal("text"),
-  body: z.string()
+  body: WhatsappTextBodySchema
 });
 
 const WhatsappAudioEventSchema = WhatsappMessageEventBaseSchema.extend({

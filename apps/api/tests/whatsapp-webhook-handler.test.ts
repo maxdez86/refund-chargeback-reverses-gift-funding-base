@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getAppSecretMock = vi.fn();
 let handler: typeof import("../src/functions/whatsapp-webhook/handler").handler;
+let createWhatsappWebhookHandler: typeof import("../src/functions/whatsapp-webhook/handler").createWhatsappWebhookHandler;
 
 vi.mock("../src/services/secrets-manager/app-secrets", () => ({
   getAppSecret: (...args: unknown[]) => getAppSecretMock(...args)
@@ -42,7 +43,7 @@ function payload(value: Record<string, unknown> = { messages: [] }) {
 
 describe("WhatsApp webhook handler", () => {
   beforeAll(async () => {
-    ({ handler } = await import("../src/functions/whatsapp-webhook/handler"));
+    ({ handler, createWhatsappWebhookHandler } = await import("../src/functions/whatsapp-webhook/handler"));
   });
 
   beforeEach(() => {
@@ -204,6 +205,36 @@ describe("WhatsApp webhook handler", () => {
     } finally {
       infoLog.mockRestore();
     }
+  });
+
+  it("does not requeue a terminal failed webhook marker", async () => {
+    const enqueue = vi.fn();
+    const terminalHandler = createWhatsappWebhookHandler({
+      repository: {
+        recordWebhookEventIfNew: vi.fn().mockResolvedValue(false),
+        getWebhookEvent: vi.fn().mockResolvedValue({
+          processingStatus: "failed",
+          retryDisposition: "terminal"
+        })
+      } as never,
+      enqueue
+    });
+    const body = payload({
+      messages: [{
+        id: "wamid.terminal",
+        from: "5511963656517",
+        type: "text",
+        text: { body: "private body" }
+      }]
+    });
+
+    const response = await terminalHandler(buildEvent("POST", {
+      body,
+      headers: { "x-hub-signature-256": signature(body) }
+    }));
+
+    expect(response.statusCode).toBe(200);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("acknowledges malformed child items but rejects an invalid foundational envelope", async () => {

@@ -49,6 +49,21 @@ export const WhatsappCommandStatusSchema = z.enum([
 ]);
 export const WhatsappCommandEffectSchema = z.enum(["opener", "preserve", "complete_on_send"]);
 export const WhatsappMessageDirectionSchema = z.enum(["inbound", "outbound"]);
+export const WhatsappMessageTypeSchema = z.enum([
+  "text", "template", "button_reply", "list_reply", "audio", "image", "video",
+  "document", "sticker", "location", "contacts", "reaction", "unsupported_message", "unknown"
+]);
+export const WhatsappMessageCorrelationStatusSchema = z.enum([
+  "matched", "ambiguous_sender", "unmatched_sender", "sender_mismatch", "unknown_invitation"
+]);
+export const WhatsappTimestampSourceSchema = z.enum(["provider", "processing"]);
+export const WhatsappTextBodySchema = z.string().min(1).refine(
+  (value) => Array.from(value).length <= 4096,
+  "WhatsApp text must contain at most 4096 Unicode code points."
+);
+export const WhatsappSendAttemptDispositionSchema = z.enum([
+  "not_started", "in_flight", "safe_to_retry"
+]);
 // "received" is ours for inbound messages; the rest mirror Meta's status webhook values.
 export const WhatsappMessageStatusSchema = z.enum([
   "received", "sent", "delivered", "read", "failed"
@@ -195,6 +210,10 @@ export type WhatsappFlowState = z.infer<typeof WhatsappFlowStateSchema>;
 export type WhatsappCommandStatus = z.infer<typeof WhatsappCommandStatusSchema>;
 export type WhatsappCommandEffect = z.infer<typeof WhatsappCommandEffectSchema>;
 export type WhatsappMessageDirection = z.infer<typeof WhatsappMessageDirectionSchema>;
+export type WhatsappMessageType = z.infer<typeof WhatsappMessageTypeSchema>;
+export type WhatsappMessageCorrelationStatus = z.infer<typeof WhatsappMessageCorrelationStatusSchema>;
+export type WhatsappTimestampSource = z.infer<typeof WhatsappTimestampSourceSchema>;
+export type WhatsappSendAttemptDisposition = z.infer<typeof WhatsappSendAttemptDispositionSchema>;
 export type WhatsappMessageStatus = z.infer<typeof WhatsappMessageStatusSchema>;
 export type WhatsappReconciliationStatus = z.infer<typeof WhatsappReconciliationStatusSchema>;
 export type WhatsappPhoneSource = z.infer<typeof WhatsappPhoneSourceSchema>;

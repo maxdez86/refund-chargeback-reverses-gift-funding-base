@@ -53,10 +53,35 @@ After queueing, poll for `queued`, `sending`, `sent`, `failed`, or
 queue metrics, and the DLQ. Provider acceptance is not proof of delivery; use
 the stored `wamid` and Meta status events for reconciliation.
 
+Managed provider acceptance is finalized into the command, outbound message,
+and invitation state together. Free-text sends require this persistence step
+at the transport boundary. A claim starts as `not_started` and changes to
+`in_flight` only for that exact attempt immediately before calling Meta. A
+stale `not_started` attempt can retry safely; an explicit retryable provider
+rejection becomes `safe_to_retry`. A stale `in_flight` or legacy `sending`
+command has an unknown provider outcome and must be reconciled, never resent
+automatically. Before deployment, verify that production has no actively
+`sending` commands.
+
+Status webhook time comes from Meta when it has the expected ten-digit
+Unix-seconds shape. Delivery evidence is monotonic (`sent < failed < delivered
+< read`) and older events cannot move its timestamp backwards. If a failed
+status is stored but its invitation transition fails, an identical retry
+retries that side effect before completing the webhook marker. A status that
+outruns local message finalization retries four times. If the message is still
+missing on attempt five, the 30-day marker remains `failed` with terminal retry
+disposition and the queue item is acknowledged; duplicate deliveries do not
+restart it.
+
 The `Brimax/Payments` RSVP metrics cover send outcomes, worker outcomes,
-reconciliation, branch matching, inbound correlation, queue depth/age, worker
-errors/throttles, and DLQ depth. Queue and DLQ alarms are automatic. During the
-campaign, manually check stuck conversations:
+reconciliation, branch matching, inbound correlation, command-queue depth/age,
+worker errors/throttles, and command DLQ depth. The RSVP command queue and DLQ
+alarms are automatic; the separate WhatsApp webhook queue and its terminal
+markers have no dedicated alarm. During the campaign, manually check stuck
+conversations and terminal webhook markers. When inspecting a marker, project
+only its event/provider identifiers, `processingStatus`, `retryDisposition`,
+`attemptCount`, timestamps, and `failureReason`; never retrieve or print
+`replayEvent` because it can contain message bodies and sender identifiers.
 
 ```bash
 BRIMAX_ENV_FILE=.env.dev pnpm whatsapp:rsvp list --status send_queued --invitation-code SW2748
@@ -161,4 +186,8 @@ is the final option after checking whether Meta may already have accepted
 messages. Sent WhatsApp messages cannot be recalled.
 
 Conversation records are retained indefinitely as part of the wedding record.
-Review privacy expectations after the wedding before changing retention.
+Matched records avoid redundant phone storage. Unassigned messages retain the
+body and sender ID for controlled correlation but never enter an invitation
+timeline or current HTTP response. Review privacy and deletion expectations
+after the wedding before changing retention; do not add a TTL without an
+explicit policy and deletion plan.
