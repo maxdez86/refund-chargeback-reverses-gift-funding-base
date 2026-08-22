@@ -6,6 +6,7 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  Music,
   Users,
   type LucideIcon
 } from "lucide-react";
@@ -23,6 +24,9 @@ export type SidebarCounts = {
   invitations: number;
   guests: number;
   gifts: number;
+  unreadMessages: number;
+  guestMessages: number;
+  musicSuggestions: number;
 };
 
 export function buildNavItems(counts: SidebarCounts): NavItem[] {
@@ -31,8 +35,9 @@ export function buildNavItems(counts: SidebarCounts): NavItem[] {
     { section: "convites", label: "Convites", icon: CircleCheck, count: counts.invitations },
     { section: "convidados", label: "Convidados", icon: Users, count: counts.guests },
     { section: "presentes", label: "Presentes", icon: Gift, count: counts.gifts },
-    { section: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { section: "recados", label: "Recados", icon: Mail }
+    { section: "whatsapp", label: "WhatsApp", icon: MessageCircle, count: counts.unreadMessages },
+    { section: "recados", label: "Recados", icon: Mail, count: counts.guestMessages },
+    { section: "musicas", label: "Músicas", icon: Music, count: counts.musicSuggestions }
   ];
 }
 

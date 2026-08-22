@@ -1,6 +1,7 @@
 import {
   RsvpSubmissionRequestSchema,
   RsvpSubmissionResponseSchema,
+  musicSuggestionFromNote,
   type GuestProfile,
   type RsvpSubmissionRequest
 } from "@brimax/contracts";
@@ -30,8 +31,6 @@ type RsvpSubmitResult = {
   response: ReturnType<typeof RsvpSubmissionResponseSchema.parse>;
   notificationSent: boolean;
 };
-
-const MUSIC_NOTE_PREFIX = "Música sugerida: ";
 
 export class RsvpService {
   constructor(
@@ -304,7 +303,7 @@ function buildRsvpNotificationText(
   updatedAt: string,
   counts: ReturnType<typeof deriveRsvpCounts>
 ) {
-  const musicSuggestion = getMusicSuggestionForDisplay(request.note);
+  const musicSuggestion = musicSuggestionFromNote(request.note);
   const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestLines = invitation?.guests.map((guest) => {
     const response = responsesByGuestId.get(guest.guestId);
@@ -343,7 +342,7 @@ function buildRsvpNotificationHtml(
   updatedAt: string,
   counts: ReturnType<typeof deriveRsvpCounts>
 ) {
-  const musicSuggestion = getMusicSuggestionForDisplay(request.note);
+  const musicSuggestion = musicSuggestionFromNote(request.note);
   const responsesByGuestId = new Map(request.guestResponses.map((response) => [response.guestId, response]));
   const guestItems =
     invitation?.guests
@@ -376,9 +375,4 @@ function buildRsvpNotificationHtml(
       `<ul style="margin:0 0 16px 20px;padding:0;">${guestItems}</ul>` +
       `<p style="margin:0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml(getEnv().siteLabel)}.</p>`
   );
-}
-
-function getMusicSuggestionForDisplay(note?: string) {
-  if (!note) return undefined;
-  return note.startsWith(MUSIC_NOTE_PREFIX) ? note.slice(MUSIC_NOTE_PREFIX.length) : note;
 }

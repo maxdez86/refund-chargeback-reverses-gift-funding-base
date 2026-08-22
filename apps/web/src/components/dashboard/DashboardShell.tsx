@@ -10,6 +10,7 @@ import {
   routeForSection,
   type DashboardSection
 } from "@/lib/admin-dashboard-route";
+import { toMusicSuggestionRows } from "@/lib/admin-dashboard-model";
 import type { GuestFilter, InviteFilter, MessageFilter, GiftFilter, ChatFilter } from "@/lib/admin-dashboard-model";
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
 import { OverviewScreen } from "@/components/dashboard/screens/OverviewScreen";
@@ -21,6 +22,7 @@ import {
   type GuestActionKind
 } from "@/components/dashboard/screens/GuestDetailScreen";
 import { MessagesScreen } from "@/components/dashboard/screens/MessagesScreen";
+import { MusicScreen } from "@/components/dashboard/screens/MusicScreen";
 import { GiftsScreen } from "@/components/dashboard/screens/GiftsScreen";
 import { WhatsappScreen } from "@/components/dashboard/screens/WhatsappScreen";
 import { GuestActionModal } from "@/components/dashboard/modals/GuestActionModal";
@@ -66,12 +68,15 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const [guestQuery, setGuestQuery] = useState("");
   const [messageFilter, setMessageFilter] = useState<MessageFilter>("Todos");
   const [messageQuery, setMessageQuery] = useState("");
+  // Músicas is search-only: its rows are all suggestions, so there is nothing to filter by.
+  const [musicQuery, setMusicQuery] = useState("");
   const [giftFilter, setGiftFilter] = useState<GiftFilter>("Todos");
   const [giftQuery, setGiftQuery] = useState("");
   const [chatFilter, setChatFilter] = useState<ChatFilter>("Todas");
   const [chatQuery, setChatQuery] = useState("");
 
   const displayName = session.admin.name ?? session.admin.email;
+  const musicSuggestions = toMusicSuggestionRows(state.invitations);
   const invitationBy = (code: string) =>
     state.invitations.find((invitation) => invitation.invitationCode === code);
   const guestBy = (guestId: string) => guestRows.find((guest) => guest.guestId === guestId);
@@ -219,6 +224,17 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
           />
         );
 
+      case "musicas":
+        return (
+          <MusicScreen
+            suggestions={musicSuggestions}
+            invitationCount={state.invitations.length}
+            query={musicQuery}
+            onQueryChange={setMusicQuery}
+            onOpenInvitation={openInvitation}
+          />
+        );
+
       case "presentes":
         return (
           <GiftsScreen
@@ -267,7 +283,10 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     counts: {
       invitations: state.invitations.length,
       guests: guestRows.length,
-      gifts: state.gifts.length
+      gifts: state.gifts.length,
+      unreadMessages: Object.values(unreadByCode).reduce((sum, count) => sum + count, 0),
+      guestMessages: state.guestMessages.length,
+      musicSuggestions: musicSuggestions.length
     },
     onNavigate: goToSection,
     displayName,

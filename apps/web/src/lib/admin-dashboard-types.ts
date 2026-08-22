@@ -57,6 +57,26 @@ export type AdminRsvpSummary = {
   paid: number;
   /** Attending guests who confirmed they are ≤6. `childSixOrYoungerAttendingCount`. */
   childrenSixOrYounger: number;
+  /**
+   * Free text the guest sent with the RSVP, as stored on the `RSVP#CURRENT` item.
+   * Today the site only ever writes a music suggestion here.
+   */
+  note?: string;
+};
+
+/** One music suggestion, flattened off the invitation that sent it. */
+export type AdminMusicSuggestion = {
+  invitationCode: string;
+  householdName: string;
+  /** The song text, with the `"Música sugerida: "` prefix already stripped. */
+  music: string;
+  /**
+   * `rsvp.updatedAt`. The RSVP item carries no dedicated `suggestedAt`, and the site
+   * submits the suggestion as a second RSVP write, so this is the submission moment —
+   * a later RSVP edit would move it.
+   */
+  suggestedAt: string;
+  rsvpStatus: RsvpStatus;
 };
 
 /** Mirrors `HouseholdInvitation` plus the operational WhatsApp state admins act on. */

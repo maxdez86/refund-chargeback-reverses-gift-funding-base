@@ -36,7 +36,8 @@ const invitations: AdminInvitation[] = [
       submittedBy: "SW2748--guest-01",
       attending: 1,
       paid: 1,
-      childrenSixOrYounger: 0
+      childrenSixOrYounger: 0,
+      note: "Música sugerida: Evidências - Chitãozinho e Xororó"
     },
     guests: [
       {
@@ -98,7 +99,8 @@ const invitations: AdminInvitation[] = [
       submittedBy: "TX6935--guest-01",
       attending: 2,
       paid: 2,
-      childrenSixOrYounger: 0
+      childrenSixOrYounger: 0,
+      note: "Música sugerida: Sozinho - Caetano Veloso"
     },
     guests: [
       {
@@ -161,7 +163,8 @@ const invitations: AdminInvitation[] = [
       // Manuela confirmed "6 anos ou menos"; Bento is a criança who answered "7 anos ou mais",
       // so he keeps a paying seat. The two flags are not the same fact.
       paid: 3,
-      childrenSixOrYounger: 1
+      childrenSixOrYounger: 1,
+      note: "Música sugerida: Anna Júlia - Los Hermanos"
     },
     guests: [
       {
@@ -349,7 +352,8 @@ const invitations: AdminInvitation[] = [
       submittedBy: "MV2093--guest-01",
       attending: 2,
       paid: 2,
-      childrenSixOrYounger: 0
+      childrenSixOrYounger: 0,
+      note: "Trem-Bala - Ana Vilela"
     },
     guests: [
       {
@@ -410,7 +414,8 @@ const invitations: AdminInvitation[] = [
       submittedBy: "RQ7712--guest-01",
       attending: 0,
       paid: 0,
-      childrenSixOrYounger: 0
+      childrenSixOrYounger: 0,
+      note: "Música sugerida: Tempo Perdido - Legião Urbana"
     },
     guests: [
       {

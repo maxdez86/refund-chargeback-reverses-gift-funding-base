@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import { ChevronRight, CircleAlert, Flag, MessageCircle } from "lucide-react";
+import { musicSuggestionFromNote } from "@brimax/contracts";
 import {
   formatDateTimeOfDay,
   formatLongDate,
@@ -196,6 +197,11 @@ export function InviteDetailScreen({
             <dl className="mt-[22px] grid gap-5 sm:grid-cols-[repeat(auto-fit,minmax(180px,1fr))] sm:gap-x-8">
               <Field label="CANAL DA RESPOSTA" value={answerChannel} />
               <Field label="ATUALIZADO EM" value={formatLongDate(invitation.rsvp.updatedAt)} />
+              <Field
+                className="sm:col-span-full"
+                label="MÚSICA SUGERIDA"
+                value={musicSuggestionFromNote(invitation.rsvp.note) ?? "—"}
+              />
             </dl>
           </Panel>
 

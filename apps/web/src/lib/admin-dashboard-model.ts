@@ -1,16 +1,18 @@
-import type {
-  RsvpStatus,
-  WhatsappCommandStatus,
-  WhatsappFlowStage,
-  WhatsappFlowStatus,
-  WhatsappPhoneSource,
-  WhatsappRsvpTemplatePurpose
+import {
+  musicSuggestionFromNote,
+  type RsvpStatus,
+  type WhatsappCommandStatus,
+  type WhatsappFlowStage,
+  type WhatsappFlowStatus,
+  type WhatsappPhoneSource,
+  type WhatsappRsvpTemplatePurpose
 } from "@brimax/contracts";
 import type {
   AdminGift,
   AdminGuest,
   AdminGuestRow,
   AdminInvitation,
+  AdminMusicSuggestion,
   AdminRsvpSummary
 } from "@/lib/admin-dashboard-types";
 
@@ -232,6 +234,37 @@ export function filterGuests(guests: AdminGuestRow[], filter: GuestFilter, query
       matches(needle, guest.guestName, guest.invitationCode, guest.householdName, guest.guestId)
     );
   });
+}
+
+/**
+ * Flattens invitations into one row per music suggestion, newest first.
+ *
+ * The song lives on the invitation's RSVP note, so an invitation contributes at most one
+ * row and only when the guest actually wrote something.
+ */
+export function toMusicSuggestionRows(invitations: AdminInvitation[]): AdminMusicSuggestion[] {
+  return invitations
+    .flatMap((invitation) => {
+      const music = musicSuggestionFromNote(invitation.rsvp.note)?.trim();
+      if (!music) return [];
+      return [
+        {
+          invitationCode: invitation.invitationCode,
+          householdName: invitation.householdName,
+          music,
+          suggestedAt: invitation.rsvp.updatedAt,
+          rsvpStatus: invitation.rsvp.status
+        }
+      ];
+    })
+    .sort((a, b) => b.suggestedAt.localeCompare(a.suggestedAt));
+}
+
+export function filterMusicSuggestions(rows: AdminMusicSuggestion[], query: string) {
+  const needle = query.trim().toLowerCase();
+  return rows.filter((row) =>
+    matches(needle, row.invitationCode, row.householdName, row.music)
+  );
 }
 
 /** Recomputes the invitation RSVP roll-up from its guests, the way the API does on write. */

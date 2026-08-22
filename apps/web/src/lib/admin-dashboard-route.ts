@@ -12,7 +12,8 @@ export type DashboardSection =
   | "convidados"
   | "presentes"
   | "whatsapp"
-  | "recados";
+  | "recados"
+  | "musicas";
 
 export type DashboardRoute =
   | { section: "visao-geral" }
@@ -20,7 +21,8 @@ export type DashboardRoute =
   | { section: "convidados"; guestId?: string }
   | { section: "presentes"; giftId?: string }
   | { section: "whatsapp"; invitationCode?: string }
-  | { section: "recados" };
+  | { section: "recados" }
+  | { section: "musicas" };
 
 export const DEFAULT_ROUTE: DashboardRoute = { section: "visao-geral" };
 
@@ -30,7 +32,8 @@ const SECTIONS: DashboardSection[] = [
   "convidados",
   "presentes",
   "whatsapp",
-  "recados"
+  "recados",
+  "musicas"
 ];
 
 const isSection = (value: string): value is DashboardSection =>

@@ -2,6 +2,15 @@ import { z } from "zod";
 import { PublicHouseholdInvitationSchema, RsvpStatusSchema } from "./guest";
 import { InvitationCodeSchema } from "./invitation-code";
 
+/** Prefix the site puts on the RSVP note when the guest suggests a song. */
+export const MUSIC_NOTE_PREFIX = "Música sugerida: ";
+
+/** The song a guest suggested, or the raw note when it carries no prefix. */
+export function musicSuggestionFromNote(note?: string) {
+  if (!note) return undefined;
+  return note.startsWith(MUSIC_NOTE_PREFIX) ? note.slice(MUSIC_NOTE_PREFIX.length) : note;
+}
+
 export const RsvpGuestAnswerSchema = z.object({
   guestId: z.string().min(1),
   status: RsvpStatusSchema,

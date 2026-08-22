@@ -369,6 +369,78 @@ describe("dashboard screens", () => {
     expect(screen.getAllByText("ESCONDIDO DO SITE")).toHaveLength(1);
   });
 
+  it("lists every music suggestion, newest first, without the site prefix", async () => {
+    await renderShell();
+    await goTo(/Músicas/);
+
+    const rows = within(await screen.findByRole("list", { name: "Músicas sugeridas" })).getAllByRole(
+      "button"
+    );
+    expect(rows.map((row) => row.getAttribute("aria-label")?.slice(0, 20))).toEqual([
+      "Abrir convite SW2748",
+      "Abrir convite TX6935",
+      "Abrir convite HL4120",
+      "Abrir convite RQ7712",
+      "Abrir convite MV2093"
+    ]);
+    expect(screen.getByText("Evidências - Chitãozinho e Xororó")).toBeInTheDocument();
+    // A note typed without the site prefix is shown exactly as the guest wrote it.
+    expect(screen.getByText("Trem-Bala - Ana Vilela")).toBeInTheDocument();
+    // Invitations nobody answered contribute no row.
+    expect(screen.queryByRole("button", { name: /Abrir convite QP8814/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Mostrando 5 de 5 músicas")).toBeInTheDocument();
+  });
+
+  it("searches músicas by song, household name and code", async () => {
+    await renderShell();
+    await goTo(/Músicas/);
+    await screen.findByRole("list", { name: "Músicas sugeridas" });
+
+    const search = screen.getByRole("searchbox", { name: "Buscar músicas" });
+    fireEvent.change(search, { target: { value: "hermanos" } });
+    expect(screen.getByText("Mostrando 1 de 5 músicas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Abrir convite HL4120/ })).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "queiroz" } });
+    expect(screen.getByRole("button", { name: /Abrir convite RQ7712/ })).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "bohemian" } });
+    expect(screen.getByText("Nenhuma música corresponde a esta busca.")).toBeInTheDocument();
+    expect(screen.getByText("Mostrando 0 de 5 músicas")).toBeInTheDocument();
+  });
+
+  it("opens the invitation behind a suggestion", async () => {
+    await renderShell();
+    await goTo(/Músicas/);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Abrir convite HL4120/ }));
+    expect(await screen.findByRole("heading", { name: "Família Tavares" })).toBeInTheDocument();
+  });
+
+  it("shows the suggested song on the invitation RSVP panel, or a dash when there is none", async () => {
+    await renderShell();
+    openHash("#convites/SW2748");
+    expect(await screen.findByText("MÚSICA SUGERIDA")).toBeInTheDocument();
+    expect(screen.getByText("Evidências - Chitãozinho e Xororó")).toBeInTheDocument();
+
+    openHash("#convites/QP8814");
+    await screen.findByRole("heading", { name: "Helena Prado Ribeiro" });
+    const music = screen.getByText("MÚSICA SUGERIDA").closest("div")!;
+    expect(within(music).getByText("—")).toBeInTheDocument();
+  });
+
+  it("counts the music suggestions on the overview", async () => {
+    await renderShell();
+
+    const card = screen.getByRole("button", { name: /MÚSICAS/ });
+    expect(within(card).getByText("5")).toBeInTheDocument();
+    // 5 of the 8 fixture invitations sent a song.
+    expect(within(card).getByText("63% dos convites")).toBeInTheDocument();
+
+    fireEvent.click(card);
+    expect(await screen.findByRole("heading", { name: "Músicas" })).toBeInTheDocument();
+  });
+
   it("edits a gift and re-derives its quotas", async () => {
     await renderShell();
     await goTo(/Presentes/);

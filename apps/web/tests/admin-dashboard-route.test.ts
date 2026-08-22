@@ -36,6 +36,7 @@ describe("dashboard hash routing", () => {
       invitationCode: "QP8814"
     });
     expect(parseDashboardHash("#recados")).toEqual({ section: "recados" });
+    expect(parseDashboardHash("#musicas")).toEqual({ section: "musicas" });
   });
 
   it("tolerates a leading slash", () => {
@@ -52,7 +53,8 @@ describe("dashboard hash routing", () => {
       { section: "convidados" as const, guestId: "HL4120--guest-03" },
       { section: "presentes" as const, giftId: "g-lua-de-mel" },
       { section: "whatsapp" as const, invitationCode: "QP8814" },
-      { section: "recados" as const }
+      { section: "recados" as const },
+      { section: "musicas" as const }
     ];
     for (const route of routes) {
       expect(parseDashboardHash(formatDashboardHash(route))).toMatchObject(route);
@@ -72,6 +74,8 @@ describe("dashboard hash routing", () => {
   it("builds list-level routes and hrefs for the sidebar", () => {
     expect(routeForSection("presentes")).toEqual({ section: "presentes" });
     expect(sectionHash("recados")).toBe("#recados");
+    expect(sectionHash("musicas")).toBe("#musicas");
+    expect(routeForSection("musicas")).toEqual({ section: "musicas" });
     expect(sectionOf({ section: "convites", invitationCode: "SW2748" })).toBe("convites");
   });
 });

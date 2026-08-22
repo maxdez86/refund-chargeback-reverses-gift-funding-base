@@ -3,9 +3,10 @@ import { motion } from "framer-motion";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, ArrowLeft, AlertCircle, Mail, Loader2 } from "lucide-react";
-import type {
-  HouseholdInvitation,
-  RsvpSubmissionRequest,
+import {
+  MUSIC_NOTE_PREFIX,
+  type HouseholdInvitation,
+  type RsvpSubmissionRequest,
 } from "@brimax/contracts";
 import {
   RsvpApiError,
@@ -28,7 +29,6 @@ import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
 const NAVIGATION_OFFSET = 80;
 const SUCCESS_SCROLL_RELEASE_DELAY_MS = 500;
-const MUSIC_NOTE_PREFIX = "Música sugerida: ";
 const MUSIC_SUGGESTION_MAX_LENGTH = 500 - MUSIC_NOTE_PREFIX.length;
 
 type LookupState =

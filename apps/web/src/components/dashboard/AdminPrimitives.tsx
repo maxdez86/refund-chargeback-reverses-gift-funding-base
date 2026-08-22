@@ -226,9 +226,18 @@ export function SearchField({
   );
 }
 
-export function Field({ label, value }: { label: string; value: React.ReactNode }) {
+export function Field({
+  label,
+  value,
+  className
+}: {
+  label: string;
+  value: React.ReactNode;
+  /** Grid placement for fields that need more than one column of a `<dl>`. */
+  className?: string;
+}) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-[11.5px] font-medium tracking-[0.13em] text-admin-faint">{label}</dt>
       <dd className="mt-1.5 text-[15px] text-admin-ink">{value}</dd>
     </div>

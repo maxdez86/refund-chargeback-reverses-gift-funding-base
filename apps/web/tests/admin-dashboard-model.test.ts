@@ -7,6 +7,7 @@ import {
   filterGifts,
   filterGuests,
   filterInvitations,
+  filterMusicSuggestions,
   giftBadge,
   courtesyState,
   giftTileClasses,
@@ -17,7 +18,8 @@ import {
   recalculateRsvp,
   sendAvailability,
   templateForSend,
-  toGuestRows
+  toGuestRows,
+  toMusicSuggestionRows
 } from "@/lib/admin-dashboard-model";
 import type { AdminGift, AdminGuest, AdminInvitation } from "@/lib/admin-dashboard-types";
 
@@ -215,6 +217,63 @@ describe("WhatsApp send availability", () => {
     expect(templateForSend(byCode("QP8814"), "resend")).toBe(
       "wedding_rsvp_pending_reminder_single"
     );
+  });
+});
+
+describe("music suggestions", () => {
+  const withNote = (code: string, note: string | undefined, updatedAt: string): AdminInvitation => ({
+    ...byCode("MV2093"),
+    invitationCode: code,
+    householdName: `Convite ${code}`,
+    rsvp: { ...byCode("MV2093").rsvp, note, updatedAt }
+  });
+
+  it("strips the site prefix and keeps a bare note as written", () => {
+    const rows = toMusicSuggestionRows([
+      withNote("AA2222", "Música sugerida: Evidências - Chitãozinho e Xororó", "2026-08-01T10:00:00Z"),
+      withNote("BB3333", "Trem-Bala - Ana Vilela", "2026-08-02T10:00:00Z")
+    ]);
+    expect(rows.map((row) => row.music)).toEqual([
+      "Trem-Bala - Ana Vilela",
+      "Evidências - Chitãozinho e Xororó"
+    ]);
+  });
+
+  it("skips invitations with no note or only whitespace", () => {
+    const rows = toMusicSuggestionRows([
+      withNote("AA2222", undefined, "2026-08-01T10:00:00Z"),
+      withNote("BB3333", "Música sugerida:    ", "2026-08-02T10:00:00Z"),
+      withNote("CC4444", "Música sugerida: Sozinho - Caetano Veloso", "2026-08-03T10:00:00Z")
+    ]);
+    expect(rows.map((row) => row.invitationCode)).toEqual(["CC4444"]);
+  });
+
+  it("sorts newest first and carries the invitation's RSVP status", () => {
+    const rows = toMusicSuggestionRows(snapshot.invitations);
+    expect(rows.map((row) => row.invitationCode)).toEqual([
+      "SW2748",
+      "TX6935",
+      "HL4120",
+      "RQ7712",
+      "MV2093"
+    ]);
+    // A guest who later declined still gets to keep their song on the list.
+    expect(rows.find((row) => row.invitationCode === "RQ7712")?.rsvpStatus).toBe("declined");
+  });
+
+  it("searches by code, household name and song text", () => {
+    const rows = toMusicSuggestionRows(snapshot.invitations);
+    expect(filterMusicSuggestions(rows, "")).toHaveLength(rows.length);
+    expect(filterMusicSuggestions(rows, "sw2748").map((row) => row.invitationCode)).toEqual([
+      "SW2748"
+    ]);
+    expect(filterMusicSuggestions(rows, "tavares").map((row) => row.invitationCode)).toEqual([
+      "HL4120"
+    ]);
+    expect(filterMusicSuggestions(rows, "legião").map((row) => row.invitationCode)).toEqual([
+      "RQ7712"
+    ]);
+    expect(filterMusicSuggestions(rows, "bohemian rhapsody")).toEqual([]);
   });
 });
 

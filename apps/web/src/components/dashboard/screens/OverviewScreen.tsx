@@ -1,5 +1,6 @@
-import { CircleCheck, Gift, Mail, MessageCircle, Users } from "lucide-react";
+import { CircleCheck, Gift, Mail, MessageCircle, Music, Users } from "lucide-react";
 import { formatBrlShort, pluralize } from "@/lib/admin-dashboard-format";
+import { toMusicSuggestionRows } from "@/lib/admin-dashboard-model";
 import type { DashboardSection } from "@/lib/admin-dashboard-route";
 import type { AdminDashboardState } from "@/lib/admin-dashboard-store";
 import type { AdminGuestRow } from "@/lib/admin-dashboard-types";
@@ -23,6 +24,10 @@ export function OverviewScreen({
     (invitation) => invitation.rsvp.status === "attending"
   ).length;
   const publishedMessages = state.guestMessages.filter((message) => !message.hidden).length;
+  const musicSuggestions = toMusicSuggestionRows(state.invitations);
+  const suggestionPercent = state.invitations.length
+    ? Math.round((musicSuggestions.length / state.invitations.length) * 100)
+    : 0;
   const unreadTotal = Object.values(unreadByCode).reduce((sum, count) => sum + count, 0);
   const unreadChats = Object.values(unreadByCode).filter((count) => count > 0).length;
 
@@ -54,6 +59,13 @@ export function OverviewScreen({
       icon: Mail,
       value: String(state.guestMessages.length),
       hint: `${publishedMessages} publicados no site`
+    },
+    {
+      section: "musicas" as const,
+      label: "MÚSICAS",
+      icon: Music,
+      value: String(musicSuggestions.length),
+      hint: `${suggestionPercent}% dos convites`
     },
     {
       section: "whatsapp" as const,
