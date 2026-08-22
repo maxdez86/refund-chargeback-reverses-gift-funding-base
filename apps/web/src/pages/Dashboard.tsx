@@ -30,6 +30,7 @@ export default function Dashboard() {
             session={adminSession.state.session}
             preview={adminSession.state.preview}
             onSignOut={adminSession.signOut}
+            source={adminSession.dashboardSource}
           />
         )}
       </AdminAuthGate>

@@ -12,6 +12,7 @@ import {
 import type {
   CreateGuestMessageRequest,
   GuestMessage,
+  AdminDashboardInvitation,
   AdminGuestExportRow,
   GuestProfile,
   HouseholdInvitation,
@@ -57,6 +58,7 @@ import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import {
   deriveRsvpCounts,
+  toAdminDashboardInvitation,
   toAdminExportRows,
   toGuestProfile,
   toHouseholdInvitation,
@@ -277,6 +279,59 @@ export class WeddingRepository {
       guests: items.filter((item) => item.entityType === "InvitationGuest") as ItemRecord[],
       rsvp: items.find((item) => item.entityType === "RsvpResponse")
     });
+  }
+
+  async listAdminDashboardInvitations(): Promise<AdminDashboardInvitation[]> {
+    const items: ItemRecord[] = [];
+    let exclusiveStartKey: ItemRecord | undefined;
+
+    do {
+      const result = await this.documentClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression:
+            "entityType = :invitationType OR entityType = :guestType OR entityType = :rsvpType",
+          ExpressionAttributeValues: {
+            ":invitationType": "Invitation",
+            ":guestType": "InvitationGuest",
+            ":rsvpType": "RsvpResponse"
+          },
+          ProjectionExpression:
+            "PK, SK, entityType, invitationCode, householdName, phoneNumber, phoneNumberSource, phoneNumberUpdatedAt, whatsappFlowStatus, whatsappFlowStage, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappLastInboundMessageId, whatsappLastOutboundMessageId, whatsappFailureReason, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, submittedBy, guestResponses, attendingGuestCount, paidAttendingGuestCount, childSixOrYoungerAttendingCount, #note, #status, updatedAt",
+          ExpressionAttributeNames: {
+            "#note": "note",
+            "#status": "status"
+          },
+          ExclusiveStartKey: exclusiveStartKey
+        })
+      );
+
+      items.push(...((result.Items ?? []) as ItemRecord[]));
+      exclusiveStartKey = result.LastEvaluatedKey as ItemRecord | undefined;
+    } while (exclusiveStartKey);
+
+    const groups = new Map<
+      string,
+      { invitation?: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord }
+    >();
+
+    for (const item of items) {
+      const invitationCode = typeof item.invitationCode === "string" ? item.invitationCode : "";
+      if (!invitationCode) continue;
+
+      const group = groups.get(invitationCode) ?? { guests: [] };
+      if (item.entityType === "Invitation") group.invitation = item;
+      else if (item.entityType === "InvitationGuest") group.guests.push(item);
+      else if (item.entityType === "RsvpResponse") group.rsvp = item;
+      groups.set(invitationCode, group);
+    }
+
+    return [...groups.entries()]
+      .filter((entry): entry is [string, { invitation: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord }] =>
+        Boolean(entry[1].invitation)
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, group]) => toAdminDashboardInvitation(group));
   }
 
   async getRsvpResponse(invitationCode: string): Promise<RsvpResponseItem | null> {
@@ -956,7 +1011,7 @@ export class WeddingRepository {
    */
   async listWhatsappConversation(
     invitationCode: string,
-    options: { limit?: number; cursor?: string | null } = {}
+    options: { limit?: number; cursor?: string | null; order?: "asc" | "desc" } = {}
   ) {
     const index = whatsappConversationIndexPrefix(invitationCode);
     const result = await this.documentClient.send(new QueryCommand({
@@ -965,14 +1020,20 @@ export class WeddingRepository {
       KeyConditionExpression: "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)",
       ExpressionAttributeValues: { ":gsi1pk": index.GSI1PK, ":prefix": index.GSI1SK },
       ExclusiveStartKey: decodeCursor(options.cursor, "WhatsApp conversation"),
-      Limit: options.limit ?? 50
+      Limit: options.limit ?? 50,
+      ScanIndexForward: (options.order ?? "asc") === "asc"
     }));
 
-    const entries = ((result.Items ?? []) as ItemRecord[]).map((item): WhatsappConversationEntry =>
-      item.entityType === "WhatsappCommand"
-        ? parseStoredWhatsappItem(WhatsappCommandItemSchema, item, "WhatsApp command")
-        : parseStoredWhatsappItem(WhatsappMessageItemSchema, item, "WhatsApp message")
-    );
+    const entries = ((result.Items ?? []) as ItemRecord[])
+      .map((item): WhatsappConversationEntry =>
+        item.entityType === "WhatsappCommand"
+          ? parseStoredWhatsappItem(WhatsappCommandItemSchema, item, "WhatsApp command")
+          : parseStoredWhatsappItem(WhatsappMessageItemSchema, item, "WhatsApp message")
+      )
+      .filter((entry) =>
+        entry.invitationCode === invitationCode &&
+        (entry.entityType === "WhatsappCommand" || entry.correlationStatus === "matched")
+      );
 
     return {
       entries,

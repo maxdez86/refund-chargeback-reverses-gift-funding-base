@@ -9,10 +9,10 @@ import {
   COMMAND_LABELS,
   RSVP_LABELS,
   STAGE_LABELS,
-  TEMPLATE_LABELS,
   TONE_CLASSES,
   guestFlags,
   sendAvailability,
+  templateLabel,
   templateForSend
 } from "@/lib/admin-dashboard-model";
 import type { AdminInvitation } from "@/lib/admin-dashboard-types";
@@ -763,7 +763,7 @@ export function SendWhatsappModal({
                 >
                   <div className="min-w-[190px] flex-1">
                     <p className="text-[13.5px] font-medium text-admin-ink">
-                      {TEMPLATE_LABELS[command.templateId]}
+                      {templateLabel(command.templateId)}
                     </p>
                     <p className="mt-1 text-[12.5px] text-admin-faint">{meta.join(" · ")}</p>
                   </div>

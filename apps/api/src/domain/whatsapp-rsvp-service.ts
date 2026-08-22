@@ -112,7 +112,10 @@ export class WhatsappRsvpService {
     return WhatsappPhoneUpdateResponseSchema.parse({ invitationCode, phoneNumber: normalized, updatedAt });
   }
 
-  async getStatus(invitationCode: string, options: { limit?: number; cursor?: string } = {}) {
+  async getStatus(
+    invitationCode: string,
+    options: { limit?: number; cursor?: string; order?: "asc" | "desc" } = {}
+  ) {
     InvitationCodeSchema.parse(invitationCode);
     const status = await this.repository.getInvitationWhatsappStatus(invitationCode);
     if (!status) throw new AppError("Invitation not found.", 404, "INVITATION_NOT_FOUND");
@@ -149,6 +152,8 @@ export class WhatsappRsvpService {
         templateVersion: entry.templateVersion,
         stage: entry.stage,
         providerMessageId: entry.direction === "outbound" ? entry.messageId : undefined,
+        messageType: entry.messageType,
+        ...(entry.body === undefined ? {} : { body: entry.body }),
         providerErrorCategory: entry.providerErrorCategory
       };
     });

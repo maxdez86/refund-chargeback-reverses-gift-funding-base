@@ -11,11 +11,15 @@ import {
 import {
   CHAT_FILTERS,
   RSVP_LABELS,
-  TEMPLATE_LABELS,
   TONE_CLASSES,
+  templateLabel,
   type ChatFilter
 } from "@/lib/admin-dashboard-model";
-import type { AdminInvitation, AdminWhatsappMessage } from "@/lib/admin-dashboard-types";
+import type {
+  AdminInvitation,
+  AdminWhatsappMessage,
+  AdminWhatsappThreadLoadState
+} from "@/lib/admin-dashboard-types";
 import { Eyebrow, FilterTabs, SearchField, StatusPill } from "@/components/dashboard/AdminPrimitives";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +27,8 @@ type Conversation = {
   invitation: AdminInvitation;
   thread: AdminWhatsappMessage[];
   last: AdminWhatsappMessage | null;
-  unread: number;
+  unread: number | null;
+  load: AdminWhatsappThreadLoadState;
 };
 
 /** Splits a thread into consecutive same-day runs, the way a chat client does. */
@@ -45,6 +50,7 @@ export function WhatsappScreen({
   invitations,
   threads,
   unreadByCode,
+  threadLoads,
   selectedCode,
   filter,
   query,
@@ -53,11 +59,14 @@ export function WhatsappScreen({
   onSelect,
   onClearSelection,
   onOpenInvitation,
+  onRetry,
+  onLoadMore,
   onSend
 }: {
   invitations: AdminInvitation[];
   threads: Record<string, AdminWhatsappMessage[]>;
-  unreadByCode: Record<string, number>;
+  unreadByCode: Record<string, number | null>;
+  threadLoads: Record<string, AdminWhatsappThreadLoadState>;
   selectedCode?: string;
   filter: ChatFilter;
   query: string;
@@ -66,10 +75,16 @@ export function WhatsappScreen({
   onSelect: (invitationCode: string) => void;
   onClearSelection: () => void;
   onOpenInvitation: (invitationCode: string) => void;
+  onRetry: (invitationCode: string) => void;
+  onLoadMore: (invitationCode: string) => void;
   onSend: (invitationCode: string, text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreButtonRef = useRef<HTMLButtonElement>(null);
+  const preserveScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const restorePaginationFocusRef = useRef(false);
+  const previousLoadRef = useRef<AdminWhatsappThreadLoadState["status"] | null>(null);
 
   const conversations: Conversation[] = invitations
     .map((invitation) => {
@@ -78,14 +93,15 @@ export function WhatsappScreen({
         invitation,
         thread,
         last: thread.at(-1) ?? null,
-        unread: unreadByCode[invitation.invitationCode] ?? 0
+        unread: unreadByCode[invitation.invitationCode] ?? null,
+        load: threadLoads[invitation.invitationCode] ?? { status: "unloaded" }
       };
     })
     .sort((a, b) => (b.last?.sentAt ?? "").localeCompare(a.last?.sentAt ?? ""));
 
   const needle = query.trim().toLowerCase();
   const visible = conversations.filter((conversation) => {
-    if (filter === "Não lidas" && !conversation.unread) return false;
+    if (filter === "Não lidas" && !(conversation.unread && conversation.unread > 0)) return false;
     if (filter === "Pendentes" && conversation.invitation.rsvp.status !== "pending") return false;
     if (!needle) return true;
     const { invitationCode, householdName, phoneNumber } = conversation.invitation;
@@ -95,16 +111,38 @@ export function WhatsappScreen({
   const selected = conversations.find(
     (conversation) => conversation.invitation.invitationCode === selectedCode
   );
-  const unreadTotal = conversations.reduce((sum, conversation) => sum + conversation.unread, 0);
+  const unreadTotal = conversations.reduce((sum, conversation) => sum + (conversation.unread ?? 0), 0);
 
   useEffect(() => setDraft(""), [selectedCode]);
 
-  // Chats open at the newest message, and stay pinned there as new ones arrive.
+  // First pages open at the newest message; older prepended pages retain the viewport.
   const threadLength = selected?.thread.length ?? 0;
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
-  }, [selectedCode, threadLength]);
+    if (!element) return;
+    const preserved = preserveScrollRef.current;
+    if (preserved) {
+      element.scrollTop = preserved.top + element.scrollHeight - preserved.height;
+      preserveScrollRef.current = null;
+    } else if (
+      selected?.load.status === "loaded" &&
+      (previousLoadRef.current === null || previousLoadRef.current === "loading")
+    ) {
+      element.scrollTop = element.scrollHeight;
+    }
+    if (restorePaginationFocusRef.current && selected?.load.status !== "loading") {
+      (loadMoreButtonRef.current ?? element).focus();
+      restorePaginationFocusRef.current = false;
+    }
+    previousLoadRef.current = selected?.load.status ?? null;
+  }, [selectedCode, selected?.load.status, threadLength]);
+
+  const loadOlder = () => {
+    const element = scrollRef.current;
+    if (element) preserveScrollRef.current = { height: element.scrollHeight, top: element.scrollTop };
+    restorePaginationFocusRef.current = true;
+    if (selectedCode) onLoadMore(selectedCode);
+  };
 
   const send = () => {
     if (!selectedCode || !draft.trim()) return;
@@ -122,7 +160,7 @@ export function WhatsappScreen({
           </h1>
         </div>
         <p className="pb-1.5 text-[13.5px] text-admin-ink-soft">
-          {unreadTotal} sem resposta · {pluralize(visible.length, "conversa", "conversas")}
+          {unreadTotal} sem resposta nas carregadas · {pluralize(visible.length, "conversa", "conversas")}
         </p>
       </div>
 
@@ -151,7 +189,7 @@ export function WhatsappScreen({
 
           <ul aria-label="Conversas" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
             {visible.map((conversation) => {
-              const { invitation, last, unread } = conversation;
+              const { invitation, last, unread, load } = conversation;
               const status = RSVP_LABELS[invitation.rsvp.status];
               const active = invitation.invitationCode === selectedCode;
               const dayLabel = last ? formatDayLabel(last.sentAt) : "";
@@ -183,7 +221,7 @@ export function WhatsappScreen({
                         <span
                           className={cn(
                             "min-w-0 flex-1 truncate text-[14.5px]",
-                            unread > 0 ? "font-semibold" : "font-medium"
+                            unread !== null && unread > 0 ? "font-semibold" : "font-medium"
                           )}
                         >
                           {invitation.householdName}
@@ -194,11 +232,15 @@ export function WhatsappScreen({
                       </span>
                       <span className="mt-1 flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-[13px] text-admin-slate">
-                          {last
+                          {load.status === "unloaded"
+                            ? "Abrir para carregar"
+                            : load.status === "loading" && !load.hasLoaded
+                              ? "Carregando…"
+                              : last
                             ? `${last.direction === "outbound" ? "Você: " : ""}${last.text}`
                             : "Sem mensagens"}
                         </span>
-                        {unread > 0 && (
+                        {unread !== null && unread > 0 && (
                           <span className="flex h-[19px] min-w-[19px] flex-none items-center justify-center rounded-full bg-admin-ok-fg px-1.5 text-[11.5px] font-semibold text-white">
                             {unread}
                           </span>
@@ -272,18 +314,53 @@ export function WhatsappScreen({
 
               <div
                 ref={scrollRef}
+                tabIndex={-1}
+                aria-label="Histórico da conversa"
                 className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto bg-admin-canvas px-5 py-[26px] sm:px-[30px]"
               >
+                {selected.load.status === "loading" && !selected.load.hasLoaded && (
+                  <p role="status" className="m-auto text-sm text-admin-faint">Carregando conversa…</p>
+                )}
+                {selected.load.status === "error" && (
+                  <div role="alert" className="mx-auto flex max-w-sm flex-col items-center gap-3 text-center text-sm text-admin-danger">
+                    <p>Não foi possível carregar a conversa.</p>
+                    <button
+                      type="button"
+                      onClick={() => onRetry(selected.invitation.invitationCode)}
+                      className="min-h-11 rounded-lg border border-admin-line-strong bg-admin-surface px-4 text-admin-ink"
+                    >
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+                {selected.load.status === "loaded" && selected.load.nextCursor && (
+                  <button
+                    ref={loadMoreButtonRef}
+                    type="button"
+                    onClick={loadOlder}
+                    className="mx-auto min-h-11 rounded-lg border border-admin-line-strong bg-admin-surface px-4 text-sm font-medium text-admin-ink"
+                  >
+                    Carregar mensagens anteriores
+                  </button>
+                )}
+                {selected.load.status === "loading" && selected.load.hasLoaded && (
+                  <button type="button" disabled aria-busy="true" className="mx-auto min-h-11 rounded-lg border border-admin-line px-4 text-sm text-admin-faint">
+                    Carregando mensagens anteriores…
+                  </button>
+                )}
+                {selected.load.status === "loaded" && selected.thread.length === 0 && (
+                  <p className="m-auto text-sm text-admin-faint">Sem mensagens</p>
+                )}
                 {groupByDay(selected.thread).map((group) => (
                   <div key={group.key} className="flex flex-col gap-2.5">
                     <span className="self-center rounded-full bg-admin-mute-bg px-3 py-1 text-[11.5px] font-medium tracking-[0.08em] text-admin-slate">
                       {group.label}
                     </span>
-                    {group.items.map((message, index) => {
+                    {group.items.map((message) => {
                       const mine = message.direction === "outbound";
                       return (
                         <div
-                          key={`${group.key}-${index}`}
+                          key={message.messageId}
                           className={cn("flex", mine ? "justify-end" : "justify-start")}
                         >
                           <div
@@ -296,7 +373,7 @@ export function WhatsappScreen({
                           >
                             {message.templateId && (
                               <p className="mb-1.5 text-[10.5px] font-semibold tracking-[0.14em] text-admin-gold">
-                                {TEMPLATE_LABELS[message.templateId]}
+                                {templateLabel(message.templateId)}
                               </p>
                             )}
                             <p className="whitespace-pre-wrap text-[14.5px] leading-[1.5] text-admin-ink [text-wrap:pretty]">

@@ -80,7 +80,7 @@ describe("WhatsApp RSVP service", () => {
     expect(WHATSAPP_FALLBACK_TEXT).toContain("casamento@brimax.life");
   });
 
-  it("projects status with paginated metadata-only conversation history", async () => {
+  it("projects invitation-scoped text and paginated conversation history", async () => {
     const repository = {
       getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
         invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517"
@@ -89,7 +89,7 @@ describe("WhatsApp RSVP service", () => {
         entries: [
           {
             entityType: "WhatsappMessage", messageId: "wamid.1", invitationCode: "SW2748",
-            direction: "outbound", status: "sent", createdAt: "2026-08-17T12:00:00.000Z",
+            direction: "outbound", messageType: "text", status: "sent", createdAt: "2026-08-17T12:00:00.000Z",
             body: "private message", recipientPhone: "5511963656517"
           }
         ],
@@ -100,15 +100,48 @@ describe("WhatsApp RSVP service", () => {
       getActive: vi.fn().mockResolvedValue({ version: 1 })
     } as never, {} as never);
 
-    await expect(service.getStatus("SW2748", { limit: 10, cursor: "cursor-1" })).resolves.toEqual({
+    await expect(service.getStatus("SW2748", { limit: 10, cursor: "cursor-1", order: "desc" })).resolves.toEqual({
       invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517",
       history: [{
         kind: "message", id: "wamid.1", direction: "outbound", status: "sent",
-        createdAt: "2026-08-17T12:00:00.000Z", providerMessageId: "wamid.1"
+        createdAt: "2026-08-17T12:00:00.000Z", providerMessageId: "wamid.1",
+        messageType: "text", body: "private message"
       }],
       nextCursor: "next-1"
     });
-    expect(repository.listWhatsappConversation).toHaveBeenCalledWith("SW2748", { limit: 10, cursor: "cursor-1" });
+    expect(repository.listWhatsappConversation).toHaveBeenCalledWith("SW2748", {
+      limit: 10, cursor: "cursor-1", order: "desc"
+    });
+  });
+
+  it("keeps command entries body-free and template messages without bodies valid", async () => {
+    const repository = {
+      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({ invitationCode: "SW2748", status: "message_sent" }),
+      listWhatsappConversation: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            entityType: "WhatsappCommand", commandId: "cmd-1", invitationCode: "SW2748",
+            templateId: "wedding_invitation", status: "sent", createdAt: "2026-08-17T11:00:00.000Z",
+            retryCount: 0, reconciliationStatus: "none"
+          },
+          {
+            entityType: "WhatsappMessage", messageId: "wamid.template", invitationCode: "SW2748",
+            direction: "outbound", messageType: "template", templateId: "wedding_invitation",
+            status: "sent", createdAt: "2026-08-17T12:00:00.000Z"
+          }
+        ]
+      })
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    const result = await service.getStatus("SW2748");
+
+    expect(result.history?.[0]).toMatchObject({ kind: "command", id: "cmd-1" });
+    expect(result.history?.[0]).not.toHaveProperty("body");
+    expect(result.history?.[1]).toMatchObject({
+      kind: "message", id: "wamid.template", messageType: "template", templateId: "wedding_invitation"
+    });
+    expect(result.history?.[1]).not.toHaveProperty("body");
   });
 
   it("returns a safe command projection and reports a missing command", async () => {

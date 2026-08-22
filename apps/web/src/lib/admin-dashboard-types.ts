@@ -6,8 +6,7 @@ import type {
   WhatsappFlowStage,
   WhatsappFlowStatus,
   WhatsappPhoneSource,
-  WhatsappReconciliationStatus,
-  WhatsappRsvpTemplatePurpose
+  WhatsappReconciliationStatus
 } from "@brimax/contracts";
 
 /**
@@ -33,13 +32,15 @@ export type AdminGuest = {
   isChildSixOrYounger?: boolean;
   allowedPlusOnes: number;
   rsvpStatus: RsvpStatus;
+  dietaryNotes?: string;
 };
 
 /** One outbound send intent, as surfaced by `GET /admin/whatsapp/invitations/{code}`. */
 export type AdminWhatsappCommand = {
   commandId: string;
   createdAt: string;
-  templateId: WhatsappRsvpTemplatePurpose;
+  /** Generic because retained legacy/internal commands can outlive the active send manifest. */
+  templateId: string;
   stage: WhatsappFlowStage;
   status: WhatsappCommandStatus;
   retryCount: number;
@@ -49,7 +50,7 @@ export type AdminWhatsappCommand = {
 /** The invitation-level RSVP roll-up the panel reads; derived from the guest answers. */
 export type AdminRsvpSummary = {
   status: RsvpStatus;
-  updatedAt: string;
+  updatedAt: string | null;
   /** `guestId` of whoever submitted, or `null` while nobody has answered. */
   submittedBy: string | null;
   attending: number;
@@ -85,14 +86,15 @@ export type AdminInvitation = {
   householdName: string;
   phoneNumber: string;
   phoneNumberSource: WhatsappPhoneSource;
-  phoneNumberUpdatedAt: string;
+  phoneNumberUpdatedAt: string | null;
   whatsappFlowStatus: WhatsappFlowStatus;
   whatsappFlowStage: WhatsappFlowStage;
-  whatsappFlowUpdatedAt: string;
+  whatsappFlowUpdatedAt: string | null;
   whatsappFlowCompletedAt: string | null;
   whatsappFallbackSentAt: string | null;
   whatsappLastInboundMessageId: string | null;
   whatsappLastOutboundMessageId: string | null;
+  whatsappFailureReason?: string | null;
   reconciliationStatus: WhatsappReconciliationStatus;
   rsvp: AdminRsvpSummary;
   /** Ordered; index 0 is the primary guest who answers for the invitation. */
@@ -102,13 +104,29 @@ export type AdminInvitation = {
 };
 
 export type AdminWhatsappMessage = {
+  messageId: string;
   direction: "inbound" | "outbound";
   sentAt: string;
   text: string;
   /** Set when the message was delivered from a template rather than typed by an operator. */
-  templateId?: WhatsappRsvpTemplatePurpose;
+  templateId?: string;
   failed?: boolean;
 };
+
+export type AdminWhatsappThreadPage = {
+  invitationCode: string;
+  /** Oldest first within this API page. */
+  messages: AdminWhatsappMessage[];
+  /** Newest first within this API page. */
+  commands: AdminWhatsappCommand[];
+  nextCursor: string | null;
+};
+
+export type AdminWhatsappThreadLoadState =
+  | { status: "unloaded" }
+  | { status: "loading"; hasLoaded: boolean; nextCursor: string | null }
+  | { status: "loaded"; nextCursor: string | null }
+  | { status: "error"; hasLoaded: boolean; nextCursor: string | null };
 
 /** A guest message plus the moderation flag that only the panel sees. */
 export type AdminGuestMessage = GuestMessage & { hidden: boolean };

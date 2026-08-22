@@ -374,6 +374,14 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
+    const adminDashboardFn = this.createTaggedNodejsFunction("AdminDashboardFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-dashboard/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
     const adminAuthorizer = new apigwv2Authorizers.HttpLambdaAuthorizer(
       "GoogleWorkspaceAdminAuthorizer",
       adminAuthorizerFn,
@@ -550,6 +558,7 @@ export class AppStack extends cdk.Stack {
     this.alarmedFunctions = [
       adminAuthorizerFn,
       adminSessionFn,
+      adminDashboardFn,
       createPaymentFn,
       discardPaymentFn,
       getPaymentFn,
@@ -657,6 +666,7 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(checkoutExpiryWorkerFn);
     expiryQueue.grantConsumeMessages(checkoutExpiryWorkerFn);
     props.table.grantReadData(getGuestMessagesFn);
+    props.table.grantReadData(adminDashboardFn);
     props.table.grantReadWriteData(createGuestMessagesFn);
     props.table.grantReadWriteData(deleteGuestMessageFn);
     props.table.grantReadWriteData(paymentMessageFn);
@@ -772,6 +782,15 @@ export class AppStack extends cdk.Stack {
       [apigwv2.HttpMethod.GET],
       new apigwv2Integrations.HttpLambdaIntegration("AdminSessionIntegration", adminSessionFn)
     );
+    const adminDashboardRoutes = addAdminRoutes(
+      "AdminDashboardRoute",
+      "/admin/dashboard",
+      [apigwv2.HttpMethod.GET],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminDashboardIntegration",
+        adminDashboardFn
+      )
+    );
     const deleteGuestMessageRoutes = addAdminRoutes(
       "DeleteGuestMessageRoute",
       "/admin/guest-messages/{messageId}",
@@ -857,6 +876,7 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, createPaymentRoutes);
       addStageRouteDependency(defaultStage, discardPaymentRoutes);
       addStageRouteDependency(defaultStage, adminSessionRoutes);
+      addStageRouteDependency(defaultStage, adminDashboardRoutes);
       addStageRouteDependency(defaultStage, deleteGuestMessageRoutes);
       addStageRouteDependency(defaultStage, whatsappSendRoutes);
       addStageRouteDependency(defaultStage, whatsappAutoSendRoutes);

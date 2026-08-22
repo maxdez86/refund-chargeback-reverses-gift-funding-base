@@ -5,7 +5,9 @@ import type {
   AdminGift,
   AdminGuest,
   AdminInvitation,
-  AdminWhatsappMessage
+  AdminWhatsappMessage,
+  AdminWhatsappThreadLoadState,
+  AdminWhatsappThreadPage
 } from "@/lib/admin-dashboard-types";
 
 /**
@@ -19,6 +21,7 @@ import type {
 export type AdminDashboardState = AdminDashboardSnapshot & {
   /** Invitation codes whose WhatsApp thread the operator has opened since load. */
   readChats: string[];
+  threadLoads: Record<string, AdminWhatsappThreadLoadState>;
 };
 
 export type AdminDashboardAction =
@@ -64,6 +67,9 @@ export type AdminDashboardAction =
     }
   | { type: "send-chat"; invitationCode: string; text: string; now: string }
   | { type: "open-chat"; invitationCode: string }
+  | { type: "thread-load-started"; invitationCode: string; loadMore: boolean }
+  | { type: "thread-load-succeeded"; page: AdminWhatsappThreadPage; loadMore: boolean }
+  | { type: "thread-load-failed"; invitationCode: string; loadMore: boolean }
   | { type: "replace-snapshot"; snapshot: AdminDashboardSnapshot };
 
 /**
@@ -113,7 +119,11 @@ export function giftIdFromName(name: string) {
 }
 
 /** Trailing inbound messages on a thread the operator has not opened yet. */
-export function unreadCount(state: AdminDashboardState, invitationCode: string) {
+export function unreadCount(state: AdminDashboardState, invitationCode: string): number | null {
+  const load = state.threadLoads[invitationCode];
+  if (!load || load.status === "unloaded" || (load.status === "loading" && !load.hasLoaded) || (load.status === "error" && !load.hasLoaded)) {
+    return null;
+  }
   if (state.readChats.includes(invitationCode)) return 0;
   const thread = state.threads[invitationCode] ?? [];
   let count = 0;
@@ -125,7 +135,31 @@ export function unreadCount(state: AdminDashboardState, invitationCode: string) 
 }
 
 export function createInitialState(snapshot: AdminDashboardSnapshot): AdminDashboardState {
-  return { ...snapshot, readChats: [] };
+  const threadLoads = Object.fromEntries(
+    snapshot.invitations.map((invitation) => [
+      invitation.invitationCode,
+      snapshot.threads[invitation.invitationCode]
+        ? { status: "loaded" as const, nextCursor: null }
+        : { status: "unloaded" as const }
+    ])
+  );
+  return { ...snapshot, readChats: [], threadLoads };
+}
+
+function deduplicateMessages(messages: AdminWhatsappMessage[]) {
+  const seen = new Set<string>();
+  return messages.filter((message) => !seen.has(message.messageId) && !!seen.add(message.messageId));
+}
+
+function mergeCommands(
+  current: AdminInvitation["commands"],
+  incoming: AdminInvitation["commands"]
+) {
+  const byId = new Map(current.map((command) => [command.commandId, command]));
+  for (const command of incoming) byId.set(command.commandId, command);
+  return [...byId.values()].sort(
+    (left, right) => right.createdAt.localeCompare(left.createdAt) || left.commandId.localeCompare(right.commandId)
+  );
 }
 
 export function adminDashboardReducer(
@@ -217,7 +251,9 @@ export function adminDashboardReducer(
       if (invitations.length === state.invitations.length) return state;
       const threads = { ...state.threads };
       delete threads[action.invitationCode];
-      return { ...state, invitations, threads };
+      const threadLoads = { ...state.threadLoads };
+      delete threadLoads[action.invitationCode];
+      return { ...state, invitations, threads, threadLoads };
     }
 
     case "create-invitation": {
@@ -371,6 +407,7 @@ export function adminDashboardReducer(
       const text = action.text.trim();
       if (!text) return state;
       const message: AdminWhatsappMessage = {
+        messageId: `local-${action.invitationCode}-${action.now}`,
         direction: "outbound",
         sentAt: action.now,
         text
@@ -390,6 +427,57 @@ export function adminDashboardReducer(
     case "open-chat": {
       if (state.readChats.includes(action.invitationCode)) return state;
       return { ...state, readChats: [...state.readChats, action.invitationCode] };
+    }
+
+    case "thread-load-started": {
+      const current = state.threadLoads[action.invitationCode];
+      const hasLoaded = action.loadMore || current?.status === "loaded" || current?.status === "error" && current.hasLoaded;
+      const nextCursor = current && "nextCursor" in current ? current.nextCursor : null;
+      return {
+        ...state,
+        threadLoads: {
+          ...state.threadLoads,
+          [action.invitationCode]: { status: "loading", hasLoaded, nextCursor }
+        }
+      };
+    }
+
+    case "thread-load-succeeded": {
+      const { invitationCode } = action.page;
+      const existing = state.threads[invitationCode] ?? [];
+      // API pages predate any local composer message created while the request was in flight.
+      const messages = deduplicateMessages([...action.page.messages, ...existing]);
+      return mapInvitation(
+        {
+          ...state,
+          threads: { ...state.threads, [invitationCode]: messages },
+          threadLoads: {
+            ...state.threadLoads,
+            [invitationCode]: { status: "loaded", nextCursor: action.page.nextCursor }
+          }
+        },
+        invitationCode,
+        (invitation) => ({
+          ...invitation,
+          commands: mergeCommands(invitation.commands, action.page.commands)
+        })
+      );
+    }
+
+    case "thread-load-failed": {
+      const current = state.threadLoads[action.invitationCode];
+      const nextCursor = current && "nextCursor" in current ? current.nextCursor : null;
+      return {
+        ...state,
+        threadLoads: {
+          ...state.threadLoads,
+          [action.invitationCode]: {
+            status: "error",
+            hasLoaded: action.loadMore || !!(current && "hasLoaded" in current && current.hasLoaded),
+            nextCursor
+          }
+        }
+      };
     }
 
     case "replace-snapshot":

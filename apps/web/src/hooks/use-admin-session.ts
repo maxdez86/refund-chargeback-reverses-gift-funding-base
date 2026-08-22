@@ -7,6 +7,11 @@ import {
   type AdminRuntimeConfig
 } from "@/lib/admin-auth";
 import { createFixtureAdminSession } from "@/lib/admin-fixtures";
+import {
+  createLiveDashboardSource,
+  fixtureDashboardSource,
+  selectAdminDashboardSource
+} from "@/lib/admin-dashboard-source";
 import { disableGoogleAutoSelect } from "@/lib/google-identity";
 
 export type AdminSessionState =
@@ -56,12 +61,38 @@ export function useAdminSession(options: UseAdminSessionOptions = {}) {
   const now = options.now ?? Date.now;
   const fetchSession = options.fetchSession ?? getAdminSession;
 
+  const getToken = useCallback(() => tokenRef.current, []);
+
+  const handleDashboardAuthError = useCallback((error: AdminApiError) => {
+    attemptRef.current += 1;
+    tokenRef.current = null;
+    expirationRef.current = null;
+    setState(
+      error.kind === "forbidden"
+        ? { status: "access-denied", message: error.message }
+        : { status: "unauthenticated", message: error.message }
+    );
+  }, []);
+
+  const liveDashboardSource = useMemo(
+    () => createLiveDashboardSource({ getToken, onAuthError: handleDashboardAuthError }),
+    [getToken, handleDashboardAuthError]
+  );
+  const dashboardSource = useMemo(
+    () =>
+      runtime.config
+        ? selectAdminDashboardSource(runtime.config.sessionMode, liveDashboardSource)
+        : fixtureDashboardSource,
+    [liveDashboardSource, runtime.config]
+  );
+
   const authenticate = useCallback(
     async (credential: string) => {
       if (!runtime.config) return;
       const config = runtime.config;
       const validation = validateGoogleCredential(credential, config, now());
       if (!validation.ok) {
+        attemptRef.current += 1;
         tokenRef.current = null;
         expirationRef.current = null;
         setState(
@@ -136,6 +167,7 @@ export function useAdminSession(options: UseAdminSessionOptions = {}) {
   return {
     state,
     config: runtime.config ?? null,
+    dashboardSource,
     acceptCredential: authenticate,
     retry,
     signOut

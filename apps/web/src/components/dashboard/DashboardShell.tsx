@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AdminSessionResponse } from "@brimax/contracts";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
@@ -57,7 +57,10 @@ export type DashboardShellProps = {
 
 export function DashboardShell({ session, preview, onSignOut, source }: DashboardShellProps) {
   const { route, navigate } = useDashboardRoute();
-  const { state, status, dispatch, guestRows, unreadByCode, demo } = useAdminDashboard({ source });
+  const {
+    state, status, dispatch, guestRows, unreadByCode,
+    loadWhatsappThread, retryWhatsappThread, loadMoreWhatsappThread, demo
+  } = useAdminDashboard({ source });
 
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -89,9 +92,18 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     navigate({ section: "convites", invitationCode });
   const openGuest = (guestId: string) => navigate({ section: "convidados", guestId });
   const openChat = (invitationCode: string) => {
-    dispatch({ type: "open-chat", invitationCode });
     navigate({ section: "whatsapp", invitationCode });
+    void loadWhatsappThread(invitationCode).catch(() => undefined);
+    dispatch({ type: "open-chat", invitationCode });
   };
+  const selectedChatCode = route.section === "whatsapp" ? route.invitationCode : undefined;
+
+  useEffect(() => {
+    if (status !== "ready" || !selectedChatCode) return;
+    const invitationCode = selectedChatCode;
+    dispatch({ type: "open-chat", invitationCode });
+    void loadWhatsappThread(invitationCode).catch(() => undefined);
+  }, [dispatch, loadWhatsappThread, selectedChatCode, status]);
 
   const closeModal = () => setModal(null);
 
@@ -254,6 +266,7 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
             invitations={state.invitations}
             threads={state.threads}
             unreadByCode={unreadByCode}
+            threadLoads={state.threadLoads}
             selectedCode={route.invitationCode}
             filter={chatFilter}
             query={chatQuery}
@@ -262,6 +275,8 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
             onSelect={openChat}
             onClearSelection={() => navigate(routeForSection("whatsapp"))}
             onOpenInvitation={openInvitation}
+            onRetry={(invitationCode) => void retryWhatsappThread(invitationCode).catch(() => undefined)}
+            onLoadMore={(invitationCode) => void loadMoreWhatsappThread(invitationCode).catch(() => undefined)}
             onSend={(invitationCode, text) => dispatch({ type: "send-chat", invitationCode, text })}
           />
         );
@@ -284,7 +299,7 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
       invitations: state.invitations.length,
       guests: guestRows.length,
       gifts: state.gifts.length,
-      unreadMessages: Object.values(unreadByCode).reduce((sum, count) => sum + count, 0),
+      unreadMessages: Object.values(unreadByCode).reduce<number>((sum, count) => sum + (count ?? 0), 0),
       guestMessages: state.guestMessages.length,
       musicSuggestions: musicSuggestions.length
     },

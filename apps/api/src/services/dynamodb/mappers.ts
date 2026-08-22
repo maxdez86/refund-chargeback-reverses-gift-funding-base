@@ -1,4 +1,6 @@
 import {
+  AdminDashboardInvitationSchema,
+  RsvpStatusSchema,
   WhatsappAttendanceEntrySchema,
   WhatsappFlowStageSchema,
   WhatsappFlowStatusSchema,
@@ -7,12 +9,14 @@ import {
 } from "@brimax/contracts";
 import type {
   AdminGuestExportRow,
+  AdminDashboardInvitation,
   GuestProfile,
   GuestSummary,
   HouseholdInvitation,
   RsvpSubmissionRequest,
   WhatsappRsvpStatusResponse
 } from "@brimax/contracts";
+import { RsvpResponseItemSchema } from "./rsvp-items";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -28,11 +32,12 @@ type GroupedInvitationItems = {
   rsvp?: UnknownRecord;
 };
 
-function toEffectiveGuestSummary(
+export function toEffectiveGuestSummary(
   guest: UnknownRecord,
   response?: { status?: unknown; isChildSixOrYounger?: unknown }
 ): GuestSummary {
   const status = response?.status;
+  const seedStatus = RsvpStatusSchema.parse(guest.rsvpStatus ?? "pending");
 
   return {
     guestId: String(guest.guestId ?? ""),
@@ -41,12 +46,80 @@ function toEffectiveGuestSummary(
     rsvpStatus:
       status === "attending" || status === "declined"
         ? status
-        : ((guest.rsvpStatus as GuestSummary["rsvpStatus"]) ?? "pending"),
+        : seedStatus,
     isChild: typeof guest.isChild === "boolean" ? guest.isChild : undefined,
     isChildSixOrYounger:
       typeof response?.isChildSixOrYounger === "boolean" ? response.isChildSixOrYounger : undefined,
     dietaryNotes: guest.dietaryNotes ? String(guest.dietaryNotes) : undefined
   };
+}
+
+function optionalString(value: unknown) {
+  return value === undefined || value === null ? undefined : String(value);
+}
+
+function compareDashboardGuests(left: UnknownRecord, right: UnknownRecord) {
+  const leftOrder = typeof left.sortOrder === "number" && Number.isInteger(left.sortOrder) && left.sortOrder > 0
+    ? left.sortOrder
+    : Number.POSITIVE_INFINITY;
+  const rightOrder = typeof right.sortOrder === "number" && Number.isInteger(right.sortOrder) && right.sortOrder > 0
+    ? right.sortOrder
+    : Number.POSITIVE_INFINITY;
+  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+  const idComparison = String(left.guestId ?? "").localeCompare(String(right.guestId ?? ""));
+  return idComparison || String(left.guestName ?? "").localeCompare(String(right.guestName ?? ""));
+}
+
+export function toAdminDashboardInvitation({
+  invitation,
+  guests,
+  rsvp
+}: GroupedInvitationItems): AdminDashboardInvitation {
+  const parsedRsvp = rsvp ? RsvpResponseItemSchema.parse(rsvp) : undefined;
+  const responsesByGuestId = new Map(
+    parsedRsvp?.guestResponses.map((response) => [response.guestId, response]) ?? []
+  );
+
+  return AdminDashboardInvitationSchema.parse({
+    invitationCode: String(invitation.invitationCode ?? ""),
+    householdName: String(invitation.householdName ?? ""),
+    phoneNumber: optionalString(invitation.phoneNumber),
+    phoneNumberSource: invitation.phoneNumberSource,
+    phoneNumberUpdatedAt: optionalString(invitation.phoneNumberUpdatedAt),
+    whatsappFlowStatus: invitation.whatsappFlowStatus,
+    whatsappFlowStage: invitation.whatsappFlowStage,
+    whatsappFlowUpdatedAt: optionalString(invitation.whatsappFlowUpdatedAt),
+    whatsappFlowCompletedAt: optionalString(invitation.whatsappFlowCompletedAt),
+    whatsappFallbackSentAt: optionalString(invitation.whatsappFallbackSentAt),
+    whatsappLastInboundMessageId: optionalString(invitation.whatsappLastInboundMessageId),
+    whatsappLastOutboundMessageId: optionalString(invitation.whatsappLastOutboundMessageId),
+    whatsappFailureReason: optionalString(invitation.whatsappFailureReason),
+    guests: guests
+      .slice()
+      .sort(compareDashboardGuests)
+      .map((guest) =>
+        toEffectiveGuestSummary(guest, responsesByGuestId.get(String(guest.guestId ?? "")))
+      ),
+    rsvp: parsedRsvp
+      ? {
+          status: parsedRsvp.status,
+          updatedAt: parsedRsvp.updatedAt,
+          submittedBy: parsedRsvp.submittedBy,
+          attending: parsedRsvp.attendingGuestCount,
+          paid: parsedRsvp.paidAttendingGuestCount,
+          childrenSixOrYounger: parsedRsvp.childSixOrYoungerAttendingCount,
+          note: parsedRsvp.note
+        }
+      : {
+          status: "pending",
+          updatedAt: null,
+          submittedBy: null,
+          attending: 0,
+          paid: 0,
+          childrenSixOrYounger: 0
+        }
+  });
 }
 
 export function toGuestProfile(item: UnknownRecord): GuestProfile {

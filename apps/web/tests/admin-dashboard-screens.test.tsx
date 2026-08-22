@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminSessionResponse } from "@brimax/contracts";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
 
 const session: AdminSessionResponse = {
   authenticated: true,
@@ -15,8 +17,8 @@ const session: AdminSessionResponse = {
 };
 
 /** Renders the panel and waits for the snapshot load to settle before the test acts. */
-const renderShell = async () => {
-  const utils = render(<DashboardShell session={session} preview={false} onSignOut={vi.fn()} />);
+const renderShell = async (source?: AdminDashboardSource) => {
+  const utils = render(<DashboardShell session={session} preview={false} onSignOut={vi.fn()} source={source} />);
   await screen.findByRole("heading", { name: "Visão geral" });
   return utils;
 };
@@ -483,10 +485,12 @@ describe("dashboard screens", () => {
     await renderShell();
     await goTo(/WhatsApp/);
 
-    const chat = await screen.findByRole("button", { name: /Conversa com Helena Prado Ribeiro, 2/ });
+    const chat = await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" });
+    expect(within(chat).getByText("Abrir para carregar")).toBeInTheDocument();
     fireEvent.click(chat);
 
     expect(await screen.findByRole("heading", { name: "Helena Prado Ribeiro" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Consegui atualizar no site? Não apareceu nada lá")).length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: /Conversa com Helena Prado Ribeiro, 2/ })
     ).not.toBeInTheDocument();
@@ -504,5 +508,73 @@ describe("dashboard screens", () => {
     openHash("#whatsapp/SW2748");
 
     expect(await screen.findByRole("button", { name: /^Enviar/ })).toBeDisabled();
+  });
+
+  it("shows an unknown overview total before threads load and labels partial counts afterward", async () => {
+    await renderShell();
+    const card = screen.getByRole("button", { name: /WHATSAPP/ });
+    expect(card).toHaveTextContent("—");
+    expect(card).toHaveTextContent("Conversas carregam sob demanda");
+
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" }));
+    await screen.findAllByText("Consegui atualizar no site? Não apareceu nada lá");
+    await goTo(/Visão geral/);
+
+    expect(screen.getByRole("button", { name: /WHATSAPP/ })).toHaveTextContent("entre as abertas nesta sessão");
+  });
+
+  it("renders loading, first-load error, retry, and an empty loaded conversation", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+    let rejectFirst!: (error: Error) => void;
+    const first = new Promise<never>((_, reject) => { rejectFirst = reject; });
+    const loadWhatsappThread = vi.fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce({ invitationCode: "SW2748", messages: [], commands: [], nextCursor: null });
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappThread
+    };
+    await renderShell(source);
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent("Carregando conversa");
+
+    rejectFirst(new Error("offline"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar a conversa");
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect((await screen.findAllByText("Sem mensagens")).length).toBeGreaterThan(0);
+    expect(loadWhatsappThread).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads older pages through the accessible pagination control", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+    const loadWhatsappThread = vi.fn()
+      .mockResolvedValueOnce({
+        invitationCode: "SW2748",
+        messages: [{ messageId: "new", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Nova" }],
+        commands: [], nextCursor: "older"
+      })
+      .mockResolvedValueOnce({
+        invitationCode: "SW2748",
+        messages: [{ messageId: "old", direction: "outbound", sentAt: "2026-08-19T12:00:00Z", text: "Antiga" }],
+        commands: [], nextCursor: null
+      });
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappThread });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+    const loadMore = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    loadMore.focus();
+    fireEvent.click(loadMore);
+
+    expect(await screen.findByText("Antiga")).toBeInTheDocument();
+    expect(screen.getAllByText("Nova").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Histórico da conversa")).toHaveFocus();
+    expect(loadWhatsappThread).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
   });
 });

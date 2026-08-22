@@ -15,10 +15,10 @@ import {
   PHONE_SOURCE_LABELS,
   RSVP_LABELS,
   STAGE_LABELS,
-  TEMPLATE_LABELS,
   TONE_CLASSES,
   TONE_FG_CLASSES,
-  attentionMessage
+  attentionMessage,
+  templateLabel
 } from "@/lib/admin-dashboard-model";
 import type { AdminInvitation } from "@/lib/admin-dashboard-types";
 import {
@@ -243,7 +243,7 @@ export function InviteDetailScreen({
                       <span className="block pb-[22px]">
                         <span className="flex flex-wrap items-center gap-2.5">
                           <span className="text-[14.5px] font-medium">
-                            {TEMPLATE_LABELS[command.templateId]}
+                            {templateLabel(command.templateId)}
                           </span>
                           <span
                             className={`rounded-full px-2.5 py-[3px] text-[11.5px] font-medium tracking-[0.03em] ${TONE_CLASSES[status.tone]}`}

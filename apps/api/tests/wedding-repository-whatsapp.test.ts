@@ -957,11 +957,20 @@ describe("WeddingRepository WhatsApp conversation listing", () => {
       ":prefix": "WHATSAPP#"
     });
     expect(command.input.Limit).toBe(25);
+    expect(command.input.ScanIndexForward).toBe(true);
     expect(result.entries.map((entry) => entry.entityType)).toEqual([
       "WhatsappCommand",
       "WhatsappMessage"
     ]);
     expect(result.nextCursor).toBeTypeOf("string");
+  });
+
+  it("uses descending GSI order only when explicitly requested", async () => {
+    const send = vi.fn().mockResolvedValue({ Items: [] });
+
+    await repositoryWith(send).listWhatsappConversation("SW2748", { order: "desc" });
+
+    expect((send.mock.calls[0][0] as QueryCommand).input.ScanIndexForward).toBe(false);
   });
 
   it("round-trips the pagination cursor", async () => {
@@ -1014,5 +1023,28 @@ describe("WeddingRepository WhatsApp conversation listing", () => {
       messageId: "wamid.unassigned",
       correlationStatus: "unmatched_sender"
     });
+  });
+
+  it("does not expose a misindexed unassigned message from an invitation timeline", async () => {
+    const unassigned = {
+      messageId: "wamid.unassigned",
+      direction: "inbound",
+      messageType: "text",
+      correlationStatus: "unmatched_sender",
+      status: "received",
+      senderPhone: "5511963656517",
+      body: "private retained text",
+      createdAt: NOW,
+      PK: "WHATSAPP_MESSAGE#wamid.unassigned",
+      SK: "MESSAGE",
+      GSI1PK: "INVITATION#SW2748",
+      GSI1SK: `WHATSAPP#${NOW}#MESSAGE#wamid.unassigned`,
+      entityType: "WhatsappMessage"
+    };
+    const send = vi.fn().mockResolvedValue({ Items: [unassigned] });
+
+    const result = await repositoryWith(send).listWhatsappConversation("SW2748");
+
+    expect(result.entries).toEqual([]);
   });
 });

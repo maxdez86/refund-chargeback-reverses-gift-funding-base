@@ -12,6 +12,12 @@ import {
 const NOW = "2026-08-20T12:00:00Z";
 
 const freshState = () => createInitialState(createFixtureDashboardSnapshot());
+const unloadedState = () => {
+  const snapshot = createFixtureDashboardSnapshot();
+  snapshot.threads = {};
+  snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+  return createInitialState(snapshot);
+};
 const invitationOf = (state: AdminDashboardState, code: string) =>
   state.invitations.find((invitation) => invitation.invitationCode === code)!;
 const apply = (state: AdminDashboardState, ...actions: AdminDashboardAction[]) =>
@@ -327,6 +333,7 @@ describe("WhatsApp conversation state", () => {
       now: NOW
     });
     expect(next.threads.QP8814.at(-1)).toEqual({
+      messageId: `local-QP8814-${NOW}`,
       direction: "outbound",
       sentAt: NOW,
       text: "Oi Helena!"
@@ -348,6 +355,119 @@ describe("WhatsApp conversation state", () => {
       snapshot: createFixtureDashboardSnapshot()
     });
     expect(reloaded.readChats).toEqual([]);
+    expect(reloaded.threadLoads.QP8814).toEqual({ status: "loaded", nextCursor: null });
     expect(reloaded.invitations).toHaveLength(8);
+  });
+
+  it("treats an unloaded conversation as unknown until its first page succeeds", () => {
+    const state = unloadedState();
+    expect(unreadCount(state, "QP8814")).toBeNull();
+
+    const loading = apply(state, {
+      type: "thread-load-started", invitationCode: "QP8814", loadMore: false
+    });
+    expect(loading.threadLoads.QP8814).toEqual({ status: "loading", hasLoaded: false, nextCursor: null });
+    expect(unreadCount(loading, "QP8814")).toBeNull();
+
+    const loaded = apply(loading, {
+      type: "thread-load-succeeded",
+      loadMore: false,
+      page: {
+        invitationCode: "QP8814",
+        messages: [
+          { messageId: "new-1", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Oi" },
+          { messageId: "new-2", direction: "inbound", sentAt: "2026-08-20T12:01:00Z", text: "Tudo bem?" }
+        ],
+        commands: [],
+        nextCursor: "older"
+      }
+    });
+    expect(unreadCount(loaded, "QP8814")).toBe(2);
+    expect(loaded.threadLoads.QP8814).toEqual({ status: "loaded", nextCursor: "older" });
+  });
+
+  it("prepends older descending pages, deduplicates IDs, and keeps commands newest-first", () => {
+    const first = apply(unloadedState(), {
+      type: "thread-load-succeeded",
+      loadMore: false,
+      page: {
+        invitationCode: "SW2748",
+        messages: [
+          { messageId: "m2", direction: "outbound", sentAt: "2026-08-20T11:00:00Z", text: "Dois" },
+          { messageId: "m3", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Três" }
+        ],
+        commands: [{
+          commandId: "c3", createdAt: "2026-08-20T12:00:00Z", templateId: "wedding_invitation",
+          stage: "pending", status: "sent", retryCount: 0, reconciliationStatus: "none"
+        }],
+        nextCursor: "older"
+      }
+    });
+    const next = apply(first, {
+      type: "thread-load-succeeded",
+      loadMore: true,
+      page: {
+        invitationCode: "SW2748",
+        messages: [
+          { messageId: "m1", direction: "outbound", sentAt: "2026-08-20T10:00:00Z", text: "Um" },
+          { messageId: "m2", direction: "outbound", sentAt: "2026-08-20T11:00:00Z", text: "Dois repetido" }
+        ],
+        commands: [
+          {
+            commandId: "c2", createdAt: "2026-08-20T11:00:00Z", templateId: "wedding_invitation",
+            stage: "pending", status: "sent", retryCount: 0, reconciliationStatus: "none"
+          },
+          {
+            commandId: "c3", createdAt: "2026-08-20T12:00:00Z", templateId: "wedding_invitation",
+            stage: "pending", status: "sent", retryCount: 0, reconciliationStatus: "none"
+          }
+        ],
+        nextCursor: null
+      }
+    });
+
+    expect(next.threads.SW2748.map((message) => message.messageId)).toEqual(["m1", "m2", "m3"]);
+    expect(invitationOf(next, "SW2748").commands.map((command) => command.commandId)).toEqual(["c3", "c2"]);
+  });
+
+  it("retains loaded data and retry cursor after a load-more failure", () => {
+    const state = apply(unloadedState(), {
+      type: "thread-load-succeeded",
+      loadMore: false,
+      page: {
+        invitationCode: "SW2748",
+        messages: [{ messageId: "m1", direction: "inbound", sentAt: NOW, text: "Oi" }],
+        commands: [],
+        nextCursor: "retry-cursor"
+      }
+    });
+    const failed = apply(
+      state,
+      { type: "thread-load-started", invitationCode: "SW2748", loadMore: true },
+      { type: "thread-load-failed", invitationCode: "SW2748", loadMore: true }
+    );
+
+    expect(failed.threads.SW2748).toEqual(state.threads.SW2748);
+    expect(failed.threadLoads.SW2748).toEqual({
+      status: "error", hasLoaded: true, nextCursor: "retry-cursor"
+    });
+  });
+
+  it("keeps a local composer reply after history that finishes loading later", () => {
+    const local = apply(unloadedState(), {
+      type: "send-chat", invitationCode: "SW2748", text: "Resposta local", now: NOW
+    });
+    const loaded = apply(local, {
+      type: "thread-load-succeeded",
+      loadMore: false,
+      page: {
+        invitationCode: "SW2748",
+        messages: [{ messageId: "persisted", direction: "inbound", sentAt: "2026-08-20T11:00:00Z", text: "Histórico" }],
+        commands: [],
+        nextCursor: null
+      }
+    });
+
+    expect(loaded.threads.SW2748.map((message) => message.text)).toEqual(["Histórico", "Resposta local"]);
   });
 });

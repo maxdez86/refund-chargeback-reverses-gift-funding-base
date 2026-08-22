@@ -17,6 +17,7 @@ vi.mock("@sentry/aws-serverless", () => ({
 }));
 
 vi.mock("../src/domain/checkout-expiry", () => ({ sweepStaleCheckouts: vi.fn() }));
+vi.mock("../src/domain/admin-dashboard-service", () => ({ AdminDashboardService: class {} }));
 vi.mock("../src/domain/gift-service", () => ({ GiftService: class {} }));
 vi.mock("../src/domain/guest-message-service", () => ({ GuestMessageService: class {} }));
 vi.mock("../src/domain/invitation-service", () => ({ InvitationService: class {} }));
@@ -32,6 +33,7 @@ vi.mock("../src/services/email/client", () => ({ EmailService: class {} }));
 
 const handlerModules = [
   ["AdminAuthorizerFunction", () => import("../src/functions/admin-authorizer/handler")],
+  ["AdminDashboardFunction", () => import("../src/functions/admin-dashboard/handler")],
   ["AdminSessionFunction", () => import("../src/functions/admin-session/handler")],
   ["AsaasWebhookFunction", () => import("../src/functions/asaas-webhook/handler")],
   ["AsaasWebhookProcessorFunction", () => import("../src/functions/asaas-webhook-processor/handler")],

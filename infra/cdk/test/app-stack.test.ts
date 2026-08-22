@@ -85,6 +85,11 @@ describe("AppStack", () => {
       AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /admin/dashboard",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "DELETE /admin/guest-messages/{messageId}",
       AuthorizationType: "CUSTOM",
       AuthorizerId: Match.anyValue()
@@ -469,7 +474,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(adminRoutes).toHaveLength(7);
+    expect(adminRoutes).toHaveLength(8);
     const adminAuthorizerIds = new Set(
       adminRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))
     );
@@ -518,6 +523,74 @@ describe("AppStack", () => {
     );
     const adminAuthorizerPolicyJson = JSON.stringify(adminAuthorizerPolicies);
     expect(adminAuthorizerPolicyJson).not.toMatch(/dynamodb|secretsmanager|sqs|ses:/i);
+    const adminDashboardFunctionEntry = Object.entries(resources).find(
+      ([logicalId, resource]) =>
+        logicalId.startsWith("AdminDashboardFunction") &&
+        resource.Type === "AWS::Lambda::Function"
+    );
+    expect(adminDashboardFunctionEntry).toBeDefined();
+    expect(adminDashboardFunctionEntry?.[1].Properties).toMatchObject({
+      Handler: "index.handler",
+      Runtime: "nodejs24.x",
+      Timeout: 10,
+      Environment: {
+        Variables: expect.objectContaining({
+          ALLOWED_ORIGINS: "https://dev.brimax.life,https://www.dev.brimax.life",
+          STAGE: "dev",
+          WEDDING_TABLE_NAME: expect.anything()
+        })
+      }
+    });
+    expect(stack.alarmedFunctions.map((fn) => fn.node.id)).toContain("AdminDashboardFunction");
+    expect(stack.applicationLogGroups.map((group) => group.node.id)).toContain(
+      "AdminDashboardFunctionLogGroup"
+    );
+
+    const adminDashboardRoleLogicalId = (
+      adminDashboardFunctionEntry?.[1].Properties?.Role as { "Fn::GetAtt": [string, string] }
+    )["Fn::GetAtt"][0];
+    const adminDashboardPolicies = Object.values(resources).filter(
+      (resource) =>
+        resource.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(resource.Properties?.Roles).includes(adminDashboardRoleLogicalId)
+    );
+    const adminDashboardPolicyJson = JSON.stringify(adminDashboardPolicies);
+    expect(adminDashboardPolicyJson).toContain("dynamodb:GetItem");
+    expect(adminDashboardPolicyJson).toContain("dynamodb:Scan");
+    expect(adminDashboardPolicyJson).not.toMatch(
+      /dynamodb:(?:BatchWriteItem|DeleteItem|PutItem|UpdateItem)/
+    );
+    expect(adminDashboardPolicyJson).not.toMatch(/secretsmanager|sqs:|ses:/i);
+
+    const adminDashboardRouteEntry = Object.entries(resources).find(
+      ([, resource]) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        resource.Properties?.RouteKey === "GET /admin/dashboard"
+    );
+    const adminDashboardRouteEntries = Object.entries(resources).filter(
+      ([, resource]) =>
+        resource.Type === "AWS::ApiGatewayV2::Route" &&
+        resource.Properties?.RouteKey === "GET /admin/dashboard"
+    );
+    expect(adminDashboardRouteEntries).toHaveLength(1);
+    const adminDashboardIntegrationEntry = Object.entries(resources).find(
+      ([, resource]) =>
+        resource.Type === "AWS::ApiGatewayV2::Integration" &&
+        JSON.stringify(resource.Properties?.IntegrationUri).includes(
+          adminDashboardFunctionEntry?.[0] ?? "missing-function"
+        )
+    );
+    expect(adminDashboardIntegrationEntry).toBeDefined();
+    expect(JSON.stringify(adminDashboardRouteEntry?.[1].Properties?.Target)).toContain(
+      adminDashboardIntegrationEntry?.[0]
+    );
+    const defaultStageEntry = Object.entries(resources).find(
+      ([, resource]) => resource.Type === "AWS::ApiGatewayV2::Stage"
+    );
+    expect(adminDashboardRouteEntry).toBeDefined();
+    expect(
+      (defaultStageEntry?.[1] as { DependsOn?: string[] } | undefined)?.DependsOn
+    ).toContain(adminDashboardRouteEntry?.[0]);
     const getGiftsFunctionEntry = Object.entries(resources).find(
       ([logicalId, resource]) =>
         logicalId.startsWith("GetGiftsFunction") && resource.Type === "AWS::Lambda::Function"
@@ -782,7 +855,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(protectedRoutes).toHaveLength(7);
+    expect(protectedRoutes).toHaveLength(8);
     expect(protectedRoutes.every((route) => route.Properties?.AuthorizationType === "CUSTOM")).toBe(true);
     expect(new Set(protectedRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))).size).toBe(1);
     const authorizerInvokePermissions = Object.values(resources).filter(

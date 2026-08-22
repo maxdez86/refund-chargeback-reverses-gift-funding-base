@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminSessionState } from "@/hooks/use-admin-session";
 import type { AdminRuntimeConfig } from "@/lib/admin-auth";
+import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import { createLiveDashboardSource } from "@/lib/admin-dashboard-source";
 
 type MockAdminSession = {
   state: AdminSessionState;
@@ -9,6 +11,7 @@ type MockAdminSession = {
   acceptCredential: (credential: string) => void;
   retry: () => void;
   signOut: () => void;
+  dashboardSource?: AdminDashboardSource;
 };
 
 const useAdminSessionMock = vi.fn<() => MockAdminSession>();
@@ -78,6 +81,33 @@ describe("administrative dashboard", () => {
     // Eight fixture invitations covering fourteen people.
     expect(screen.getByRole("button", { name: /CONVITES\s*8/ })).toBeInTheDocument();
     expect(screen.getAllByRole("navigation", { name: "Navegação administrativa" })).not.toHaveLength(0);
+  });
+
+  it("loads a live dashboard once without requesting WhatsApp history", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, invitations: [], gifts: [], guestMessages: [] }), {
+        status: 200
+      })
+    );
+    const dashboardSource = createLiveDashboardSource({
+      getToken: () => "test-token",
+      apiUrl: "/api",
+      fetcher
+    });
+    useAdminSessionMock.mockReturnValue({
+      ...baseActions,
+      config: { ...config, sessionMode: "live" },
+      dashboardSource,
+      state: { ...authenticatedSession, preview: false }
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole("heading", { name: "Visão geral" })).toBeInTheDocument();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toBe("/api/admin/dashboard");
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("whatsapp"))).toBe(false);
+    expect(screen.queryByText(/Dados de demonstração/i)).not.toBeInTheDocument();
   });
 
   it("opens the mobile navigation drawer and closes it on selection", async () => {

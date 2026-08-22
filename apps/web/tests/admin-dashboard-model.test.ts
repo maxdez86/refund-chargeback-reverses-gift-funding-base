@@ -17,6 +17,7 @@ import {
   needsAttention,
   recalculateRsvp,
   sendAvailability,
+  templateLabel,
   templateForSend,
   toGuestRows,
   toMusicSuggestionRows
@@ -163,7 +164,11 @@ describe("recalculateRsvp", () => {
     for (const invitation of snapshot.invitations) {
       expect({
         code: invitation.invitationCode,
-        ...recalculateRsvp(invitation.guests, invitation.rsvp, invitation.rsvp.updatedAt)
+        ...recalculateRsvp(
+          invitation.guests,
+          invitation.rsvp,
+          invitation.rsvp.updatedAt ?? "2026-01-01T00:00:00Z"
+        )
       }).toMatchObject({ code: invitation.invitationCode, ...invitation.rsvp });
     }
   });
@@ -191,6 +196,13 @@ describe("courtesy state", () => {
 });
 
 describe("WhatsApp send availability", () => {
+  it("keeps legacy and internal template identifiers readable", () => {
+    expect(templateLabel("wedding_invitation")).toBe("Convite enviado");
+    expect(templateLabel("__whatsapp_fallback_text__")).toBe(
+      "Modelo __whatsapp_fallback_text__"
+    );
+  });
+
   it("offers a first send only to invitations that were never contacted", () => {
     const fresh: AdminInvitation = { ...byCode("SW2748"), commands: [] };
     expect(sendAvailability(fresh)).toMatchObject({ firstAllowed: true, resendAllowed: false });
@@ -221,7 +233,11 @@ describe("WhatsApp send availability", () => {
 });
 
 describe("music suggestions", () => {
-  const withNote = (code: string, note: string | undefined, updatedAt: string): AdminInvitation => ({
+  const withNote = (
+    code: string,
+    note: string | undefined,
+    updatedAt: string | null
+  ): AdminInvitation => ({
     ...byCode("MV2093"),
     invitationCode: code,
     householdName: `Convite ${code}`,
@@ -246,6 +262,14 @@ describe("music suggestions", () => {
       withNote("CC4444", "Música sugerida: Sozinho - Caetano Veloso", "2026-08-03T10:00:00Z")
     ]);
     expect(rows.map((row) => row.invitationCode)).toEqual(["CC4444"]);
+  });
+
+  it("does not invent a date for a malformed note without an RSVP timestamp", () => {
+    expect(
+      toMusicSuggestionRows([
+        withNote("AA2222", "Música sugerida: Trem-Bala - Ana Vilela", null)
+      ])
+    ).toEqual([]);
   });
 
   it("sorts newest first and carries the invitation's RSVP status", () => {

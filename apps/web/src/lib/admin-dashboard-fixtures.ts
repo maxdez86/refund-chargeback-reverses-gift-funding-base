@@ -509,7 +509,7 @@ const invitations: AdminInvitation[] = [
   }
 ];
 
-const threads: Record<string, AdminWhatsappMessage[]> = {
+const threads: Record<string, Omit<AdminWhatsappMessage, "messageId">[]> = {
   SW2748: [
     {
       direction: "outbound",
@@ -775,5 +775,18 @@ const gifts: AdminGift[] = giftSeed.map((gift) => deriveGift({ ...gift, photoUrl
 
 /** A deep copy, so the reducer can mutate freely without leaking between mounts or tests. */
 export function createFixtureDashboardSnapshot(): AdminDashboardSnapshot {
-  return structuredClone({ invitations, guestMessages, gifts, threads });
+  return structuredClone({
+    invitations,
+    guestMessages,
+    gifts,
+    threads: Object.fromEntries(
+      Object.entries(threads).map(([invitationCode, messages]) => [
+        invitationCode,
+        messages.map((message, index) => ({
+          ...message,
+          messageId: `fixture-${invitationCode}-${index + 1}`
+        }))
+      ])
+    )
+  });
 }

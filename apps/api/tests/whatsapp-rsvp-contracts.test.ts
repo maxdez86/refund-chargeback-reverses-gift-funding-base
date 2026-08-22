@@ -7,6 +7,7 @@ import {
   WhatsappRsvpSendRequestSchema,
   WhatsappRsvpSendResponseSchema,
   WhatsappRsvpStatusResponseSchema,
+  WhatsappRsvpStatusQuerySchema,
   WhatsappTemplatePurposeSchema,
   WhatsappRsvpTemplatePurposeSchema,
   WHATSAPP_RSVP_TEMPLATE_PURPOSES,
@@ -76,6 +77,59 @@ describe("WhatsApp RSVP contracts", () => {
     expect(WhatsappPhoneUpdateResponseSchema.parse({ invitationCode, phoneNumber: "5511963656517", updatedAt: "2026-08-17T12:00:00.000Z" })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request." })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request.", issues: [{ path: ["templateId"], message: "Invalid" }] })).toBeTruthy();
+  });
+
+  it("validates optional invitation-scoped message bodies and history order", () => {
+    expect(WhatsappRsvpStatusQuerySchema.parse({})).toEqual({ limit: 50, order: "asc" });
+    expect(WhatsappRsvpStatusQuerySchema.parse({ order: "desc", limit: "25" })).toEqual({
+      limit: 25,
+      order: "desc"
+    });
+    expect(() => WhatsappRsvpStatusQuerySchema.parse({ order: "newest" })).toThrow();
+
+    const base = { invitationCode, status: "message_sent" as const };
+    expect(WhatsappRsvpStatusResponseSchema.parse({
+      ...base,
+      history: [{
+        kind: "message",
+        id: "wamid.inbound",
+        direction: "inbound",
+        status: "received",
+        createdAt: "2026-08-17T12:00:00.000Z",
+        messageType: "text",
+        body: "Olá!"
+      }]
+    }).history?.[0]).toMatchObject({ body: "Olá!", messageType: "text" });
+    expect(() => WhatsappRsvpStatusResponseSchema.parse({
+      ...base,
+      history: [{
+        kind: "message",
+        id: "wamid.inbound",
+        direction: "inbound",
+        status: "received",
+        createdAt: "2026-08-17T12:00:00.000Z",
+        body: ""
+      }]
+    })).toThrow();
+    expect(() => WhatsappRsvpStatusResponseSchema.parse({
+      ...base,
+      history: [{
+        kind: "command",
+        id: "command-1",
+        status: "sent",
+        createdAt: "2026-08-17T12:00:00.000Z",
+        body: "must remain message-only"
+      }]
+    })).toThrow();
+    expect(() => WhatsappRsvpStatusResponseSchema.parse({
+      ...base,
+      history: [{
+        kind: "message",
+        id: "wamid.missing-direction",
+        status: "received",
+        createdAt: "2026-08-17T12:00:00.000Z"
+      }]
+    })).toThrow();
   });
 
   it("accepts only the closed webhook-processing result union", () => {

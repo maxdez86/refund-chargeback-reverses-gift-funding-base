@@ -98,12 +98,20 @@ describe("WhatsApp RSVP operator handlers", () => {
     });
     const response = await handler(event({
       pathParameters: { invitationCode: "SW2748" },
-      queryStringParameters: { limit: "10", cursor: "cursor-0" }
+      queryStringParameters: { limit: "10", cursor: "cursor-0", order: "desc" }
     }), context);
     expect(response.statusCode).toBe(200);
-    expect(getStatusMock).toHaveBeenCalledWith("SW2748", { limit: 10, cursor: "cursor-0" });
-    expect(body(response)).not.toHaveProperty("history[0].body");
+    expect(getStatusMock).toHaveBeenCalledWith("SW2748", { limit: 10, cursor: "cursor-0", order: "desc" });
     expect(body(response).nextCursor).toBe("cursor-1");
+  });
+
+  it("defaults status history to ascending order for existing callers", async () => {
+    getStatusMock.mockResolvedValue({ invitationCode: "SW2748", status: "idle", history: [] });
+    const { handler } = await import("../src/functions/whatsapp-rsvp-status/handler");
+
+    await handler(event({ pathParameters: { invitationCode: "SW2748" } }), context);
+
+    expect(getStatusMock).toHaveBeenCalledWith("SW2748", { limit: 50, order: "asc" });
   });
 
   it("maps unknown invitations and infrastructure failures consistently", async () => {

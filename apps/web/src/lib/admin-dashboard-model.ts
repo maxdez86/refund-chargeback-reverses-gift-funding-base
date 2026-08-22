@@ -97,6 +97,11 @@ export const TEMPLATE_LABELS: Record<WhatsappRsvpTemplatePurpose, string> = {
   wedding_rsvp_undecided_followup_single: "Follow-up de indecisos (individual)"
 };
 
+/** Keeps retained or internal template identifiers readable after the active manifest changes. */
+export function templateLabel(templateId: string) {
+  return TEMPLATE_LABELS[templateId as WhatsappRsvpTemplatePurpose] ?? `Modelo ${templateId}`;
+}
+
 /** Each R$ 50,00 quota of a fractional gift. Mirrors the LEGACY_FIXED_50 funding model. */
 export const GIFT_PART_CENTS = 5_000;
 
@@ -246,7 +251,7 @@ export function toMusicSuggestionRows(invitations: AdminInvitation[]): AdminMusi
   return invitations
     .flatMap((invitation) => {
       const music = musicSuggestionFromNote(invitation.rsvp.note)?.trim();
-      if (!music) return [];
+      if (!music || !invitation.rsvp.updatedAt) return [];
       return [
         {
           invitationCode: invitation.invitationCode,

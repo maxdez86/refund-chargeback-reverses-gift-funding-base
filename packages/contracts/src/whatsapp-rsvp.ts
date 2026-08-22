@@ -130,11 +130,28 @@ export const WhatsappRsvpStatusResponseSchema = z.object({
     templateVersion: z.number().int().positive().optional(),
     stage: WhatsappFlowStageSchema.optional(),
     providerMessageId: z.string().min(1).max(512).optional(),
+    messageType: WhatsappMessageTypeSchema.optional(),
+    body: WhatsappTextBodySchema.optional(),
     retryCount: z.number().int().min(0).optional(),
     reconciliationStatus: WhatsappReconciliationStatusSchema.optional(),
     providerErrorCategory: z.string().min(1).max(128).optional(),
     failureReason: z.string().min(1).max(2048).optional()
-  }).strict()).optional(),
+  }).strict().superRefine((entry, context) => {
+    if (entry.kind === "command" && entry.body !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["body"],
+        message: "WhatsApp command history entries cannot expose message bodies."
+      });
+    }
+    if (entry.kind === "message" && entry.direction === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["direction"],
+        message: "WhatsApp message history entries require a direction."
+      });
+    }
+  })).optional(),
   nextCursor: z.string().min(1).optional()
 });
 /** @deprecated Use WhatsappRsvpStatusResponseSchema. Kept as a compatibility alias. */
@@ -150,7 +167,8 @@ export const WhatsappRsvpSendResponseSchema = z.object({
 export const WhatsappCommandIdSchema = z.string().regex(/^[A-Za-z0-9._:-]{1,512}$/);
 export const WhatsappRsvpStatusQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(1).max(100)).default("50"),
-  cursor: z.string().min(1).optional()
+  cursor: z.string().min(1).optional(),
+  order: z.enum(["asc", "desc"]).default("asc")
 }).strict();
 export const WhatsappRsvpCommandStatusResponseSchema = z.object({
   commandId: WhatsappCommandIdSchema,

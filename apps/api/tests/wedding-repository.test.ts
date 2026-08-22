@@ -319,6 +319,160 @@ describe("WeddingRepository", () => {
     });
   });
 
+  describe("listAdminDashboardInvitations", () => {
+    const invitation = (invitationCode: string, householdName: string) => ({
+      PK: `INVITATION#${invitationCode}`,
+      SK: "INVITATION",
+      entityType: "Invitation",
+      invitationCode,
+      householdName
+    });
+    const guest = (invitationCode: string, guestId: string, guestName: string, sortOrder?: number) => ({
+      PK: `INVITATION#${invitationCode}`,
+      SK: `GUEST#${guestId}`,
+      entityType: "InvitationGuest",
+      invitationCode,
+      guestId,
+      guestName,
+      sortOrder,
+      allowedPlusOnes: 0,
+      rsvpStatus: "pending"
+    });
+
+    it("maps a single page with current RSVP data", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Items: [
+          invitation("AB2345", "Amanda e Chris"),
+          { ...guest("AB2345", "g2", "Chris", 2), isChild: false },
+          { ...guest("AB2345", "g1", "Amanda", 1), isChild: true, dietaryNotes: "Sem lactose" },
+          {
+            PK: "INVITATION#AB2345",
+            SK: "RSVP#CURRENT",
+            entityType: "RsvpResponse",
+            invitationCode: "AB2345",
+            submittedBy: "g1",
+            guestResponses: [
+              { guestId: "g1", status: "attending", isChildSixOrYounger: true },
+              { guestId: "g2", status: "declined", isChildSixOrYounger: false }
+            ],
+            attendingGuestCount: 1,
+            paidAttendingGuestCount: 0,
+            childSixOrYoungerAttendingCount: 1,
+            note: "Música sugerida: Dreams",
+            status: "attending",
+            updatedAt: "2026-08-20T12:00:00.000Z"
+          }
+        ]
+      });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      const command = send.mock.calls[0][0] as ScanCommand;
+      expect(command.input.FilterExpression).toContain("entityType = :invitationType");
+      expect(command.input.ProjectionExpression).toContain("guestResponses");
+      expect(command.input.ProjectionExpression).not.toContain("websitePayloadDigest");
+      expect(result).toEqual([{
+        invitationCode: "AB2345",
+        householdName: "Amanda e Chris",
+        guests: [
+          {
+            guestId: "g1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "attending",
+            isChild: true,
+            isChildSixOrYounger: true,
+            dietaryNotes: "Sem lactose"
+          },
+          {
+            guestId: "g2",
+            guestName: "Chris",
+            allowedPlusOnes: 0,
+            rsvpStatus: "declined",
+            isChild: false,
+            isChildSixOrYounger: false
+          }
+        ],
+        rsvp: {
+          status: "attending",
+          updatedAt: "2026-08-20T12:00:00.000Z",
+          submittedBy: "g1",
+          attending: 1,
+          paid: 0,
+          childrenSixOrYounger: 1,
+          note: "Música sugerida: Dreams"
+        }
+      }]);
+    });
+
+    it("drains pages before grouping and sorts invitations and malformed guest orders", async () => {
+      const lastEvaluatedKey = { PK: "PAGE#1", SK: "PAGE#1" };
+      const send = vi.fn()
+        .mockResolvedValueOnce({
+          Items: [
+            invitation("CD6789", "Família C"),
+            guest("AB2345", "g2", "B guest"),
+            guest("ORPHAN1", "orphan", "Orphan", 1)
+          ],
+          LastEvaluatedKey: lastEvaluatedKey
+        })
+        .mockResolvedValueOnce({
+          Items: [
+            invitation("AB2345", "Família A"),
+            guest("AB2345", "g1", "A guest"),
+            guest("CD6789", "g3", "C guest", 1)
+          ]
+        });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      expect(send).toHaveBeenCalledTimes(2);
+      expect((send.mock.calls[0][0] as ScanCommand).input.ExclusiveStartKey).toBeUndefined();
+      expect((send.mock.calls[1][0] as ScanCommand).input.ExclusiveStartKey).toBe(lastEvaluatedKey);
+      expect(result.map((item) => item.invitationCode)).toEqual(["AB2345", "CD6789"]);
+      expect(result[0]?.guests.map((item) => item.guestId)).toEqual(["g1", "g2"]);
+      expect(result[0]?.rsvp).toEqual({
+        status: "pending",
+        updatedAt: null,
+        submittedBy: null,
+        attending: 0,
+        paid: 0,
+        childrenSixOrYounger: 0
+      });
+    });
+
+    it("propagates DynamoDB and malformed persisted-record failures", async () => {
+      const failure = new Error("DynamoDB unavailable");
+      const failedRepository = new WeddingRepository(
+        { send: vi.fn().mockRejectedValue(failure) } as never,
+        "table-test"
+      );
+      await expect(failedRepository.listAdminDashboardInvitations()).rejects.toBe(failure);
+
+      const malformedRepository = new WeddingRepository({
+        send: vi.fn().mockResolvedValue({
+          Items: [{
+            ...invitation("AB2345", "Amanda"),
+            whatsappFlowUpdatedAt: "not-a-timestamp"
+          }, guest("AB2345", "g1", "Amanda", 1)]
+        })
+      } as never, "table-test");
+      await expect(malformedRepository.listAdminDashboardInvitations()).rejects.toThrow();
+
+      const malformedCategoryRepository = new WeddingRepository({
+        send: vi.fn().mockResolvedValue({
+          Items: [
+            invitation("AB2345", "Amanda"),
+            { ...guest("AB2345", "g1", "Amanda", 1), rsvpStatus: "future-status" }
+          ]
+        })
+      } as never, "table-test");
+      await expect(malformedCategoryRepository.listAdminDashboardInvitations()).rejects.toThrow();
+    });
+  });
+
   describe("exportGuests", () => {
     it("flattens guest items and overlays RSVP state per invitation code", async () => {
       const send = vi.fn().mockResolvedValue({

@@ -15,7 +15,7 @@ export function OverviewScreen({
 }: {
   state: AdminDashboardState;
   guestRows: AdminGuestRow[];
-  unreadByCode: Record<string, number>;
+  unreadByCode: Record<string, number | null>;
   onNavigate: (section: DashboardSection) => void;
 }) {
   const totalPaidCents = state.gifts.reduce((sum, gift) => sum + gift.confirmedAmountCents, 0);
@@ -28,8 +28,9 @@ export function OverviewScreen({
   const suggestionPercent = state.invitations.length
     ? Math.round((musicSuggestions.length / state.invitations.length) * 100)
     : 0;
-  const unreadTotal = Object.values(unreadByCode).reduce((sum, count) => sum + count, 0);
-  const unreadChats = Object.values(unreadByCode).filter((count) => count > 0).length;
+  const loadedUnread = Object.values(unreadByCode).filter((count): count is number => count !== null);
+  const unreadTotal = loadedUnread.reduce((sum, count) => sum + count, 0);
+  const unreadChats = loadedUnread.filter((count) => count > 0).length;
 
   const cards = [
     {
@@ -71,8 +72,10 @@ export function OverviewScreen({
       section: "whatsapp" as const,
       label: "WHATSAPP",
       icon: MessageCircle,
-      value: String(unreadTotal),
-      hint: pluralize(unreadChats, "conversa sem resposta", "conversas sem resposta")
+      value: loadedUnread.length ? String(unreadTotal) : "—",
+      hint: loadedUnread.length
+        ? `${pluralize(unreadChats, "conversa sem resposta", "conversas sem resposta")} entre as abertas nesta sessão`
+        : "Conversas carregam sob demanda"
     }
   ];
 
