@@ -38,6 +38,15 @@ export function formatDateTimeOfDay(iso: string | null | undefined) {
   return long === "—" ? "—" : long.split(", ")[1];
 }
 
+/** "Atualizado agora mesmo" / "Atualizado há X min" — the sidebar refresh caption. */
+export function formatRelativeMinutes(iso: string | null, nowMs: number = Date.now()) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  const minutes = Math.max(0, Math.floor((nowMs - date.getTime()) / 60000));
+  return minutes < 1 ? "Atualizado agora mesmo" : `Atualizado há ${minutes} min`;
+}
+
 /** "20:18" — chat bubble timestamps. */
 export function formatClockTime(iso: string) {
   const date = new Date(iso);

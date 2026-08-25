@@ -406,3 +406,12 @@ section[id] {
   font-family: "Cormorant Garamond", "Times New Roman", serif;
   letter-spacing: 0.3em;
 }
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ChevronRight,
   CircleCheck,
@@ -7,11 +8,18 @@ import {
   Mail,
   MessageCircle,
   Music,
+  RefreshCw,
   Users,
   type LucideIcon
 } from "lucide-react";
+import { formatRelativeMinutes } from "@/lib/admin-dashboard-format";
 import { sectionHash, type DashboardSection } from "@/lib/admin-dashboard-route";
 import { cn } from "@/lib/utils";
+
+export type AdminDashboardRefreshState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string };
 
 type NavItem = {
   section: DashboardSection;
@@ -50,6 +58,9 @@ export function AdminSidebar({
   displayName,
   email,
   onSignOut,
+  onRefresh,
+  refreshState,
+  lastSuccessfulLoadAt,
   variant
 }: {
   active: DashboardSection;
@@ -60,18 +71,37 @@ export function AdminSidebar({
   displayName: string;
   email: string;
   onSignOut: () => void;
+  onRefresh: () => void;
+  refreshState: AdminDashboardRefreshState;
+  lastSuccessfulLoadAt: string | null;
   variant: "desktop" | "drawer";
 }) {
   const items = buildNavItems(counts);
   // The drawer is always fully expanded; only the desktop rail collapses.
   const open = variant === "drawer" || !collapsed;
+  const refreshing = refreshState.status === "loading";
+
+  // Keeps the relative "Atualizado há X min" caption fresh without new props ticking in.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick((tick) => tick + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const refreshLabel = refreshing ? "Atualizando…" : "Atualizar dados";
+  const refreshCaption =
+    refreshState.status === "loading"
+      ? "Buscando métricas de todas as seções"
+      : refreshState.status === "error"
+        ? refreshState.message
+        : formatRelativeMinutes(lastSuccessfulLoadAt);
 
   return (
     <div
       className={cn(
         "relative flex flex-col bg-admin-subtle px-[22px] pb-[22px] pt-[34px]",
         variant === "desktop" &&
-          "h-full flex-none border-r border-admin-line transition-[width] duration-200",
+          "sticky top-0 h-screen flex-none overflow-y-auto border-r border-admin-line transition-[width] duration-200",
         variant === "desktop" && (open ? "w-[320px]" : "w-[92px]"),
         variant === "drawer" && "h-full w-full"
       )}
@@ -140,7 +170,49 @@ export function AdminSidebar({
         })}
       </nav>
 
-      <div className="mt-auto overflow-hidden border-t border-admin-line px-2 pt-5">
+      <div className="mt-auto overflow-hidden pt-5">
+        <button
+          type="button"
+          onClick={onRefresh}
+          title={refreshLabel}
+          aria-label={refreshLabel}
+          disabled={refreshing}
+          aria-busy={refreshing}
+          className={cn(
+            "flex w-full items-center gap-3 overflow-hidden rounded-[10px] border border-admin-line bg-admin-surface px-3 py-[11px] text-left transition-colors hover:bg-admin-gold-tint hover:border-admin-line-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ink disabled:cursor-not-allowed",
+            open ? "justify-start" : "justify-center"
+          )}
+        >
+          <RefreshCw
+            className={cn("size-4 shrink-0", refreshing ? "animate-spin text-admin-gold" : "text-admin-ink")}
+            strokeWidth={1.7}
+            aria-hidden="true"
+          />
+          {open && (
+            <span className="min-w-0">
+              <span className="block whitespace-nowrap text-[13.5px] font-medium text-admin-ink">
+                {refreshLabel}
+              </span>
+              <span
+                role={refreshState.status === "error" ? "alert" : undefined}
+                className={cn(
+                  "mt-0.5 block truncate text-[11.5px]",
+                  refreshState.status === "error" ? "text-admin-danger" : "text-admin-faint"
+                )}
+              >
+                {refreshCaption}
+              </span>
+            </span>
+          )}
+        </button>
+        {refreshing && (
+          <p role="status" className="sr-only">
+            Atualizando dados…
+          </p>
+        )}
+      </div>
+
+      <div className="mt-[18px] overflow-hidden border-t border-admin-line px-2 pt-5">
         <div className={cn("flex items-center gap-3.5", open ? "justify-start" : "justify-center")}>
           <span
             title={displayName}

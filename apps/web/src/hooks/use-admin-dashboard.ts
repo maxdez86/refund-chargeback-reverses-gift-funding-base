@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { AdminApiError } from "@/lib/admin-api";
 import { toGuestRows } from "@/lib/admin-dashboard-model";
 import { fixtureDashboardSource, type AdminDashboardSource } from "@/lib/admin-dashboard-source";
 import type { AdminDashboardSnapshot } from "@/lib/admin-dashboard-types";
@@ -26,6 +27,18 @@ type UseAdminDashboardOptions = {
   now?: () => string;
 };
 
+type AdminDashboardRefreshState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string };
+
+type DashboardRequest = {
+  controller: AbortController;
+  promise: Promise<void>;
+  requestId: number;
+  sourceGeneration: number;
+};
+
 /**
  * Loads one dashboard snapshot and exposes it alongside the mutations the panel performs.
  * The data itself comes from `AdminDashboardSource` — fixtures today, admin endpoints later.
@@ -35,35 +48,112 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
   const nowOption = options.now;
   const [state, rawDispatch] = useReducer(adminDashboardReducer, EMPTY_STATE);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [refreshState, setRefreshState] = useState<AdminDashboardRefreshState>({ status: "idle" });
+  const [lastSuccessfulLoadAt, setLastSuccessfulLoadAt] = useState<string | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const nowRef = useRef(nowOption);
+  nowRef.current = nowOption;
+  const sourceGenerationRef = useRef(0);
+  const requestIdRef = useRef(0);
+  const dashboardInFlightRef = useRef<DashboardRequest | null>(null);
   const generationRef = useRef(0);
   const inFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
 
   useEffect(() => {
-    const generation = ++generationRef.current;
+    const sourceGeneration = ++sourceGenerationRef.current;
+    generationRef.current += 1;
+    dashboardInFlightRef.current?.controller.abort();
     for (const request of inFlightRef.current.values()) request.controller.abort();
     inFlightRef.current.clear();
-    let cancelled = false;
     const controller = new AbortController();
+    const requestId = ++requestIdRef.current;
     rawDispatch({ type: "replace-snapshot", snapshot: EMPTY_SNAPSHOT });
     setStatus("loading");
-    source
+    setRefreshState({ status: "idle" });
+    setLastSuccessfulLoadAt(null);
+    const promise = source
       .load(controller.signal)
       .then((snapshot) => {
-        if (cancelled || generation !== generationRef.current) return;
+        if (
+          controller.signal.aborted ||
+          sourceGeneration !== sourceGenerationRef.current ||
+          requestId !== requestIdRef.current
+        ) return;
         rawDispatch({ type: "replace-snapshot", snapshot });
+        setLastSuccessfulLoadAt(nowRef.current ? nowRef.current() : new Date().toISOString());
         setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (
+          !controller.signal.aborted &&
+          sourceGeneration === sourceGenerationRef.current &&
+          requestId === requestIdRef.current
+        ) setStatus("error");
+      })
+      .finally(() => {
+        if (dashboardInFlightRef.current?.promise === promise) {
+          dashboardInFlightRef.current = null;
+        }
       });
+    dashboardInFlightRef.current = { controller, promise, requestId, sourceGeneration };
     return () => {
-      cancelled = true;
+      sourceGenerationRef.current += 1;
+      dashboardInFlightRef.current?.controller.abort();
+      dashboardInFlightRef.current = null;
       controller.abort();
       for (const request of inFlightRef.current.values()) request.controller.abort();
       inFlightRef.current.clear();
     };
+  }, [source]);
+
+  const refresh = useCallback(() => {
+    const existing = dashboardInFlightRef.current;
+    if (existing) return existing.promise;
+
+    const controller = new AbortController();
+    const sourceGeneration = sourceGenerationRef.current;
+    const requestId = ++requestIdRef.current;
+    setRefreshState({ status: "loading" });
+    const promise = source
+      .load(controller.signal)
+      .then((snapshot) => {
+        if (
+          controller.signal.aborted ||
+          sourceGeneration !== sourceGenerationRef.current ||
+          requestId !== requestIdRef.current
+        ) throw new DOMException("The dashboard refresh was superseded.", "AbortError");
+        generationRef.current += 1;
+        for (const request of inFlightRef.current.values()) request.controller.abort();
+        inFlightRef.current.clear();
+        rawDispatch({ type: "replace-snapshot", snapshot });
+        setLastSuccessfulLoadAt(nowRef.current ? nowRef.current() : new Date().toISOString());
+        setRefreshState({ status: "idle" });
+      })
+      .catch((error) => {
+        if (
+          controller.signal.aborted ||
+          sourceGeneration !== sourceGenerationRef.current ||
+          requestId !== requestIdRef.current
+        ) throw error;
+        if (
+          !(error instanceof AdminApiError) ||
+          (error.kind !== "unauthorized" && error.kind !== "forbidden")
+        ) {
+          setRefreshState({
+            status: "error",
+            message: "Não foi possível atualizar os dados. Use “Atualizar dados” para tentar novamente."
+          });
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (dashboardInFlightRef.current?.promise === promise) {
+          dashboardInFlightRef.current = null;
+        }
+      });
+    dashboardInFlightRef.current = { controller, promise, requestId, sourceGeneration };
+    return promise;
   }, [source]);
 
   const requestThread = useCallback((invitationCode: string, loadMore: boolean) => {
@@ -136,6 +226,9 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
   return {
     state,
     status,
+    refresh,
+    refreshState,
+    lastSuccessfulLoadAt,
     dispatch,
     guestRows,
     unreadByCode,

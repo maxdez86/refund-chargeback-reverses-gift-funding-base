@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminSessionState } from "@/hooks/use-admin-session";
 import type { AdminRuntimeConfig } from "@/lib/admin-auth";
@@ -108,6 +108,34 @@ describe("administrative dashboard", () => {
     expect(fetcher.mock.calls[0][0]).toBe("/api/admin/dashboard");
     expect(fetcher.mock.calls.some(([url]) => String(url).includes("whatsapp"))).toBe(false);
     expect(screen.queryByText(/Dados de demonstração/i)).not.toBeInTheDocument();
+  });
+
+  it("refreshes live data with one additional dashboard request and no re-authentication", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, invitations: [], gifts: [], guestMessages: [] }), {
+        status: 200
+      })
+    );
+    const dashboardSource = createLiveDashboardSource({
+      getToken: () => "test-token",
+      apiUrl: "/api",
+      fetcher
+    });
+    useAdminSessionMock.mockReturnValue({
+      ...baseActions,
+      config: { ...config, sessionMode: "live" },
+      dashboardSource,
+      state: { ...authenticatedSession, preview: false }
+    });
+    render(<Dashboard />);
+    await screen.findByRole("heading", { name: "Visão geral" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar dados" }));
+
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls.every(([url]) => url === "/api/admin/dashboard")).toBe(true);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("whatsapp"))).toBe(false);
+    expect(baseActions.acceptCredential).not.toHaveBeenCalled();
   });
 
   it("opens the mobile navigation drawer and closes it on selection", async () => {

@@ -41,6 +41,77 @@ describe("dashboard screens", () => {
     window.history.replaceState({}, "", "/dashboard");
   });
 
+  it("shows accessible refresh progress in the sidebar, retains the screen on failure, and retries", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    let rejectRefresh!: (error: Error) => void;
+    const pendingRefresh = new Promise<never>((_, reject) => {
+      rejectRefresh = reject;
+    });
+    const load = vi.fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockReturnValueOnce(pendingRefresh)
+      .mockResolvedValueOnce(snapshot);
+    const source: AdminDashboardSource = {
+      demo: false,
+      load,
+      loadWhatsappThread: vi.fn()
+    };
+    await renderShell(source);
+
+    const refresh = screen.getByRole("button", { name: "Atualizar dados" });
+    expect(screen.getByText(/^Atualizado/)).toBeInTheDocument();
+    refresh.focus();
+    expect(refresh).toHaveFocus();
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+
+    expect(refresh).toBeDisabled();
+    expect(refresh).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Atualizando dados");
+    expect(load).toHaveBeenCalledTimes(2);
+
+    rejectRefresh(new Error("offline"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Não foi possível atualizar os dados"
+    );
+    expect(screen.getByRole("heading", { name: "Visão geral" })).toBeInTheDocument();
+    expect(refresh).toBeEnabled();
+
+    fireEvent.click(refresh);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/^Atualizado/)).toBeInTheDocument();
+  });
+
+  it("returns an open WhatsApp detail to the unloaded list after refresh without history fan-out", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+    const load = vi.fn().mockResolvedValue(snapshot);
+    const loadWhatsappThread = vi.fn().mockResolvedValue({
+      invitationCode: "SW2748",
+      messages: [],
+      commands: [],
+      nextCursor: null
+    });
+    await renderShell({ demo: false, load, loadWhatsappThread });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+    expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar dados" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Eugênia Ribeiro" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole("heading", { name: "WhatsApp" })).toBeInTheDocument();
+    expect(screen.getAllByText("Abrir para carregar")).toHaveLength(snapshot.invitations.length);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
+  });
+
   it("opens an invitation from the list and returns with the back link", async () => {
     await renderShell();
     await goTo(/Convites/);

@@ -59,6 +59,7 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const { route, navigate } = useDashboardRoute();
   const {
     state, status, dispatch, guestRows, unreadByCode,
+    refresh, refreshState, lastSuccessfulLoadAt,
     loadWhatsappThread, retryWhatsappThread, loadMoreWhatsappThread, demo
   } = useAdminDashboard({ source });
 
@@ -97,6 +98,13 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     dispatch({ type: "open-chat", invitationCode });
   };
   const selectedChatCode = route.section === "whatsapp" ? route.invitationCode : undefined;
+  const refreshDashboard = () => {
+    void refresh()
+      .then(() => {
+        if (selectedChatCode) navigate(routeForSection("whatsapp"));
+      })
+      .catch(() => undefined);
+  };
 
   useEffect(() => {
     if (status !== "ready" || !selectedChatCode) return;
@@ -306,7 +314,10 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     onNavigate: goToSection,
     displayName,
     email: session.admin.email,
-    onSignOut
+    onSignOut,
+    onRefresh: refreshDashboard,
+    refreshState,
+    lastSuccessfulLoadAt
   };
 
   const openGift = route.section === "presentes" && route.giftId
@@ -378,8 +389,13 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         <main
           id="conteudo-principal"
           tabIndex={-1}
-          className="min-w-0 flex-1 px-5 pb-20 pt-8 sm:px-10 lg:px-[60px] lg:pb-20 lg:pt-[52px]"
+          className="relative min-w-0 flex-1 px-5 pb-20 pt-8 sm:px-10 lg:px-[60px] lg:pb-20 lg:pt-[52px]"
         >
+          {refreshState.status === "loading" && (
+            <div className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-admin-line">
+              <div className="h-full w-1/3 animate-[sweep_1.1s_ease-in-out_infinite] bg-admin-gold" />
+            </div>
+          )}
           {renderScreen()}
         </main>
       </div>

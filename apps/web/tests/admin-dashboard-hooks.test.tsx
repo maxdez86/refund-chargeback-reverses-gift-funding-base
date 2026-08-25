@@ -102,6 +102,171 @@ describe("useAdminDashboard", () => {
     expect(result.current.state.invitations).toHaveLength(1);
   });
 
+  it("coalesces refreshes, replaces the snapshot, and timestamps only successful loads", async () => {
+    const initial = createFixtureDashboardSnapshot();
+    initial.threads = {};
+    initial.invitations = initial.invitations.slice(0, 1);
+    const refreshed = createFixtureDashboardSnapshot();
+    refreshed.threads = {};
+    refreshed.invitations = refreshed.invitations.slice(0, 2);
+    let resolveRefresh!: (snapshot: typeof refreshed) => void;
+    const pendingRefresh = new Promise<typeof refreshed>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const load = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(pendingRefresh);
+    const loadWhatsappThread = vi.fn();
+    const source: AdminDashboardSource = { demo: false, load, loadWhatsappThread };
+    const timestamps = ["2026-08-20T10:00:00Z", "2026-08-20T11:00:00Z"];
+    const { result } = renderHook(() =>
+      useAdminDashboard({ source, now: () => timestamps.shift()! })
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T10:00:00Z");
+
+    let first!: Promise<void>;
+    let duplicate!: Promise<void>;
+    act(() => {
+      first = result.current.refresh();
+      duplicate = result.current.refresh();
+    });
+    expect(first).toBe(duplicate);
+    expect(result.current.refreshState.status).toBe("loading");
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(loadWhatsappThread).not.toHaveBeenCalled();
+    expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T10:00:00Z");
+
+    resolveRefresh(refreshed);
+    await act(() => first);
+
+    expect(result.current.state.invitations).toHaveLength(2);
+    expect(result.current.refreshState.status).toBe("idle");
+    expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T11:00:00Z");
+  });
+
+  it("retains the current snapshot, local state, histories, cursor, and timestamp on refresh failure", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+    const load = vi.fn().mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new Error("offline"));
+    const source: AdminDashboardSource = {
+      demo: false,
+      load,
+      loadWhatsappThread: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748",
+        messages: [{ messageId: "loaded", direction: "inbound", sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
+        commands: [],
+        nextCursor: "older"
+      })
+    };
+    const { result } = renderHook(() =>
+      useAdminDashboard({ source, now: () => "2026-08-20T10:00:00Z" })
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await act(() => result.current.loadWhatsappThread("SW2748"));
+    act(() => {
+      result.current.dispatch({ type: "open-chat", invitationCode: "SW2748" });
+      result.current.dispatch({
+        type: "update-phone",
+        invitationCode: "SW2748",
+        phoneNumber: "5511999999999"
+      });
+    });
+
+    await act(() => result.current.refresh().catch(() => undefined));
+
+    expect(result.current.status).toBe("ready");
+    expect(result.current.refreshState).toMatchObject({ status: "error" });
+    expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T10:00:00Z");
+    expect(result.current.state.threads.SW2748[0].messageId).toBe("loaded");
+    expect(result.current.state.threadLoads.SW2748).toEqual({ status: "loaded", nextCursor: "older" });
+    expect(result.current.state.readChats).toContain("SW2748");
+    expect(
+      result.current.state.invitations.find((invitation) => invitation.invitationCode === "SW2748")
+        ?.phoneNumber
+    ).toBe("5511999999999");
+  });
+
+  it("resets local and lazy state and aborts an in-flight history after refresh succeeds", async () => {
+    const initial = createFixtureDashboardSnapshot();
+    initial.threads = {};
+    initial.invitations = initial.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+    const refreshed = structuredClone(initial);
+    let pendingHistorySignal: AbortSignal | undefined;
+    const load = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(refreshed);
+    const loadWhatsappThread = vi.fn((invitationCode: string, _cursor?: string, signal?: AbortSignal) => {
+      if (invitationCode === "SW2748") {
+        return Promise.resolve({
+          invitationCode,
+          messages: [{ messageId: "loaded", direction: "inbound" as const, sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
+          commands: [{
+            commandId: "command", createdAt: "2026-08-20T09:00:00Z", templateId: "wedding_invitation",
+            stage: "pending" as const, status: "sent" as const, retryCount: 0, reconciliationStatus: "none" as const
+          }],
+          nextCursor: "older"
+        });
+      }
+      pendingHistorySignal = signal;
+      return new Promise<never>(() => undefined);
+    });
+    const source: AdminDashboardSource = { demo: false, load, loadWhatsappThread };
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await act(() => result.current.loadWhatsappThread("SW2748"));
+    act(() => {
+      result.current.dispatch({ type: "open-chat", invitationCode: "SW2748" });
+      result.current.dispatch({ type: "toggle-message-hidden", messageId: initial.guestMessages[0].messageId });
+      void result.current.loadWhatsappThread("TX6935");
+    });
+
+    await act(() => result.current.refresh());
+
+    expect(pendingHistorySignal?.aborted).toBe(true);
+    expect(result.current.state.threads).toEqual({});
+    expect(result.current.state.readChats).toEqual([]);
+    expect(result.current.state.invitations.every((invitation) => invitation.commands.length === 0)).toBe(true);
+    expect(Object.values(result.current.state.threadLoads).every((loadState) => loadState.status === "unloaded")).toBe(true);
+    expect(result.current.state.guestMessages[0].hidden).toBe(false);
+  });
+
+  it("aborts and ignores a stale refresh when the source is replaced", async () => {
+    const initial = createFixtureDashboardSnapshot();
+    initial.invitations = initial.invitations.slice(0, 1);
+    let resolveRefresh!: (snapshot: typeof initial) => void;
+    let refreshSignal: AbortSignal | undefined;
+    const first: AdminDashboardSource = {
+      demo: false,
+      load: vi.fn()
+        .mockResolvedValueOnce(initial)
+        .mockImplementationOnce((signal?: AbortSignal) => {
+          refreshSignal = signal;
+          return new Promise<typeof initial>((resolve) => { resolveRefresh = resolve; });
+        }),
+      loadWhatsappThread: vi.fn()
+    };
+    const replacementSnapshot = createFixtureDashboardSnapshot();
+    replacementSnapshot.invitations = replacementSnapshot.invitations.slice(0, 2);
+    const replacement: AdminDashboardSource = {
+      demo: false,
+      load: async () => replacementSnapshot,
+      loadWhatsappThread: vi.fn()
+    };
+    const { result, rerender } = renderHook(({ source }) => useAdminDashboard({ source }), {
+      initialProps: { source: first }
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    act(() => { void result.current.refresh().catch(() => undefined); });
+
+    rerender({ source: replacement });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(refreshSignal?.aborted).toBe(true);
+    expect(result.current.state.invitations).toHaveLength(2);
+
+    resolveRefresh(initial);
+    await act(async () => Promise.resolve());
+    expect(result.current.state.invitations).toHaveLength(2);
+  });
+
   it("ignores and aborts a stale load when the session source is replaced", async () => {
     let resolveFirst!: (snapshot: ReturnType<typeof createFixtureDashboardSnapshot>) => void;
     const firstLoad = new Promise<ReturnType<typeof createFixtureDashboardSnapshot>>(

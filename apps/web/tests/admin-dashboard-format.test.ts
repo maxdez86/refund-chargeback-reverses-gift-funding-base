@@ -9,6 +9,7 @@ import {
   formatDayLabel,
   formatLongDate,
   formatPhone,
+  formatRelativeMinutes,
   formatShortDate,
   initials,
   parseBrlToCents,
@@ -83,5 +84,14 @@ describe("admin dashboard formatters", () => {
   it("pluralizes counters", () => {
     expect(pluralize(1, "pessoa", "pessoas")).toBe("1 pessoa");
     expect(pluralize(3, "pessoa", "pessoas")).toBe("3 pessoas");
+  });
+
+  it("formats the sidebar refresh caption relative to now", () => {
+    const now = localIso(2026, 7, 20, 10, 30);
+    const nowMs = new Date(now).getTime();
+    expect(formatRelativeMinutes(null, nowMs)).toBe("—");
+    expect(formatRelativeMinutes(now, nowMs)).toBe("Atualizado agora mesmo");
+    expect(formatRelativeMinutes(localIso(2026, 7, 20, 10, 29), nowMs)).toBe("Atualizado há 1 min");
+    expect(formatRelativeMinutes(localIso(2026, 7, 20, 9, 15), nowMs)).toBe("Atualizado há 75 min");
   });
 });
