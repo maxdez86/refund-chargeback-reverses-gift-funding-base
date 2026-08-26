@@ -12,24 +12,79 @@ import {
   CHAT_FILTERS,
   RSVP_LABELS,
   TONE_CLASSES,
+  messageFallback,
   templateLabel,
   type ChatFilter
 } from "@/lib/admin-dashboard-model";
 import type {
   AdminInvitation,
+  AdminWhatsappConversationSummary,
   AdminWhatsappMessage,
   AdminWhatsappThreadLoadState
 } from "@/lib/admin-dashboard-types";
 import { Eyebrow, FilterTabs, SearchField, StatusPill } from "@/components/dashboard/AdminPrimitives";
 import { cn } from "@/lib/utils";
 
-type Conversation = {
+export type Conversation = {
   invitation: AdminInvitation;
+  /** Never `null`: the tab lists exactly the invitations that own at least one message. */
+  summary: AdminWhatsappConversationSummary;
   thread: AdminWhatsappMessage[];
   last: AdminWhatsappMessage | null;
   unread: number | null;
   load: AdminWhatsappThreadLoadState;
+  /** Whether the newest page is in `thread`; the summary is the truth until it is. */
+  loaded: boolean;
+  /** Newest known timestamp — from the loaded thread once loaded, else from the summary. */
+  lastAt: string;
 };
+
+/** Whether the newest page is in the local thread; mirrors the store's own load check. */
+function hasNewestPage(load: AdminWhatsappThreadLoadState) {
+  if (load.status === "loaded") return true;
+  return (load.status === "loading" || load.status === "error") && load.hasLoaded;
+}
+
+/**
+ * The list row's preview line. The loaded thread wins the moment its newest page arrives and the
+ * summary is the only source before that, so the two can never be rendered against each other.
+ */
+export function conversationPreview(conversation: Conversation) {
+  const { summary, last, load, loaded } = conversation;
+  if (loaded) {
+    if (!last) return "Sem mensagens";
+    return `${last.direction === "outbound" ? "Você: " : ""}${last.text}`;
+  }
+  if (load.status === "loading") return "Carregando…";
+  const text =
+    summary.lastMessagePreview ??
+    messageFallback({
+      templateId: summary.lastMessageTemplateId,
+      messageType: summary.lastMessageType
+    });
+  return `${summary.lastMessageDirection === "outbound" ? "Você: " : ""}${text}`;
+}
+
+/**
+ * Whether the load-older control has anything left to fetch.
+ *
+ * A cursor alone does not prove it: the API hands back a `LastEvaluatedKey` whenever the page
+ * limit was consumed, so a conversation that is already fully loaded can still carry one, and
+ * offering the control there costs a request to learn nothing. The dashboard summary supplies the
+ * second half of the proof — but it was taken at snapshot time, so anything newer than
+ * `lastMessageAt` (a guest reply that arrived since, a message the operator just typed) was never
+ * counted by it and must not be counted against it either.
+ *
+ * That is the whole reconciliation rule when the two disagree: the loaded thread always wins for
+ * display, and the control stays available until the part of the conversation the summary knew
+ * about is loaded. A stale summary can therefore never hide a message or strand the control.
+ */
+export function canLoadOlder(conversation: Conversation) {
+  const { load, summary, thread } = conversation;
+  if (load.status !== "loaded" || !load.nextCursor) return false;
+  const accountedFor = thread.filter((message) => message.sentAt <= summary.lastMessageAt).length;
+  return accountedFor < summary.messageCount;
+}
 
 /** Splits a thread into consecutive same-day runs, the way a chat client does. */
 export function groupByDay(thread: AdminWhatsappMessage[]) {
@@ -82,22 +137,36 @@ export function WhatsappScreen({
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadMoreButtonRef = useRef<HTMLButtonElement>(null);
-  const preserveScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const preserveScrollRef = useRef<{ code: string; height: number; top: number } | null>(null);
   const restorePaginationFocusRef = useRef(false);
   const previousLoadRef = useRef<AdminWhatsappThreadLoadState["status"] | null>(null);
 
+  // The exclusion rule: an invitation without a conversation summary owns no WhatsApp message,
+  // so it never becomes a row, never reaches a filter, and never counts in the header.
   const conversations: Conversation[] = invitations
-    .map((invitation) => {
+    .flatMap((invitation) => {
+      const summary = invitation.whatsappConversation;
+      if (!summary) return [];
       const thread = threads[invitation.invitationCode] ?? [];
-      return {
+      const load = threadLoads[invitation.invitationCode] ?? { status: "unloaded" as const };
+      const loaded = hasNewestPage(load);
+      const last = thread.at(-1) ?? null;
+      return [{
         invitation,
+        summary,
         thread,
-        last: thread.at(-1) ?? null,
+        last,
         unread: unreadByCode[invitation.invitationCode] ?? null,
-        load: threadLoads[invitation.invitationCode] ?? { status: "unloaded" }
-      };
+        load,
+        loaded,
+        lastAt: loaded ? last?.sentAt ?? "" : summary.lastMessageAt
+      }];
     })
-    .sort((a, b) => (b.last?.sentAt ?? "").localeCompare(a.last?.sentAt ?? ""));
+    .sort(
+      (a, b) =>
+        b.lastAt.localeCompare(a.lastAt) ||
+        a.invitation.invitationCode.localeCompare(b.invitation.invitationCode)
+    );
 
   const needle = query.trim().toLowerCase();
   const visible = conversations.filter((conversation) => {
@@ -117,31 +186,48 @@ export function WhatsappScreen({
 
   // First pages open at the newest message; older prepended pages retain the viewport.
   const threadLength = selected?.thread.length ?? 0;
+  const loading = selected?.load.status === "loading";
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
+    // A pagination snapshot belongs to the conversation it was taken in; switching away drops it
+    // rather than applying one thread's offset to another.
+    if (preserveScrollRef.current && preserveScrollRef.current.code !== selectedCode) {
+      preserveScrollRef.current = null;
+      restorePaginationFocusRef.current = false;
+    }
     const preserved = preserveScrollRef.current;
-    if (preserved) {
+    // Only once the request settles: the render in between adds no messages, so consuming the
+    // snapshot there would restore nothing and leave the prepended page to jump to the newest end.
+    if (preserved && !loading) {
       element.scrollTop = preserved.top + element.scrollHeight - preserved.height;
       preserveScrollRef.current = null;
     } else if (
+      !preserved &&
       selected?.load.status === "loaded" &&
       (previousLoadRef.current === null || previousLoadRef.current === "loading")
     ) {
       element.scrollTop = element.scrollHeight;
     }
-    if (restorePaginationFocusRef.current && selected?.load.status !== "loading") {
+    if (restorePaginationFocusRef.current && !loading) {
       (loadMoreButtonRef.current ?? element).focus();
       restorePaginationFocusRef.current = false;
     }
     previousLoadRef.current = selected?.load.status ?? null;
-  }, [selectedCode, selected?.load.status, threadLength]);
+  }, [loading, selectedCode, selected?.load.status, threadLength]);
 
   const loadOlder = () => {
+    if (!selectedCode) return;
     const element = scrollRef.current;
-    if (element) preserveScrollRef.current = { height: element.scrollHeight, top: element.scrollTop };
+    if (element) {
+      preserveScrollRef.current = {
+        code: selectedCode,
+        height: element.scrollHeight,
+        top: element.scrollTop
+      };
+    }
     restorePaginationFocusRef.current = true;
-    if (selectedCode) onLoadMore(selectedCode);
+    onLoadMore(selectedCode);
   };
 
   const send = () => {
@@ -160,7 +246,8 @@ export function WhatsappScreen({
           </h1>
         </div>
         <p className="pb-1.5 text-[13.5px] text-admin-ink-soft">
-          {unreadTotal} sem resposta nas carregadas · {pluralize(visible.length, "conversa", "conversas")}
+          {pluralize(unreadTotal, "mensagem sem resposta", "mensagens sem resposta")} ·{" "}
+          {pluralize(visible.length, "conversa", "conversas")}
         </p>
       </div>
 
@@ -189,15 +276,15 @@ export function WhatsappScreen({
 
           <ul aria-label="Conversas" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
             {visible.map((conversation) => {
-              const { invitation, last, unread, load } = conversation;
+              const { invitation, unread, lastAt } = conversation;
               const status = RSVP_LABELS[invitation.rsvp.status];
               const active = invitation.invitationCode === selectedCode;
-              const dayLabel = last ? formatDayLabel(last.sentAt) : "";
-              const time = !last
+              const dayLabel = lastAt ? formatDayLabel(lastAt) : "";
+              const time = !lastAt
                 ? "—"
                 : dayLabel === "Hoje"
-                  ? formatClockTime(last.sentAt)
-                  : dayLabel.replace(` de ${new Date(last.sentAt).getFullYear()}`, "");
+                  ? formatClockTime(lastAt)
+                  : dayLabel.replace(` de ${new Date(lastAt).getFullYear()}`, "");
               return (
                 <li key={invitation.invitationCode}>
                   <button
@@ -232,13 +319,7 @@ export function WhatsappScreen({
                       </span>
                       <span className="mt-1 flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-[13px] text-admin-slate">
-                          {load.status === "unloaded"
-                            ? "Abrir para carregar"
-                            : load.status === "loading" && !load.hasLoaded
-                              ? "Carregando…"
-                              : last
-                            ? `${last.direction === "outbound" ? "Você: " : ""}${last.text}`
-                            : "Sem mensagens"}
+                          {conversationPreview(conversation)}
                         </span>
                         {unread !== null && unread > 0 && (
                           <span className="flex h-[19px] min-w-[19px] flex-none items-center justify-center rounded-full bg-admin-ok-fg px-1.5 text-[11.5px] font-semibold text-white">
@@ -260,7 +341,9 @@ export function WhatsappScreen({
             })}
             {visible.length === 0 && (
               <li className="px-3 py-8 text-center text-[13px] text-admin-faint">
-                Nenhuma conversa corresponde a este filtro.
+                {conversations.length === 0
+                  ? "Nenhum convite trocou mensagens no WhatsApp ainda."
+                  : "Nenhuma conversa corresponde a este filtro."}
               </li>
             )}
           </ul>
@@ -333,7 +416,7 @@ export function WhatsappScreen({
                     </button>
                   </div>
                 )}
-                {selected.load.status === "loaded" && selected.load.nextCursor && (
+                {canLoadOlder(selected) && (
                   <button
                     ref={loadMoreButtonRef}
                     type="button"

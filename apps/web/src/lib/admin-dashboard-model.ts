@@ -4,7 +4,10 @@ import {
   type WhatsappCommandStatus,
   type WhatsappFlowStage,
   type WhatsappFlowStatus,
+  type WhatsappMessageType,
   type WhatsappPhoneSource,
+  type WhatsappReconciliationStatus,
+  type WhatsappRsvpAction,
   type WhatsappRsvpTemplatePurpose
 } from "@brimax/contracts";
 import type {
@@ -13,7 +16,8 @@ import type {
   AdminGuestRow,
   AdminInvitation,
   AdminMusicSuggestion,
-  AdminRsvpSummary
+  AdminRsvpSummary,
+  AdminWhatsappMessage
 } from "@/lib/admin-dashboard-types";
 
 /** Semantic colour families. Every badge in the panel resolves to one of these five. */
@@ -102,6 +106,46 @@ export function templateLabel(templateId: string) {
   return TEMPLATE_LABELS[templateId as WhatsappRsvpTemplatePurpose] ?? `Modelo ${templateId}`;
 }
 
+/**
+ * Display text for a message whose body was never stored — a template send, or a media type
+ * WhatsApp delivers without text. One implementation, shared by the loaded-thread mapper in
+ * `admin-dashboard-source.ts` and the conversation-list preview built from a summary, so the
+ * two can never word the same message differently.
+ */
+export function messageFallback(entry: {
+  templateId?: string;
+  messageType?: WhatsappMessageType;
+  buttonAction?: WhatsappRsvpAction;
+  buttonId?: string;
+}) {
+  if (entry.buttonAction) {
+    return {
+      confirm_all: "Confirmou presença",
+      attend_all: "Confirmou presença",
+      decline: "Não vai",
+      undecided: "Ainda não decidiu"
+    }[entry.buttonAction];
+  }
+  if (entry.buttonId) return `Resposta por botão: ${entry.buttonId}`;
+  if (entry.templateId) return `Mensagem de modelo: ${entry.templateId}`;
+  if (entry.messageType && entry.messageType !== "text") return `Mensagem ${entry.messageType}`;
+  return "Mensagem sem texto disponível";
+}
+
+/**
+ * The run of consecutive inbound messages at the newest end of a thread — the panel's whole
+ * definition of "unread". The backend summary applies the identical rule server-side, which is
+ * what lets `unreadCount()` swap between the two without the number moving.
+ */
+export function trailingInboundCount(messages: AdminWhatsappMessage[]) {
+  let count = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].direction === "outbound") break;
+    count += 1;
+  }
+  return count;
+}
+
 /** Each R$ 50,00 quota of a fractional gift. Mirrors the LEGACY_FIXED_50 funding model. */
 export const GIFT_PART_CENTS = 5_000;
 
@@ -155,6 +199,13 @@ export function toGuestRows(invitations: AdminInvitation[]): AdminGuestRow[] {
       invitation
     }))
   );
+}
+
+/** Derives whether reconciliation is required based on the flow status. */
+export function deriveReconciliationStatus(
+  flowStatus: WhatsappFlowStatus | string | null | undefined
+): WhatsappReconciliationStatus {
+  return flowStatus === "reconciliation_required" ? "required" : "none";
 }
 
 /** An invitation needs an operator's attention when the flow cannot advance on its own. */

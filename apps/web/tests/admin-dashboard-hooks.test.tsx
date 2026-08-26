@@ -1,10 +1,74 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AdminSessionResponse } from "@brimax/contracts";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { useAdminDashboard } from "@/hooks/use-admin-dashboard";
 import { useDashboardFonts } from "@/hooks/use-dashboard-fonts";
 import { useDashboardRoute } from "@/hooks/use-dashboard-route";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
 import { fixtureDashboardSource, type AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import type { AdminDashboardSnapshot, AdminWhatsappFlowSnapshot } from "@/lib/admin-dashboard-types";
+
+type InvitationPage = Awaited<ReturnType<AdminDashboardSource["loadWhatsappInvitation"]>>;
+
+const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
+  phoneNumber: "5511999999999",
+  phoneNumberSource: "guest",
+  phoneNumberUpdatedAt: null,
+  whatsappFlowStatus: "message_sent",
+  whatsappFlowStage: "pending",
+  whatsappFlowUpdatedAt: null,
+  whatsappFlowCompletedAt: null,
+  whatsappFallbackSentAt: null,
+  whatsappLastInboundMessageId: null,
+  whatsappLastOutboundMessageId: null,
+  whatsappFailureReason: null,
+  reconciliationStatus: "none"
+});
+
+/** The live-mode shape: summaries for every conversation, no history and no commands. */
+const unloadedSnapshot = () => {
+  const snapshot = createFixtureDashboardSnapshot();
+  snapshot.threads = {};
+  snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
+  return snapshot;
+};
+
+const threadPage = (
+  invitationCode: string,
+  messages: InvitationPage["page"]["messages"],
+  nextCursor: string | null = null,
+  flowOverrides?: Partial<AdminWhatsappFlowSnapshot>
+): InvitationPage => ({
+  flow: { ...defaultFlow(invitationCode), ...flowOverrides },
+  page: { invitationCode, messages, commands: [], nextCursor }
+});
+
+const inboundMessage = (messageId: string, sentAt: string): InvitationPage["page"]["messages"][number] => ({
+  messageId,
+  direction: "inbound",
+  sentAt,
+  text: messageId
+});
+
+/**
+ * A source that counts every conversation read. Request counts are asserted on this spy, so the
+ * tests below prove "one request" rather than "some messages rendered".
+ */
+const spySource = (
+  snapshot: AdminDashboardSnapshot,
+  invitationFn: (
+    invitationCode: string,
+    cursor?: string,
+    signal?: AbortSignal
+  ) => Promise<InvitationPage> = (invitationCode) => Promise.resolve(threadPage(invitationCode, []))
+) => {
+  const load = vi.fn(async () => snapshot);
+  const loadWhatsappInvitation = vi.fn(invitationFn);
+  const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
+  return { source, load, loadWhatsappInvitation };
+};
 
 describe("useDashboardRoute", () => {
   beforeEach(() => {
@@ -39,7 +103,7 @@ describe("useDashboardRoute", () => {
 });
 
 describe("useAdminDashboard", () => {
-  it("loads a snapshot with unknown unread counts, then derives one thread on demand", async () => {
+  it("loads a snapshot with summary unread counts, then derives one thread on demand", async () => {
     const { result } = renderHook(() => useAdminDashboard());
     expect(result.current.status).toBe("loading");
 
@@ -47,12 +111,16 @@ describe("useAdminDashboard", () => {
     expect(result.current.demo).toBe(true);
     expect(result.current.state.invitations).toHaveLength(8);
     expect(result.current.guestRows).toHaveLength(15);
-    expect(result.current.unreadByCode.QP8814).toBeNull();
-    expect(result.current.unreadByCode.SW2748).toBeNull();
-
-    await act(() => result.current.loadWhatsappThread("QP8814"));
+    // Known before any history request, straight off the dashboard summary.
+    expect(result.current.state.threadLoads.QP8814).toEqual({ status: "unloaded" });
     expect(result.current.unreadByCode.QP8814).toBe(2);
-    expect(result.current.unreadByCode.SW2748).toBeNull();
+    expect(result.current.unreadByCode.SW2748).toBe(0);
+    // LB6640 owns no message, so it has no summary and stays unknown.
+    expect(result.current.unreadByCode.LB6640).toBeNull();
+
+    await act(() => result.current.refreshWhatsappInvitation("QP8814"));
+    expect(result.current.unreadByCode.QP8814).toBe(2);
+    expect(result.current.state.threadLoads.QP8814).toMatchObject({ status: "loaded" });
   });
 
   it("stamps mutations with the injected clock", async () => {
@@ -81,7 +149,7 @@ describe("useAdminDashboard", () => {
     const failing: AdminDashboardSource = {
       demo: false,
       load: () => Promise.reject(new Error("offline")),
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const { result } = renderHook(() => useAdminDashboard({ source: failing }));
     await waitFor(() => expect(result.current.status).toBe("error"));
@@ -93,7 +161,7 @@ describe("useAdminDashboard", () => {
     const single: AdminDashboardSource = {
       demo: false,
       load: async () => ({ ...snapshot, invitations: snapshot.invitations.slice(0, 1) }),
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const { result } = renderHook(() => useAdminDashboard({ source: single }));
 
@@ -114,8 +182,8 @@ describe("useAdminDashboard", () => {
       resolveRefresh = resolve;
     });
     const load = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(pendingRefresh);
-    const loadWhatsappThread = vi.fn();
-    const source: AdminDashboardSource = { demo: false, load, loadWhatsappThread };
+    const loadWhatsappInvitation = vi.fn();
+    const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
     const timestamps = ["2026-08-20T10:00:00Z", "2026-08-20T11:00:00Z"];
     const { result } = renderHook(() =>
       useAdminDashboard({ source, now: () => timestamps.shift()! })
@@ -133,7 +201,7 @@ describe("useAdminDashboard", () => {
     expect(first).toBe(duplicate);
     expect(result.current.refreshState.status).toBe("loading");
     expect(load).toHaveBeenCalledTimes(2);
-    expect(loadWhatsappThread).not.toHaveBeenCalled();
+    expect(loadWhatsappInvitation).not.toHaveBeenCalled();
     expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T10:00:00Z");
 
     resolveRefresh(refreshed);
@@ -152,20 +220,22 @@ describe("useAdminDashboard", () => {
     const source: AdminDashboardSource = {
       demo: false,
       load,
-      loadWhatsappThread: vi.fn().mockResolvedValue({
-        invitationCode: "SW2748",
-        messages: [{ messageId: "loaded", direction: "inbound", sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
-        commands: [],
-        nextCursor: "older"
+      loadWhatsappInvitation: vi.fn().mockResolvedValue({
+        flow: defaultFlow("SW2748"),
+        page: {
+          invitationCode: "SW2748",
+          messages: [{ messageId: "loaded", direction: "inbound", sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
+          commands: [],
+          nextCursor: "older"
+        }
       })
     };
     const { result } = renderHook(() =>
       useAdminDashboard({ source, now: () => "2026-08-20T10:00:00Z" })
     );
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    await act(() => result.current.loadWhatsappThread("SW2748"));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
     act(() => {
-      result.current.dispatch({ type: "open-chat", invitationCode: "SW2748" });
       result.current.dispatch({
         type: "update-phone",
         invitationCode: "SW2748",
@@ -180,7 +250,6 @@ describe("useAdminDashboard", () => {
     expect(result.current.lastSuccessfulLoadAt).toBe("2026-08-20T10:00:00Z");
     expect(result.current.state.threads.SW2748[0].messageId).toBe("loaded");
     expect(result.current.state.threadLoads.SW2748).toEqual({ status: "loaded", nextCursor: "older" });
-    expect(result.current.state.readChats).toContain("SW2748");
     expect(
       result.current.state.invitations.find((invitation) => invitation.invitationCode === "SW2748")
         ?.phoneNumber
@@ -194,36 +263,37 @@ describe("useAdminDashboard", () => {
     const refreshed = structuredClone(initial);
     let pendingHistorySignal: AbortSignal | undefined;
     const load = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(refreshed);
-    const loadWhatsappThread = vi.fn((invitationCode: string, _cursor?: string, signal?: AbortSignal) => {
+    const loadWhatsappInvitation = vi.fn((invitationCode: string, _cursor?: string, signal?: AbortSignal) => {
       if (invitationCode === "SW2748") {
         return Promise.resolve({
-          invitationCode,
-          messages: [{ messageId: "loaded", direction: "inbound" as const, sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
-          commands: [{
-            commandId: "command", createdAt: "2026-08-20T09:00:00Z", templateId: "wedding_invitation",
-            stage: "pending" as const, status: "sent" as const, retryCount: 0, reconciliationStatus: "none" as const
-          }],
-          nextCursor: "older"
+          flow: defaultFlow(invitationCode),
+          page: {
+            invitationCode,
+            messages: [{ messageId: "loaded", direction: "inbound" as const, sentAt: "2026-08-20T09:00:00Z", text: "Oi" }],
+            commands: [{
+              commandId: "command", createdAt: "2026-08-20T09:00:00Z", templateId: "wedding_invitation",
+              stage: "pending" as const, status: "sent" as const, retryCount: 0, reconciliationStatus: "none" as const
+            }],
+            nextCursor: "older"
+          }
         });
       }
       pendingHistorySignal = signal;
       return new Promise<never>(() => undefined);
     });
-    const source: AdminDashboardSource = { demo: false, load, loadWhatsappThread };
+    const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    await act(() => result.current.loadWhatsappThread("SW2748"));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
     act(() => {
-      result.current.dispatch({ type: "open-chat", invitationCode: "SW2748" });
       result.current.dispatch({ type: "toggle-message-hidden", messageId: initial.guestMessages[0].messageId });
-      void result.current.loadWhatsappThread("TX6935");
+      void result.current.refreshWhatsappInvitation("TX6935");
     });
 
     await act(() => result.current.refresh());
 
     expect(pendingHistorySignal?.aborted).toBe(true);
     expect(result.current.state.threads).toEqual({});
-    expect(result.current.state.readChats).toEqual([]);
     expect(result.current.state.invitations.every((invitation) => invitation.commands.length === 0)).toBe(true);
     expect(Object.values(result.current.state.threadLoads).every((loadState) => loadState.status === "unloaded")).toBe(true);
     expect(result.current.state.guestMessages[0].hidden).toBe(false);
@@ -242,14 +312,14 @@ describe("useAdminDashboard", () => {
           refreshSignal = signal;
           return new Promise<typeof initial>((resolve) => { resolveRefresh = resolve; });
         }),
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const replacementSnapshot = createFixtureDashboardSnapshot();
     replacementSnapshot.invitations = replacementSnapshot.invitations.slice(0, 2);
     const replacement: AdminDashboardSource = {
       demo: false,
       load: async () => replacementSnapshot,
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const { result, rerender } = renderHook(({ source }) => useAdminDashboard({ source }), {
       initialProps: { source: first }
@@ -281,14 +351,14 @@ describe("useAdminDashboard", () => {
         firstSignal = signal;
         return firstLoad;
       },
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const replacementSnapshot = createFixtureDashboardSnapshot();
     replacementSnapshot.invitations = replacementSnapshot.invitations.slice(0, 2);
     const replacement: AdminDashboardSource = {
       demo: false,
       load: async () => replacementSnapshot,
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const { result, rerender } = renderHook(
       ({ source }) => useAdminDashboard({ source }),
@@ -310,12 +380,12 @@ describe("useAdminDashboard", () => {
     const loaded: AdminDashboardSource = {
       demo: true,
       load: async () => fixture,
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const failing: AdminDashboardSource = {
       demo: false,
       load: async () => Promise.reject(new Error("offline")),
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     const { result, rerender } = renderHook(
       ({ source }) => useAdminDashboard({ source }),
@@ -335,39 +405,42 @@ describe("useAdminDashboard", () => {
   it("coalesces concurrent loads and does not refetch an already loaded thread", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
-    let resolvePage!: (page: Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>) => void;
-    const pending = new Promise<Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>>((resolve) => {
+    let resolvePage!: (page: InvitationPage) => void;
+    const pending = new Promise<InvitationPage>((resolve) => {
       resolvePage = resolve;
     });
-    const loadWhatsappThread = vi.fn(() => pending);
-    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappThread };
+    const loadWhatsappInvitation = vi.fn(() => pending);
+    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
     let first!: Promise<void>;
     let second!: Promise<void>;
     act(() => {
-      first = result.current.loadWhatsappThread("SW2748");
-      second = result.current.loadWhatsappThread("SW2748");
+      first = result.current.refreshWhatsappInvitation("SW2748");
+      second = result.current.refreshWhatsappInvitation("SW2748");
     });
     expect(first).toBe(second);
-    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
 
-    resolvePage({ invitationCode: "SW2748", messages: [], commands: [], nextCursor: null });
+    resolvePage({
+      flow: defaultFlow("SW2748"),
+      page: { invitationCode: "SW2748", messages: [], commands: [], nextCursor: null }
+    });
     await act(() => first);
-    await act(() => result.current.loadWhatsappThread("SW2748"));
-    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
   });
 
   it("keeps simultaneous invitation results isolated", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
-    const resolvers = new Map<string, (page: Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>) => void>();
+    const resolvers = new Map<string, (page: InvitationPage) => void>();
     const source: AdminDashboardSource = {
       demo: false,
       load: async () => snapshot,
-      loadWhatsappThread: vi.fn((invitationCode) =>
-        new Promise<Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>>((resolve) =>
+      loadWhatsappInvitation: vi.fn((invitationCode) =>
+        new Promise<InvitationPage>((resolve) =>
           resolvers.set(invitationCode, resolve)
         )
       )
@@ -378,18 +451,30 @@ describe("useAdminDashboard", () => {
     let first!: Promise<void>;
     let second!: Promise<void>;
     act(() => {
-      first = result.current.loadWhatsappThread("SW2748");
-      second = result.current.loadWhatsappThread("TX6935");
+      first = result.current.refreshWhatsappInvitation("SW2748");
+      second = result.current.refreshWhatsappInvitation("TX6935");
     });
+    // Both are genuinely in flight: opening the second conversation neither cancels nor
+    // coalesces onto the first, and each carries its own load state.
+    expect(source.loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+    expect(first).not.toBe(second);
+    expect(result.current.state.threadLoads.SW2748).toMatchObject({ status: "loading", hasLoaded: false });
+    expect(result.current.state.threadLoads.TX6935).toMatchObject({ status: "loading", hasLoaded: false });
     resolvers.get("TX6935")!({
-      invitationCode: "TX6935",
-      messages: [{ messageId: "tx", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "TX" }],
-      commands: [], nextCursor: null
+      flow: defaultFlow("TX6935"),
+      page: {
+        invitationCode: "TX6935",
+        messages: [{ messageId: "tx", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "TX" }],
+        commands: [], nextCursor: null
+      }
     });
     resolvers.get("SW2748")!({
-      invitationCode: "SW2748",
-      messages: [{ messageId: "sw", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "SW" }],
-      commands: [], nextCursor: null
+      flow: defaultFlow("SW2748"),
+      page: {
+        invitationCode: "SW2748",
+        messages: [{ messageId: "sw", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "SW" }],
+        commands: [], nextCursor: null
+      }
     });
     await act(() => Promise.all([first, second]));
 
@@ -400,41 +485,47 @@ describe("useAdminDashboard", () => {
   it("ignores an in-flight thread after source replacement and retries a failed first load", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
-    let resolveStale!: (page: Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>) => void;
+    let resolveStale!: (page: InvitationPage) => void;
     const staleSource: AdminDashboardSource = {
       demo: false,
       load: async () => snapshot,
-      loadWhatsappThread: vi.fn(() =>
-        new Promise<Awaited<ReturnType<AdminDashboardSource["loadWhatsappThread"]>>>((resolve) => {
+      loadWhatsappInvitation: vi.fn(() =>
+        new Promise<InvitationPage>((resolve) => {
           resolveStale = resolve;
         })
       )
     };
     const replacementLoad = vi.fn()
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce({ invitationCode: "SW2748", messages: [], commands: [], nextCursor: null });
+      .mockResolvedValueOnce({
+        flow: defaultFlow("SW2748"),
+        page: { invitationCode: "SW2748", messages: [], commands: [], nextCursor: null }
+      });
     const replacement: AdminDashboardSource = {
       demo: false,
       load: async () => snapshot,
-      loadWhatsappThread: replacementLoad
+      loadWhatsappInvitation: replacementLoad
     };
     const { result, rerender } = renderHook(({ source }) => useAdminDashboard({ source }), {
       initialProps: { source: staleSource }
     });
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    act(() => { void result.current.loadWhatsappThread("SW2748"); });
+    act(() => { void result.current.refreshWhatsappInvitation("SW2748"); });
 
     rerender({ source: replacement });
     await waitFor(() => expect(result.current.status).toBe("ready"));
     resolveStale({
-      invitationCode: "SW2748",
-      messages: [{ messageId: "stale", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "stale" }],
-      commands: [], nextCursor: null
+      flow: defaultFlow("SW2748"),
+      page: {
+        invitationCode: "SW2748",
+        messages: [{ messageId: "stale", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "stale" }],
+        commands: [], nextCursor: null
+      }
     });
     await act(async () => Promise.resolve());
     expect(result.current.state.threads.SW2748).toBeUndefined();
 
-    await act(() => result.current.loadWhatsappThread("SW2748").catch(() => undefined));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748").catch(() => undefined));
     expect(result.current.state.threadLoads.SW2748).toMatchObject({ status: "error", hasLoaded: false });
     await act(() => result.current.retryWhatsappThread("SW2748"));
     expect(result.current.state.threadLoads.SW2748).toEqual({ status: "loaded", nextCursor: null });
@@ -444,22 +535,28 @@ describe("useAdminDashboard", () => {
   it("retains a loaded page and retries load-more with the same cursor", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
-    const loadWhatsappThread = vi.fn()
+    const loadWhatsappInvitation = vi.fn()
       .mockResolvedValueOnce({
-        invitationCode: "SW2748",
-        messages: [{ messageId: "new", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Nova" }],
-        commands: [], nextCursor: "older"
+        flow: defaultFlow("SW2748"),
+        page: {
+          invitationCode: "SW2748",
+          messages: [{ messageId: "new", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Nova" }],
+          commands: [], nextCursor: "older"
+        }
       })
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce({
-        invitationCode: "SW2748",
-        messages: [{ messageId: "old", direction: "outbound", sentAt: "2026-08-19T12:00:00Z", text: "Antiga" }],
-        commands: [], nextCursor: null
+        flow: defaultFlow("SW2748"),
+        page: {
+          invitationCode: "SW2748",
+          messages: [{ messageId: "old", direction: "outbound", sentAt: "2026-08-19T12:00:00Z", text: "Antiga" }],
+          commands: [], nextCursor: null
+        }
       });
-    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappThread };
+    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    await act(() => result.current.loadWhatsappThread("SW2748"));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
     await act(() => result.current.loadMoreWhatsappThread("SW2748").catch(() => undefined));
 
     expect(result.current.state.threads.SW2748.map((message) => message.messageId)).toEqual(["new"]);
@@ -469,8 +566,408 @@ describe("useAdminDashboard", () => {
 
     await act(() => result.current.retryWhatsappThread("SW2748"));
     expect(result.current.state.threads.SW2748.map((message) => message.messageId)).toEqual(["old", "new"]);
-    expect(loadWhatsappThread).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
-    expect(loadWhatsappThread).toHaveBeenNthCalledWith(3, "SW2748", "older", expect.any(AbortSignal));
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(3, "SW2748", "older", expect.any(AbortSignal));
+  });
+
+  it("rejects a page answering for another invitation instead of merging it anywhere", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), () =>
+      Promise.resolve(threadPage("QP8814", [inboundMessage("crossed", "2026-08-20T12:00:00Z")]))
+    );
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    await act(() => result.current.refreshWhatsappInvitation("SW2748").catch(() => undefined));
+
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+    expect(result.current.state.threads.SW2748).toBeUndefined();
+    expect(result.current.state.threads.QP8814).toBeUndefined();
+    expect(result.current.state.threadLoads.SW2748).toMatchObject({ status: "error", hasLoaded: false });
+    expect(result.current.state.threadLoads.QP8814).toEqual({ status: "unloaded" });
+  });
+
+  it("coalesces two load-more presses into one request carrying the stored cursor", async () => {
+    let resolveOlder!: (page: InvitationPage) => void;
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (invitationCode, cursor) =>
+      cursor
+        ? new Promise<InvitationPage>((resolve) => { resolveOlder = resolve; })
+        : Promise.resolve(
+            threadPage(invitationCode, [inboundMessage("new", "2026-08-20T12:00:00Z")], "older")
+          )
+    );
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.loadMoreWhatsappThread("SW2748");
+      second = result.current.loadMoreWhatsappThread("SW2748");
+    });
+
+    expect(first).toBe(second);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
+
+    resolveOlder(threadPage("SW2748", [inboundMessage("old", "2026-08-19T12:00:00Z")]));
+    await act(() => first);
+    expect(result.current.state.threads.SW2748.map((message) => message.messageId)).toEqual(["old", "new"]);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+  });
+
+  it("reopens a conversation whose first load failed with a fresh request", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    loadWhatsappInvitation
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(threadPage("SW2748", [inboundMessage("new", "2026-08-20T12:00:00Z")]));
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    await act(() => result.current.refreshWhatsappInvitation("SW2748").catch(() => undefined));
+    expect(result.current.state.threadLoads.SW2748).toMatchObject({ status: "error", hasLoaded: false });
+
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
+
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+    expect(result.current.state.threadLoads.SW2748).toEqual({ status: "loaded", nextCursor: null });
+  });
+
+  it("reopens a conversation whose load-more failed by retiring the alert, with no request", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    loadWhatsappInvitation
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [inboundMessage("new", "2026-08-20T12:00:00Z")], "older")
+      )
+      .mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
+    await act(() => result.current.loadMoreWhatsappThread("SW2748").catch(() => undefined));
+    expect(result.current.state.threadLoads.SW2748).toEqual({
+      status: "error", hasLoaded: true, nextCursor: "older"
+    });
+
+    await act(() => result.current.refreshWhatsappInvitation("SW2748"));
+
+    // The newest page is loaded and valid; only the failed older page is forgotten, and its
+    // cursor stays so the operator can ask for it again from the restored control.
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+    expect(result.current.state.threadLoads.SW2748).toEqual({ status: "loaded", nextCursor: "older" });
+    expect(result.current.state.threads.SW2748.map((message) => message.messageId)).toEqual(["new"]);
+  });
+
+  it("aborts an in-flight conversation on unmount and installs no late response", async () => {
+    let resolveLate!: (page: InvitationPage) => void;
+    let signal: AbortSignal | undefined;
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (_code, _cursor, requestSignal) => {
+      signal = requestSignal;
+      return new Promise<InvitationPage>((resolve) => { resolveLate = resolve; });
+    });
+    const { result, unmount } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    act(() => { void result.current.refreshWhatsappInvitation("SW2748"); });
+
+    unmount();
+    expect(signal?.aborted).toBe(true);
+
+    resolveLate(threadPage("SW2748", [inboundMessage("late", "2026-08-20T12:00:00Z")]));
+    await act(async () => Promise.resolve());
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+    expect(result.current.state.threads.SW2748).toBeUndefined();
+  });
+});
+
+describe("WhatsApp tab history requests", () => {
+  const session: AdminSessionResponse = {
+    authenticated: true,
+    stage: "dev",
+    admin: {
+      subject: "subject",
+      email: "casamento@brimax.life",
+      hostedDomain: "brimax.life",
+      name: "Casamento Brimax"
+    }
+  };
+
+  const shell = (source: AdminDashboardSource) => (
+    <DashboardShell session={session} preview={false} onSignOut={vi.fn()} source={source} />
+  );
+  const renderShell = async (source: AdminDashboardSource) => {
+    const utils = render(shell(source));
+    await screen.findByRole("heading", { name: "Visão geral" });
+    return utils;
+  };
+  const goTo = (label: RegExp | string) => {
+    const nav = screen.getAllByRole("navigation", { name: "Navegação administrativa" })[0];
+    fireEvent.click(within(nav).getByRole("link", { name: label }));
+  };
+  /** Clicks a conversation row and lets whatever request it triggers settle inside `act`. */
+  const openConversation = async (name: RegExp | string) => {
+    const row = await screen.findByRole("button", { name });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/dashboard");
+  });
+
+  it("issues no history request while signing in and loading the dashboard, at any list size", async () => {
+    const snapshot = unloadedSnapshot();
+    const template = snapshot.invitations.find((invitation) => invitation.whatsappConversation)!;
+    snapshot.invitations = Array.from({ length: 200 }, (_, index) => ({
+      ...structuredClone(template),
+      invitationCode: `BK${String(index).padStart(4, "0")}`
+    }));
+    const { source, load, loadWhatsappInvitation } = spySource(snapshot);
+
+    await renderShell(source);
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(loadWhatsappInvitation).not.toHaveBeenCalled();
+  });
+
+  it("renders the whole conversation list without issuing a single history request", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    await renderShell(source);
+
+    goTo(/WhatsApp/);
+    await screen.findByRole("heading", { name: "WhatsApp" });
+
+    // Every listed row is rendered from the dashboard summary alone.
+    expect(within(screen.getByRole("list", { name: "Conversas" })).getAllByRole("button")).toHaveLength(7);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(0);
+  });
+
+  it("issues no history request while searching, filtering, or re-rendering the list", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    const { rerender } = await renderShell(source);
+    goTo(/WhatsApp/);
+    await screen.findByRole("list", { name: "Conversas" });
+
+    const search = screen.getByRole("searchbox", { name: "Buscar conversa" });
+    fireEvent.change(search, { target: { value: "helena" } });
+    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Não lidas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pendentes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    rerender(shell(source));
+    rerender(shell(source));
+
+    expect(within(screen.getByRole("list", { name: "Conversas" })).getAllByRole("button")).toHaveLength(7);
+    expect(loadWhatsappInvitation).not.toHaveBeenCalled();
+  });
+
+  it("issues exactly one request for the conversation the operator opens, and none for the rest", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (invitationCode) =>
+      Promise.resolve(threadPage(invitationCode, [inboundMessage("aberta", "2026-08-20T12:00:00Z")]))
+    );
+    await renderShell(source);
+    goTo(/WhatsApp/);
+
+    await openConversation(/Conversa com Eugênia Ribeiro/);
+
+    expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+    expect(loadWhatsappInvitation.mock.calls.map((call) => call[0])).toEqual(["SW2748"]);
+    expect(loadWhatsappInvitation.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it("does not request a conversation again once its first page is loaded", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (invitationCode) =>
+      Promise.resolve(threadPage(invitationCode, [inboundMessage(invitationCode, "2026-08-20T12:00:00Z")]))
+    );
+    await renderShell(source);
+    goTo(/WhatsApp/);
+
+    await openConversation(/Conversa com Eugênia Ribeiro/);
+    await screen.findByRole("heading", { name: "Eugênia Ribeiro" });
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+    await openConversation(/Conversa com Helena Prado Ribeiro/);
+    await screen.findByRole("heading", { name: "Helena Prado Ribeiro" });
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2));
+    await openConversation(/Conversa com Eugênia Ribeiro/);
+    await screen.findByRole("heading", { name: "Eugênia Ribeiro" });
+
+    expect(loadWhatsappInvitation.mock.calls.map((call) => call[0])).toEqual(["SW2748", "QP8814"]);
+  });
+
+  it("issues nothing more and aborts the open request once the tree unmounts", async () => {
+    let signal: AbortSignal | undefined;
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (_code, _cursor, requestSignal) => {
+      signal = requestSignal;
+      return new Promise<InvitationPage>(() => undefined);
+    });
+    const { unmount } = await renderShell(source);
+    goTo(/WhatsApp/);
+    await openConversation(/Conversa com Eugênia Ribeiro/);
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts the open conversation request when the operator signs out", async () => {
+    let signal: AbortSignal | undefined;
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (_code, _cursor, requestSignal) => {
+      signal = requestSignal;
+      return new Promise<InvitationPage>(() => undefined);
+    });
+    const Harness = () => {
+      const [signedIn, setSignedIn] = useState(true);
+      return signedIn ? (
+        <DashboardShell
+          session={session}
+          preview={false}
+          onSignOut={() => setSignedIn(false)}
+          source={source}
+        />
+      ) : (
+        <p>Sessão encerrada</p>
+      );
+    };
+    render(<Harness />);
+    await screen.findByRole("heading", { name: "Visão geral" });
+    goTo(/WhatsApp/);
+    await openConversation(/Conversa com Eugênia Ribeiro/);
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Sair" })[0]);
+
+    expect(await screen.findByText("Sessão encerrada")).toBeInTheDocument();
+    expect(signal?.aborted).toBe(true);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("invite-detail flow refresh", () => {
+  const session: AdminSessionResponse = {
+    authenticated: true,
+    stage: "dev",
+    admin: {
+      subject: "subject",
+      email: "casamento@brimax.life",
+      hostedDomain: "brimax.life",
+      name: "Casamento Brimax"
+    }
+  };
+
+  const shell = (source: AdminDashboardSource) => (
+    <DashboardShell session={session} preview={false} onSignOut={vi.fn()} source={source} />
+  );
+  const renderShell = async (source: AdminDashboardSource) => {
+    const utils = render(shell(source));
+    await screen.findByRole("heading", { name: "Visão geral" });
+    return utils;
+  };
+  const goTo = (label: RegExp | string) => {
+    const nav = screen.getAllByRole("navigation", { name: "Navegação administrativa" })[0];
+    fireEvent.click(within(nav).getByRole("link", { name: label }));
+  };
+
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/dashboard");
+  });
+
+  it("opening an invitation issues exactly one request and merges refreshed flow fields", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (code) =>
+      Promise.resolve({
+        flow: {
+          ...defaultFlow(code),
+          whatsappFlowStatus: "attendance_confirmed_whatsapp",
+          whatsappFlowUpdatedAt: "2026-08-20T14:00:00Z"
+        },
+        page: {
+          invitationCode: code,
+          messages: [],
+          commands: [
+            {
+              commandId: "cmd-1",
+              createdAt: "2026-08-20T14:00:00Z",
+              templateId: "wedding_invitation",
+              stage: "pending",
+              status: "sent",
+              retryCount: 0,
+              reconciliationStatus: "none"
+            }
+          ],
+          nextCursor: null
+        }
+      })
+    );
+
+    await renderShell(source);
+    goTo(/Convites/);
+    await screen.findByRole("heading", { name: "Convites" });
+
+    expect(loadWhatsappInvitation).not.toHaveBeenCalled();
+
+    const openButton = await screen.findByRole("button", { name: /Abrir convite SW2748/ });
+    await act(async () => {
+      fireEvent.click(openButton);
+    });
+
+    await screen.findByRole("heading", { name: "Eugênia Ribeiro" });
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+    expect(loadWhatsappInvitation).toHaveBeenCalledWith("SW2748", undefined, expect.any(AbortSignal));
+
+    // Refreshed status rendered
+    expect(screen.getAllByText("Confirmado no WhatsApp").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opening the invitation then its chat coalesces into a single request", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot(), (code) =>
+      Promise.resolve({
+        flow: defaultFlow(code),
+        page: {
+          invitationCode: code,
+          messages: [inboundMessage("m1", "2026-08-20T14:00:00Z")],
+          commands: [],
+          nextCursor: null
+        }
+      })
+    );
+
+    await renderShell(source);
+    goTo(/Convites/);
+    const openButton = await screen.findByRole("button", { name: /Abrir convite SW2748/ });
+    await act(async () => {
+      fireEvent.click(openButton);
+    });
+    await screen.findByRole("heading", { name: "Eugênia Ribeiro" });
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+
+    // Now go to WhatsApp tab and open the same conversation
+    goTo(/WhatsApp/);
+    await screen.findByRole("heading", { name: "WhatsApp" });
+    const chatButton = await screen.findByRole("button", { name: /Conversa com Eugênia Ribeiro/ });
+    await act(async () => {
+      fireEvent.click(chatButton);
+    });
+
+    // Still exactly 1 request because SW2748 was already loaded!
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-rendering an open invite detail screen issues no extra request", async () => {
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    const { rerender } = await renderShell(source);
+    goTo(/Convites/);
+    const openButton = await screen.findByRole("button", { name: /Abrir convite SW2748/ });
+    await act(async () => {
+      fireEvent.click(openButton);
+    });
+    await screen.findByRole("heading", { name: "Eugênia Ribeiro" });
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+
+    rerender(shell(source));
+    rerender(shell(source));
+
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -290,14 +290,18 @@ export class WeddingRepository {
         new ScanCommand({
           TableName: this.tableName,
           FilterExpression:
-            "entityType = :invitationType OR entityType = :guestType OR entityType = :rsvpType",
+            "entityType = :invitationType OR entityType = :guestType OR entityType = :rsvpType OR entityType = :messageType",
           ExpressionAttributeValues: {
             ":invitationType": "Invitation",
             ":guestType": "InvitationGuest",
-            ":rsvpType": "RsvpResponse"
+            ":rsvpType": "RsvpResponse",
+            ":messageType": "WhatsappMessage"
           },
+          // The trailing seven attributes feed the per-invitation WhatsApp conversation summary and
+          // nothing else. None of them is a DynamoDB reserved word, so none needs its own alias; the
+          // existing `#status` alias already covers the message item's own `status` attribute.
           ProjectionExpression:
-            "PK, SK, entityType, invitationCode, householdName, phoneNumber, phoneNumberSource, phoneNumberUpdatedAt, whatsappFlowStatus, whatsappFlowStage, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappLastInboundMessageId, whatsappLastOutboundMessageId, whatsappFailureReason, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, submittedBy, guestResponses, attendingGuestCount, paidAttendingGuestCount, childSixOrYoungerAttendingCount, #note, #status, updatedAt",
+            "PK, SK, entityType, invitationCode, householdName, phoneNumber, phoneNumberSource, phoneNumberUpdatedAt, whatsappFlowStatus, whatsappFlowStage, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappLastInboundMessageId, whatsappLastOutboundMessageId, whatsappFailureReason, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, submittedBy, guestResponses, attendingGuestCount, paidAttendingGuestCount, childSixOrYoungerAttendingCount, #note, #status, updatedAt, messageId, direction, messageType, templateId, buttonId, body, correlationStatus, createdAt",
           ExpressionAttributeNames: {
             "#note": "note",
             "#status": "status"
@@ -312,26 +316,47 @@ export class WeddingRepository {
 
     const groups = new Map<
       string,
-      { invitation?: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord }
+      { invitation?: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord; messages: ItemRecord[] }
     >();
 
     for (const item of items) {
       const invitationCode = typeof item.invitationCode === "string" ? item.invitationCode : "";
       if (!invitationCode) continue;
 
-      const group = groups.get(invitationCode) ?? { guests: [] };
+      const group = groups.get(invitationCode) ?? { guests: [], messages: [] };
       if (item.entityType === "Invitation") group.invitation = item;
       else if (item.entityType === "InvitationGuest") group.guests.push(item);
       else if (item.entityType === "RsvpResponse") group.rsvp = item;
+      else if (item.entityType === "WhatsappMessage") group.messages.push(item);
       groups.set(invitationCode, group);
     }
 
-    return [...groups.entries()]
-      .filter((entry): entry is [string, { invitation: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord }] =>
-        Boolean(entry[1].invitation)
-      )
+    let skippedMessageRecords = 0;
+    const invitations = [...groups.entries()]
+      .filter((entry): entry is [
+        string,
+        { invitation: ItemRecord; guests: ItemRecord[]; rsvp?: ItemRecord; messages: ItemRecord[] }
+      ] => Boolean(entry[1].invitation))
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([, group]) => toAdminDashboardInvitation(group));
+      .map(([, group]) =>
+        toAdminDashboardInvitation(group, {
+          onSkippedMessage: () => {
+            skippedMessageRecords += 1;
+          }
+        })
+      );
+
+    // One aggregated line per request, never per record and never with a message body.
+    if (skippedMessageRecords > 0) {
+      console.warn(
+        JSON.stringify({
+          metric: "ADMIN_DASHBOARD_WHATSAPP_MESSAGE_RECORD_SKIPPED",
+          skippedMessageRecords
+        })
+      );
+    }
+
+    return invitations;
   }
 
   async getRsvpResponse(invitationCode: string): Promise<RsvpResponseItem | null> {

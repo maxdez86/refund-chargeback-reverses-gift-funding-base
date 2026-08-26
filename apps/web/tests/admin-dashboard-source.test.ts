@@ -1,12 +1,14 @@
-import type { AdminDashboardResponse } from "@brimax/contracts";
+import type { AdminDashboardResponse, WhatsappRsvpStatusResponse } from "@brimax/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { AdminApiError } from "@/lib/admin-api";
 import { formatLongDate, formatPhone } from "@/lib/admin-dashboard-format";
-import { toMusicSuggestionRows } from "@/lib/admin-dashboard-model";
+import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
+import { deriveReconciliationStatus, toMusicSuggestionRows, trailingInboundCount } from "@/lib/admin-dashboard-model";
 import {
   createLiveDashboardSource,
   fixtureDashboardSource,
   mapAdminDashboardResponse,
+  mapAdminWhatsappFlowSnapshot,
   mapAdminWhatsappThreadPage,
   selectAdminDashboardSource
 } from "@/lib/admin-dashboard-source";
@@ -54,6 +56,14 @@ const completeResponse: AdminDashboardResponse = {
         paid: 0,
         childrenSixOrYounger: 1,
         note: "Música sugerida: Dreams - Fleetwood Mac"
+      },
+      whatsappConversation: {
+        messageCount: 7,
+        unreadCount: 2,
+        lastMessageAt: "2026-08-20T12:00:00.000Z",
+        lastMessageDirection: "inbound",
+        lastMessageType: "text",
+        lastMessagePreview: "Consegui atualizar no site?"
       }
     }
   ],
@@ -136,6 +146,9 @@ describe("admin dashboard response mapping", () => {
       hidden: false
     });
     expect(snapshot.invitations[0].commands).toEqual([]);
+    expect(snapshot.invitations[0].whatsappConversation).toEqual(
+      completeResponse.invitations[0].whatsappConversation
+    );
     expect(snapshot.threads).toEqual({});
   });
 
@@ -183,7 +196,9 @@ describe("admin dashboard response mapping", () => {
       whatsappFailureReason: null,
       reconciliationStatus: "none",
       rsvp: { updatedAt: null, submittedBy: null },
-      commands: []
+      commands: [],
+      // Absent, not zero-valued: this invitation owns no WhatsApp message at all.
+      whatsappConversation: null
     });
     expect(invitation.guests[0].isChild).toBe(false);
     expect(formatPhone(invitation.phoneNumber)).toBe("—");
@@ -250,6 +265,131 @@ describe("admin dashboard source selection", () => {
     expect(onAuthError).toHaveBeenCalledWith(expect.any(AdminApiError));
     expect(onAuthError.mock.calls[0][0].message).not.toContain("test-token");
   });
+
+  it("requests threads with order=desc, limit=50, cursor propagation and bearer auth", async () => {
+    let capturedUrl: string | undefined;
+    let capturedHeaders: Record<string, string> | undefined;
+    const threadResponse = {
+      invitationCode: "SW2748",
+      status: "message_sent",
+      history: [
+        {
+          kind: "message",
+          id: "msg-1",
+          direction: "inbound",
+          status: "received",
+          createdAt: "2026-08-20T12:00:00.000Z",
+          messageType: "text",
+          body: "Olá"
+        }
+      ],
+      nextCursor: "cursor-older"
+    };
+    const fetcher = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedHeaders = init?.headers as Record<string, string>;
+      return Promise.resolve(new Response(JSON.stringify(threadResponse), { status: 200 }));
+    });
+    const live = createLiveDashboardSource({
+      getToken: () => "live-admin-token",
+      apiUrl: "https://api.brimax.life",
+      fetcher: fetcher as typeof fetch
+    });
+
+    const result = await live.loadWhatsappInvitation("SW2748");
+    expect(capturedUrl).toBe("https://api.brimax.life/admin/whatsapp/invitations/SW2748?limit=50&order=desc");
+    expect(capturedHeaders).toMatchObject({ Authorization: "Bearer live-admin-token" });
+    expect(result.page.invitationCode).toBe("SW2748");
+    expect(result.page.messages).toHaveLength(1);
+    expect(result.page.nextCursor).toBe("cursor-older");
+
+    await live.loadWhatsappInvitation("SW2748", "cursor-older");
+    expect(capturedUrl).toBe("https://api.brimax.life/admin/whatsapp/invitations/SW2748?limit=50&order=desc&cursor=cursor-older");
+    expect(capturedHeaders).toMatchObject({ Authorization: "Bearer live-admin-token" });
+  });
+
+  it("handles auth failures on thread loads without leaking the token", async () => {
+    const onAuthError = vi.fn();
+    const source = createLiveDashboardSource({
+      getToken: () => "secret-token",
+      apiUrl: "/api",
+      fetcher: vi.fn().mockResolvedValue(new Response("", { status: 401 })),
+      onAuthError
+    });
+
+    await expect(source.loadWhatsappInvitation("SW2748")).rejects.toMatchObject({ kind: "unauthorized" });
+    expect(onAuthError).toHaveBeenCalledWith(expect.any(AdminApiError));
+    expect(onAuthError.mock.calls[0][0].message).not.toContain("secret-token");
+  });
+});
+
+describe("WhatsApp flow snapshot mapping", () => {
+  it("maps a complete status response into an AdminWhatsappFlowSnapshot", () => {
+    const response: WhatsappRsvpStatusResponse = {
+      invitationCode: "AB2345",
+      phoneNumber: "5511999999999",
+      phoneNumberSource: "guest",
+      phoneNumberUpdatedAt: "2026-08-20T10:00:00.000Z",
+      status: "reconciliation_required",
+      stage: "followup",
+      updatedAt: "2026-08-20T11:00:00.000Z",
+      completedAt: "2026-08-20T12:00:00.000Z",
+      fallbackSentAt: "2026-08-20T13:00:00.000Z",
+      lastInboundMessageId: "wamid.inbound",
+      lastOutboundMessageId: "wamid.outbound",
+      failureReason: "provider mismatch"
+    };
+
+    const flow = mapAdminWhatsappFlowSnapshot(response);
+
+    expect(flow).toEqual({
+      phoneNumber: "5511999999999",
+      phoneNumberSource: "guest",
+      phoneNumberUpdatedAt: "2026-08-20T10:00:00.000Z",
+      whatsappFlowStatus: "reconciliation_required",
+      whatsappFlowStage: "followup",
+      whatsappFlowUpdatedAt: "2026-08-20T11:00:00.000Z",
+      whatsappFlowCompletedAt: "2026-08-20T12:00:00.000Z",
+      whatsappFallbackSentAt: "2026-08-20T13:00:00.000Z",
+      whatsappLastInboundMessageId: "wamid.inbound",
+      whatsappLastOutboundMessageId: "wamid.outbound",
+      whatsappFailureReason: "provider mismatch",
+      reconciliationStatus: "required"
+    });
+  });
+
+  it("maps a minimal status response with optional fields absent and default fallbacks", () => {
+    const response: WhatsappRsvpStatusResponse = {
+      invitationCode: "AB2345",
+      status: "message_sent"
+    };
+
+    const flow = mapAdminWhatsappFlowSnapshot(response);
+
+    expect(flow).toEqual({
+      phoneNumber: "",
+      phoneNumberSource: "import",
+      phoneNumberUpdatedAt: null,
+      whatsappFlowStatus: "message_sent",
+      whatsappFlowStage: "pending",
+      whatsappFlowUpdatedAt: null,
+      whatsappFlowCompletedAt: null,
+      whatsappFallbackSentAt: null,
+      whatsappLastInboundMessageId: null,
+      whatsappLastOutboundMessageId: null,
+      whatsappFailureReason: null,
+      reconciliationStatus: "none"
+    });
+  });
+
+  it("derives reconciliationStatus consistently across dashboard and flow mappers", () => {
+    expect(deriveReconciliationStatus("reconciliation_required")).toBe("required");
+    expect(deriveReconciliationStatus("attendance_confirmed_whatsapp")).toBe("none");
+    expect(deriveReconciliationStatus("failed")).toBe("none");
+    expect(deriveReconciliationStatus("idle")).toBe("none");
+    expect(deriveReconciliationStatus(undefined)).toBe("none");
+    expect(deriveReconciliationStatus(null)).toBe("none");
+  });
 });
 
 describe("WhatsApp history page mapping", () => {
@@ -295,14 +435,138 @@ describe("WhatsApp history page mapping", () => {
     expect(page.nextCursor).toBe("older-page");
   });
 
+  it("maps a bodyless decline button into a visible response", () => {
+    const page = mapAdminWhatsappThreadPage("AB2345", {
+      invitationCode: "AB2345", status: "completed", history: [{
+        kind: "message", id: "message-decline", direction: "inbound", status: "received",
+        createdAt: "2026-08-20T12:00:00.000Z", messageType: "button_reply",
+        buttonId: "rsvp_b2_decline", buttonAction: "decline"
+      }]
+    });
+
+    expect(page.messages[0]).toMatchObject({
+      text: "Não vai", buttonId: "rsvp_b2_decline", buttonAction: "decline"
+    });
+  });
+
+  it("derives every fixture summary from the fixture thread it belongs to", () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    const withMessages = snapshot.invitations.filter(
+      (invitation) => snapshot.threads[invitation.invitationCode]?.length
+    );
+    expect(withMessages.length).toBeGreaterThan(0);
+
+    for (const invitation of withMessages) {
+      const thread = snapshot.threads[invitation.invitationCode];
+      const newest = thread.at(-1)!;
+      const newestOutbound = thread.filter((message) => message.direction === "outbound").at(-1);
+      const newestInbound = thread.filter((message) => message.direction === "inbound").at(-1);
+      expect(invitation.whatsappConversation).toEqual({
+        messageCount: thread.length,
+        unreadCount: trailingInboundCount(thread),
+        lastMessageAt: newest.sentAt,
+        lastMessageDirection: newest.direction,
+        lastMessageType: newest.templateId ? "template" : "text",
+        lastMessageTemplateId: newest.templateId,
+        lastMessagePreview: newest.text.slice(0, 160),
+        lastOutboundMessageTemplateId: newestOutbound?.templateId,
+        lastOutboundMessagePreview: newestOutbound?.text.slice(0, 160),
+        lastInboundMessageTemplateId: newestInbound?.templateId,
+        lastInboundMessagePreview: newestInbound?.text.slice(0, 160)
+      });
+    }
+  });
+
+  it("keeps a zero-message invitation in the fixture set with no summary at all", () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    const withoutMessages = snapshot.invitations.filter(
+      (invitation) => !invitation.whatsappConversation
+    );
+
+    expect(withoutMessages.map((invitation) => invitation.invitationCode)).toEqual(["LB6640"]);
+    expect(snapshot.threads.LB6640).toBeUndefined();
+    // Still a real invitation everywhere else in the panel.
+    expect(withoutMessages[0].guests).toHaveLength(2);
+    expect(withoutMessages[0].commands).toHaveLength(2);
+  });
+
   it("returns fixture pages without mutating the fixture singleton", async () => {
     const initial = await fixtureDashboardSource.load();
     expect(initial.threads).toEqual({});
 
-    const first = await fixtureDashboardSource.loadWhatsappThread("SW2748");
-    first.messages[0].text = "Mutado";
-    const second = await fixtureDashboardSource.loadWhatsappThread("SW2748");
-    expect(second.messages[0].text).not.toBe("Mutado");
-    expect(second.nextCursor).toBeNull();
+    const first = await fixtureDashboardSource.loadWhatsappInvitation("SW2748");
+    first.page.messages[0].text = "Mutado";
+    const second = await fixtureDashboardSource.loadWhatsappInvitation("SW2748");
+    expect(second.page.messages[0].text).not.toBe("Mutado");
+    expect(second.page.nextCursor).toBeNull();
+  });
+
+  it("returns one complete page and flow snapshot with a null cursor and isolated messages and commands for fixture source", async () => {
+    const result = await fixtureDashboardSource.loadWhatsappInvitation("SW2748");
+    expect(result.page.invitationCode).toBe("SW2748");
+    expect(result.page.nextCursor).toBeNull();
+    expect(result.page.messages.length).toBeGreaterThan(0);
+    expect(result.page.commands.length).toBeGreaterThan(0);
+    expect(result.flow.whatsappFlowStatus).toBeDefined();
+    expect(result.flow.reconciliationStatus).toBe("none");
+  });
+
+  it("returns both flow snapshot and thread page in one live request", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        invitationCode: "SW2748",
+        status: "message_sent",
+        stage: "pending",
+        phoneNumber: "5511999999999",
+        phoneNumberSource: "guest",
+        history: [
+          {
+            kind: "message",
+            id: "msg-1",
+            direction: "inbound",
+            status: "delivered",
+            createdAt: "2026-08-20T12:00:00.000Z",
+            body: "Olá"
+          },
+          {
+            kind: "command",
+            id: "cmd-1",
+            commandId: "cmd-1",
+            status: "sent",
+            templateId: "wedding_invitation",
+            createdAt: "2026-08-20T11:00:00.000Z"
+          }
+        ]
+      })
+    });
+
+    const source = createLiveDashboardSource({
+      getToken: () => "token",
+      apiUrl: "https://api.test",
+      fetcher
+    });
+
+    const result = await source.loadWhatsappInvitation("SW2748");
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(result.flow).toEqual({
+      phoneNumber: "5511999999999",
+      phoneNumberSource: "guest",
+      phoneNumberUpdatedAt: null,
+      whatsappFlowStatus: "message_sent",
+      whatsappFlowStage: "pending",
+      whatsappFlowUpdatedAt: null,
+      whatsappFlowCompletedAt: null,
+      whatsappFallbackSentAt: null,
+      whatsappLastInboundMessageId: null,
+      whatsappLastOutboundMessageId: null,
+      whatsappFailureReason: null,
+      reconciliationStatus: "none"
+    });
+    expect(result.page.invitationCode).toBe("SW2748");
+    expect(result.page.messages).toHaveLength(1);
+    expect(result.page.commands).toHaveLength(1);
   });
 });

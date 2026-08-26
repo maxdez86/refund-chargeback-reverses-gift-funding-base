@@ -1,5 +1,6 @@
 import {
   AdminDashboardInvitationSchema,
+  AdminDashboardWhatsappConversationSchema,
   RsvpStatusSchema,
   WhatsappAttendanceEntrySchema,
   WhatsappFlowStageSchema,
@@ -10,6 +11,7 @@ import {
 import type {
   AdminGuestExportRow,
   AdminDashboardInvitation,
+  AdminDashboardWhatsappConversation,
   GuestProfile,
   GuestSummary,
   HouseholdInvitation,
@@ -17,6 +19,7 @@ import type {
   WhatsappRsvpStatusResponse
 } from "@brimax/contracts";
 import { RsvpResponseItemSchema } from "./rsvp-items";
+import { actionForButtonId } from "../whatsapp/template-manifest";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -31,6 +34,99 @@ type GroupedInvitationItems = {
   guests: UnknownRecord[];
   rsvp?: UnknownRecord;
 };
+
+/**
+ * The dashboard grouping additionally carries the invitation's stored WhatsApp message records.
+ * `toHouseholdInvitation()` and `toAdminExportRows()` keep the narrower shape — they never read
+ * message items.
+ */
+type GroupedDashboardInvitationItems = GroupedInvitationItems & {
+  messages: UnknownRecord[];
+};
+
+type DashboardInvitationOptions = {
+  /** Invoked once per message record dropped for a missing messageId, direction, or createdAt. */
+  onSkippedMessage?: () => void;
+};
+
+/**
+ * Matches `AdminDashboardWhatsappConversationSchema`'s `lastMessagePreview` maximum. The single
+ * truncation rule is a plain `slice` to this length with no ellipsis appended, so the truncated
+ * value is always a prefix of the stored body and always satisfies the schema bound.
+ */
+const WHATSAPP_PREVIEW_MAX_LENGTH = 160;
+
+type UsableWhatsappMessage = {
+  messageId: string;
+  createdAt: string;
+  direction: "inbound" | "outbound";
+  record: UnknownRecord;
+};
+
+/**
+ * Aggregates the stored WhatsApp message records of one invitation into the dashboard summary.
+ *
+ * Pure by design so it can be unit-tested without a DynamoDB client. Only messages whose effective
+ * correlation status is `matched` and that carry a non-empty `invitationCode` are counted — the
+ * effective status mirrors `whatsapp-items.ts`, which treats an absent `correlationStatus` as
+ * `matched` when an `invitationCode` is present. Returns `undefined` when nothing qualifies, which
+ * is how the caller signals "no conversation" by omitting the field entirely.
+ */
+export function toAdminDashboardWhatsappConversation(
+  messages: UnknownRecord[],
+  options: DashboardInvitationOptions = {}
+): AdminDashboardWhatsappConversation | undefined {
+  const usable: UsableWhatsappMessage[] = [];
+
+  for (const record of messages) {
+    const messageId = typeof record.messageId === "string" ? record.messageId : "";
+    const createdAt = typeof record.createdAt === "string" ? record.createdAt : "";
+    const direction = record.direction;
+    if (!messageId || !createdAt || (direction !== "inbound" && direction !== "outbound")) {
+      options.onSkippedMessage?.();
+      continue;
+    }
+
+    const invitationCode = typeof record.invitationCode === "string" ? record.invitationCode : "";
+    const correlationStatus =
+      record.correlationStatus ?? (invitationCode ? "matched" : "unmatched_sender");
+    if (correlationStatus !== "matched" || !invitationCode) continue;
+
+    usable.push({ messageId, createdAt, direction, record });
+  }
+
+  if (usable.length === 0) return undefined;
+
+  usable.sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.messageId.localeCompare(right.messageId)
+  );
+
+  const newest = usable[usable.length - 1]!;
+  const newestOutbound = usable.filter((message) => message.direction === "outbound").at(-1);
+  const newestInbound = usable.filter((message) => message.direction === "inbound").at(-1);
+  let unreadCount = 0;
+  for (let index = usable.length - 1; index >= 0 && usable[index]!.direction === "inbound"; index -= 1) {
+    unreadCount += 1;
+  }
+
+  const body = newest.record.body;
+
+  return AdminDashboardWhatsappConversationSchema.parse({
+    messageCount: usable.length,
+    unreadCount,
+    lastMessageAt: newest.createdAt,
+    lastMessageDirection: newest.direction,
+    ...(newest.record.messageType === undefined ? {} : { lastMessageType: newest.record.messageType }),
+    ...(optionalString(newest.record.templateId)
+      ? { lastMessageTemplateId: optionalString(newest.record.templateId) }
+      : {}),
+    ...(messagePreview(body) ? { lastMessagePreview: messagePreview(body) } : {}),
+    ...directionSummary("Outbound", newestOutbound),
+    ...directionSummary("Inbound", newestInbound)
+  });
+}
 
 export function toEffectiveGuestSummary(
   guest: UnknownRecord,
@@ -58,6 +154,30 @@ function optionalString(value: unknown) {
   return value === undefined || value === null ? undefined : String(value);
 }
 
+function messagePreview(value: unknown) {
+  return typeof value === "string" && value.length > 0
+    ? value.slice(0, WHATSAPP_PREVIEW_MAX_LENGTH)
+    : undefined;
+}
+
+function directionSummary(
+  direction: "Outbound" | "Inbound",
+  message: UsableWhatsappMessage | undefined
+) {
+  if (!message) return {};
+
+  const templateId = optionalString(message.record.templateId);
+  const preview = messagePreview(message.record.body);
+  const buttonId = optionalString(message.record.buttonId);
+  const buttonAction = buttonId ? actionForButtonId(buttonId) : undefined;
+  return {
+    ...(templateId ? { [`last${direction}MessageTemplateId`]: templateId } : {}),
+    ...(preview ? { [`last${direction}MessagePreview`]: preview } : {}),
+    ...(direction === "Inbound" && buttonId ? { lastInboundMessageButtonId: buttonId } : {}),
+    ...(direction === "Inbound" && buttonAction ? { lastInboundMessageButtonAction: buttonAction } : {})
+  };
+}
+
 function compareDashboardGuests(left: UnknownRecord, right: UnknownRecord) {
   const leftOrder = typeof left.sortOrder === "number" && Number.isInteger(left.sortOrder) && left.sortOrder > 0
     ? left.sortOrder
@@ -71,11 +191,10 @@ function compareDashboardGuests(left: UnknownRecord, right: UnknownRecord) {
   return idComparison || String(left.guestName ?? "").localeCompare(String(right.guestName ?? ""));
 }
 
-export function toAdminDashboardInvitation({
-  invitation,
-  guests,
-  rsvp
-}: GroupedInvitationItems): AdminDashboardInvitation {
+export function toAdminDashboardInvitation(
+  { invitation, guests, rsvp, messages }: GroupedDashboardInvitationItems,
+  options: DashboardInvitationOptions = {}
+): AdminDashboardInvitation {
   const parsedRsvp = rsvp ? RsvpResponseItemSchema.parse(rsvp) : undefined;
   const responsesByGuestId = new Map(
     parsedRsvp?.guestResponses.map((response) => [response.guestId, response]) ?? []
@@ -95,6 +214,7 @@ export function toAdminDashboardInvitation({
     whatsappLastInboundMessageId: optionalString(invitation.whatsappLastInboundMessageId),
     whatsappLastOutboundMessageId: optionalString(invitation.whatsappLastOutboundMessageId),
     whatsappFailureReason: optionalString(invitation.whatsappFailureReason),
+    whatsappConversation: toAdminDashboardWhatsappConversation(messages, options),
     guests: guests
       .slice()
       .sort(compareDashboardGuests)

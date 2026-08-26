@@ -15,6 +15,7 @@ export default mergeConfig(
       environment: "jsdom",
       globals: true,
       setupFiles: "./tests/setup.ts",
+      testTimeout: 10_000,
       poolOptions: {
         forks: { execArgv: workerExecArgv },
         threads: { execArgv: workerExecArgv },

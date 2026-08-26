@@ -59,8 +59,9 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const { route, navigate } = useDashboardRoute();
   const {
     state, status, dispatch, guestRows, unreadByCode,
-    refresh, refreshState, lastSuccessfulLoadAt,
-    loadWhatsappThread, retryWhatsappThread, loadMoreWhatsappThread, demo
+    refresh, refreshState, lastSuccessfulLoadAt, snapshotVersion,
+    retryWhatsappThread, loadMoreWhatsappThread,
+    refreshWhatsappInvitation, retryWhatsappInvitation, demo
   } = useAdminDashboard({ source });
 
   const [collapsed, setCollapsed] = useState(false);
@@ -92,26 +93,30 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const openInvitation = (invitationCode: string) =>
     navigate({ section: "convites", invitationCode });
   const openGuest = (guestId: string) => navigate({ section: "convidados", guestId });
-  const openChat = (invitationCode: string) => {
-    navigate({ section: "whatsapp", invitationCode });
-    void loadWhatsappThread(invitationCode).catch(() => undefined);
-    dispatch({ type: "open-chat", invitationCode });
-  };
+  // Selecting a row only moves the route. The effect below owns the request that follows, so
+  // "the operator opened a conversation" is one trigger with one code path rather than two
+  // racing ones — a first load that fails fast must not be retried by the second.
+  const openChat = (invitationCode: string) => navigate({ section: "whatsapp", invitationCode });
   const selectedChatCode = route.section === "whatsapp" ? route.invitationCode : undefined;
+  const selectedInviteCode = route.section === "convites" ? route.invitationCode : undefined;
   const refreshDashboard = () => {
-    void refresh()
-      .then(() => {
-        if (selectedChatCode) navigate(routeForSection("whatsapp"));
-      })
-      .catch(() => undefined);
+    // A refresh keeps the operator where they are. It replaces the whole snapshot, which returns
+    // every conversation to `unloaded`, so the effect below reloads the one that is open — and
+    // only that one — off the bumped `snapshotVersion`.
+    void refresh().catch(() => undefined);
   };
 
   useEffect(() => {
     if (status !== "ready" || !selectedChatCode) return;
     const invitationCode = selectedChatCode;
-    dispatch({ type: "open-chat", invitationCode });
-    void loadWhatsappThread(invitationCode).catch(() => undefined);
-  }, [dispatch, loadWhatsappThread, selectedChatCode, status]);
+    void refreshWhatsappInvitation(invitationCode).catch(() => undefined);
+  }, [dispatch, refreshWhatsappInvitation, selectedChatCode, snapshotVersion, status]);
+
+  useEffect(() => {
+    if (status !== "ready" || !selectedInviteCode) return;
+    const invitationCode = selectedInviteCode;
+    void refreshWhatsappInvitation(invitationCode).catch(() => undefined);
+  }, [refreshWhatsappInvitation, selectedInviteCode, snapshotVersion, status]);
 
   const closeModal = () => setModal(null);
 
@@ -184,6 +189,8 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
               onAddGuests={() =>
                 setModal({ kind: "add-guests", invitationCode: invitation.invitationCode })
               }
+              loadState={state.threadLoads[invitation.invitationCode]}
+              onRetryLoad={() => void retryWhatsappInvitation(invitation.invitationCode).catch(() => undefined)}
             />
           );
         }

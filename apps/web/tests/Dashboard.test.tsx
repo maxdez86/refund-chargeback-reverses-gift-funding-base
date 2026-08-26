@@ -80,6 +80,10 @@ describe("administrative dashboard", () => {
     expect(screen.getByText(/Dados de demonstração/i)).toBeInTheDocument();
     // Eight fixture invitations covering fourteen people.
     expect(screen.getByRole("button", { name: /CONVITES\s*8/ })).toBeInTheDocument();
+    // The WhatsApp card reports a real total on first render, with no thread loaded.
+    const whatsapp = screen.getByRole("button", { name: /WHATSAPP/ });
+    expect(whatsapp).toHaveTextContent(/WHATSAPP\s*3/);
+    expect(whatsapp).toHaveTextContent("2 conversas sem resposta de 7 conversas");
     expect(screen.getAllByRole("navigation", { name: "Navegação administrativa" })).not.toHaveLength(0);
   });
 

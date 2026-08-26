@@ -20,7 +20,10 @@ import {
   attentionMessage,
   templateLabel
 } from "@/lib/admin-dashboard-model";
-import type { AdminInvitation } from "@/lib/admin-dashboard-types";
+import type {
+  AdminInvitation,
+  AdminWhatsappThreadLoadState
+} from "@/lib/admin-dashboard-types";
 import {
   ADMIN_BUTTON,
   BackLink,
@@ -39,7 +42,9 @@ export function InviteDetailScreen({
   onAskSend,
   onChangePhone,
   onConfirmAll,
-  onAddGuests
+  onAddGuests,
+  loadState,
+  onRetryLoad
 }: {
   invitation: AdminInvitation;
   backHref: string;
@@ -50,6 +55,8 @@ export function InviteDetailScreen({
   onChangePhone: () => void;
   onConfirmAll: () => void;
   onAddGuests: () => void;
+  loadState?: AdminWhatsappThreadLoadState;
+  onRetryLoad?: () => void;
 }) {
   const rsvp = RSVP_LABELS[invitation.rsvp.status];
   const flow = FLOW_LABELS[invitation.whatsappFlowStatus];
@@ -206,10 +213,31 @@ export function InviteDetailScreen({
           </Panel>
 
           <Panel className="px-7 py-[26px]">
-            <PanelHeading aside={`Etapa atual · ${STAGE_LABELS[invitation.whatsappFlowStage]}`}>
+            <PanelHeading aside={`Envios recentes · Etapa ${STAGE_LABELS[invitation.whatsappFlowStage]}`}>
               Fluxo de WhatsApp
             </PanelHeading>
-            {invitation.commands.length === 0 ? (
+            {loadState?.status === "loading" && !loadState.hasLoaded ? (
+              <p role="status" aria-label="Carregando fluxo do WhatsApp" className="mt-5 text-sm text-admin-faint">
+                Carregando fluxo do WhatsApp…
+              </p>
+            ) : loadState?.status === "error" && !loadState.hasLoaded ? (
+              <div
+                role="alert"
+                aria-label="Erro ao carregar fluxo do WhatsApp"
+                className="mt-5 flex flex-col items-start gap-3 text-sm text-admin-danger"
+              >
+                <p>Não foi possível carregar o fluxo do WhatsApp.</p>
+                {onRetryLoad && (
+                  <button
+                    type="button"
+                    onClick={onRetryLoad}
+                    className="min-h-11 rounded-lg border border-admin-line-strong bg-admin-surface px-4 text-sm font-medium text-admin-ink hover:bg-admin-inset-hover"
+                  >
+                    Tentar novamente
+                  </button>
+                )}
+              </div>
+            ) : invitation.commands.length === 0 ? (
               <p className="mt-5 rounded-[11px] border border-dashed border-admin-line-strong px-4 py-5 text-[13.5px] leading-[1.5] text-admin-muted">
                 Nenhuma mensagem enviada ainda. Este convite ainda não entrou no fluxo.
               </p>
@@ -280,21 +308,38 @@ export function InviteDetailScreen({
             <h2 className="text-[22px]">Estado do fluxo</h2>
             <dl className="mt-4 flex flex-col gap-3.5">
               <Field label="STATUS" value={flow.label} />
+              {invitation.whatsappFailureReason && (
+                <Field label="MOTIVO DA FALHA" value={invitation.whatsappFailureReason} />
+              )}
               <Field label="CONCLUÍDO EM" value={formatLongDate(invitation.whatsappFlowCompletedAt)} />
               <Field label="FALLBACK ENVIADO" value={formatLongDate(invitation.whatsappFallbackSentAt)} />
               <Field
                 label="ÚLTIMO ENVIO"
                 value={
-                  <span className="admin-mono break-all text-[12.5px]">
-                    {invitation.whatsappLastOutboundMessageId ?? "—"}
+                  <span className="break-words text-[12.5px]">
+                    {invitation.whatsappConversation?.lastOutboundMessagePreview ??
+                      invitation.whatsappConversation?.lastOutboundMessageTemplateId ??
+                      "—"}
                   </span>
                 }
               />
               <Field
                 label="ÚLTIMA RESPOSTA"
                 value={
-                  <span className="admin-mono break-all text-[12.5px]">
-                    {invitation.whatsappLastInboundMessageId ?? "—"}
+                  <span className="break-words text-[12.5px]">
+                    {invitation.whatsappConversation?.lastInboundMessagePreview ??
+                      (invitation.whatsappConversation?.lastInboundMessageButtonAction === "decline"
+                        ? "Não vai"
+                        : invitation.whatsappConversation?.lastInboundMessageButtonAction === "confirm_all" ||
+                            invitation.whatsappConversation?.lastInboundMessageButtonAction === "attend_all"
+                          ? "Confirmou presença"
+                          : invitation.whatsappConversation?.lastInboundMessageButtonAction === "undecided"
+                            ? "Ainda não decidiu"
+                            : invitation.whatsappConversation?.lastInboundMessageButtonId
+                              ? `Resposta por botão: ${invitation.whatsappConversation.lastInboundMessageButtonId}`
+                              : undefined) ??
+                      invitation.whatsappConversation?.lastInboundMessageTemplateId ??
+                      "—"}
                   </span>
                 }
               />

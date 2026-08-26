@@ -85,6 +85,95 @@ describe("AdminDashboardService", () => {
     expect(guestMessageService.list.mock.calls).toEqual([[null], ["cursor-2"]]);
   });
 
+  it("carries the conversation summary through untouched and omits it where absent", async () => {
+    const withConversation = {
+      invitationCode: "AB2345",
+      householdName: "Amanda e Chris",
+      guests: [{
+        guestId: "guest-1",
+        guestName: "Amanda",
+        allowedPlusOnes: 0,
+        rsvpStatus: "attending" as const
+      }],
+      rsvp: {
+        status: "attending" as const,
+        updatedAt: "2026-08-20T12:00:00.000Z",
+        submittedBy: "guest-1",
+        attending: 1,
+        paid: 0,
+        childrenSixOrYounger: 0
+      },
+      whatsappConversation: {
+        messageCount: 3,
+        unreadCount: 2,
+        lastMessageAt: "2026-08-20T12:05:00.000Z",
+        lastMessageDirection: "inbound" as const,
+        lastMessageType: "text" as const,
+        lastMessagePreview: "Vamos sim!"
+      }
+    };
+    const withoutConversation = {
+      ...withConversation,
+      invitationCode: "CD6789",
+      householdName: "Família C",
+      whatsappConversation: undefined
+    };
+    const service = new AdminDashboardService(
+      {
+        listAdminDashboardInvitations: vi
+          .fn()
+          .mockResolvedValue([withConversation, withoutConversation])
+      } as never,
+      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
+    );
+
+    const result = await service.getDashboard();
+
+    expect(result.invitations[0]?.whatsappConversation).toEqual(
+      withConversation.whatsappConversation
+    );
+    expect(result.invitations[1]?.whatsappConversation).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(result.invitations[1]))).not.toHaveProperty(
+      "whatsappConversation"
+    );
+  });
+
+  it("rejects a conversation summary that violates the unread invariant", async () => {
+    const service = new AdminDashboardService(
+      {
+        listAdminDashboardInvitations: vi.fn().mockResolvedValue([{
+          invitationCode: "AB2345",
+          householdName: "Amanda e Chris",
+          guests: [{
+            guestId: "guest-1",
+            guestName: "Amanda",
+            allowedPlusOnes: 0,
+            rsvpStatus: "attending" as const
+          }],
+          rsvp: {
+            status: "attending" as const,
+            updatedAt: null,
+            submittedBy: null,
+            attending: 0,
+            paid: 0,
+            childrenSixOrYounger: 0
+          },
+          whatsappConversation: {
+            messageCount: 1,
+            unreadCount: 2,
+            lastMessageAt: "2026-08-20T12:05:00.000Z",
+            lastMessageDirection: "inbound" as const
+          }
+        }])
+      } as never,
+      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
+    );
+
+    await expect(service.getDashboard()).rejects.toThrow();
+  });
+
   it("rejects invalid assembled output and dependency failures", async () => {
     const invalidService = new AdminDashboardService(
       { listAdminDashboardInvitations: vi.fn().mockResolvedValue([{ invitationCode: "bad" }]) } as never,

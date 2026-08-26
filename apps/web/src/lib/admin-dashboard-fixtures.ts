@@ -1,9 +1,10 @@
-import { deriveGift } from "@/lib/admin-dashboard-model";
+import { deriveGift, trailingInboundCount } from "@/lib/admin-dashboard-model";
 import type {
   AdminDashboardSnapshot,
   AdminGift,
   AdminGuestMessage,
   AdminInvitation,
+  AdminWhatsappConversationSummary,
   AdminWhatsappMessage
 } from "@/lib/admin-dashboard-types";
 
@@ -15,7 +16,11 @@ import type {
  * swaps it for live data.
  */
 
-const invitations: AdminInvitation[] = [
+/**
+ * Declared without `whatsappConversation`: the summary is derived from `threads` below so the
+ * two can never drift, exactly as the backend derives it from the stored messages.
+ */
+const invitations: Omit<AdminInvitation, "whatsappConversation">[] = [
   {
     invitationCode: "SW2748",
     householdName: "Eugênia Ribeiro",
@@ -681,21 +686,9 @@ const threads: Record<string, Omit<AdminWhatsappMessage, "messageId">[]> = {
       text: "Que pena, Rafael! Vamos sentir sua falta. Registramos aqui como ausência."
     }
   ],
-  LB6640: [
-    {
-      direction: "outbound",
-      sentAt: "2026-08-15T10:07:44Z",
-      templateId: "wedding_invitation",
-      text: "Luciana, você está convidada para o casamento de Brenda e Max, dia 06 de dezembro de 2026. Código LB6640."
-    },
-    {
-      direction: "outbound",
-      sentAt: "2026-08-17T07:41:52Z",
-      templateId: "wedding_rsvp_pending_reminder_group",
-      text: "Luciana, conseguimos falar com você por aqui? Ainda não recebemos sua confirmação.",
-      failed: true
-    }
-  ]
+  // LB6640 has no entry on purpose. Every send for it failed or never left the queue, so it
+  // owns no stored message — matching its null last-message IDs — and it is the fixture case
+  // that must never appear in the WhatsApp tab.
 };
 
 const guestMessages: AdminGuestMessage[] = [
@@ -773,20 +766,53 @@ const giftSeed: GiftSeed[] = [
 
 const gifts: AdminGift[] = giftSeed.map((gift) => deriveGift({ ...gift, photoUrl: null }));
 
+/**
+ * The per-invitation summary the backend would have computed for this thread, derived rather
+ * than hand-written so a fixture edit can never leave the two disagreeing. `null` for an
+ * invitation with no messages, which is what keeps it out of the WhatsApp tab.
+ */
+function summarizeFixtureThread(
+  messages: AdminWhatsappMessage[]
+): AdminWhatsappConversationSummary | null {
+  const last = messages.at(-1);
+  if (!last) return null;
+  const lastOutbound = messages.filter((message) => message.direction === "outbound").at(-1);
+  const lastInbound = messages.filter((message) => message.direction === "inbound").at(-1);
+  return {
+    messageCount: messages.length,
+    unreadCount: trailingInboundCount(messages),
+    lastMessageAt: last.sentAt,
+    lastMessageDirection: last.direction,
+    lastMessageType: last.templateId ? "template" : "text",
+    lastMessageTemplateId: last.templateId,
+    lastMessagePreview: last.text.slice(0, 160),
+    lastOutboundMessageTemplateId: lastOutbound?.templateId,
+    lastOutboundMessagePreview: lastOutbound?.text.slice(0, 160),
+    lastInboundMessageTemplateId: lastInbound?.templateId,
+    lastInboundMessagePreview: lastInbound?.text.slice(0, 160)
+  };
+}
+
 /** A deep copy, so the reducer can mutate freely without leaking between mounts or tests. */
 export function createFixtureDashboardSnapshot(): AdminDashboardSnapshot {
+  const identifiedThreads = Object.fromEntries(
+    Object.entries(threads).map(([invitationCode, messages]) => [
+      invitationCode,
+      messages.map((message, index) => ({
+        ...message,
+        messageId: `fixture-${invitationCode}-${index + 1}`
+      }))
+    ])
+  );
   return structuredClone({
-    invitations,
+    invitations: invitations.map((invitation) => ({
+      ...invitation,
+      whatsappConversation: summarizeFixtureThread(
+        identifiedThreads[invitation.invitationCode] ?? []
+      )
+    })),
     guestMessages,
     gifts,
-    threads: Object.fromEntries(
-      Object.entries(threads).map(([invitationCode, messages]) => [
-        invitationCode,
-        messages.map((message, index) => ({
-          ...message,
-          messageId: `fixture-${invitationCode}-${index + 1}`
-        }))
-      ])
-    )
+    threads: identifiedThreads
   });
 }

@@ -14,13 +14,15 @@ import {
   guestFlags,
   isPrimaryGuest,
   isValidGiftTotal,
+  messageFallback,
   needsAttention,
   recalculateRsvp,
   sendAvailability,
   templateLabel,
   templateForSend,
   toGuestRows,
-  toMusicSuggestionRows
+  toMusicSuggestionRows,
+  trailingInboundCount
 } from "@/lib/admin-dashboard-model";
 import type { AdminGift, AdminGuest, AdminInvitation } from "@/lib/admin-dashboard-types";
 
@@ -377,5 +379,39 @@ describe("gift derivation", () => {
       filterGifts(gifts, "Em andamento", "").every((gift) => !gift.paused && !gift.fullyFunded)
     ).toBe(true);
     expect(filterGifts(gifts, "Todos", "noronha").map((gift) => gift.id)).toEqual(["g-lua-de-mel"]);
+  });
+});
+
+describe("WhatsApp message display helpers", () => {
+  it("names a bodyless message by template, then by media type, then generically", () => {
+    expect(messageFallback({ templateId: "wedding_invitation", messageType: "template" })).toBe(
+      "Mensagem de modelo: wedding_invitation"
+    );
+    expect(messageFallback({ messageType: "image" })).toBe("Mensagem image");
+    expect(messageFallback({ messageType: "text" })).toBe("Mensagem sem texto disponível");
+    expect(messageFallback({})).toBe("Mensagem sem texto disponível");
+    expect(messageFallback({ buttonAction: "decline", buttonId: "rsvp_b2_decline" })).toBe("Não vai");
+    expect(messageFallback({ buttonId: "unknown_button", messageType: "button_reply" })).toBe(
+      "Resposta por botão: unknown_button"
+    );
+  });
+
+  it("counts the trailing inbound run and nothing before it", () => {
+    const at = (index: number) => `2026-08-20T1${index}:00:00Z`;
+    const message = (direction: "inbound" | "outbound", index: number) => ({
+      messageId: `m${index}`, direction, sentAt: at(index), text: `#${index}`
+    });
+
+    expect(trailingInboundCount([])).toBe(0);
+    expect(trailingInboundCount([message("inbound", 0), message("outbound", 1)])).toBe(0);
+    expect(
+      trailingInboundCount([
+        message("inbound", 0),
+        message("outbound", 1),
+        message("inbound", 2),
+        message("inbound", 3)
+      ])
+    ).toBe(2);
+    expect(trailingInboundCount([message("inbound", 0), message("inbound", 1)])).toBe(2);
   });
 });

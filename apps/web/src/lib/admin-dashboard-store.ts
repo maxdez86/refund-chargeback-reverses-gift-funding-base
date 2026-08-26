@@ -1,10 +1,16 @@
 import type { RsvpStatus } from "@brimax/contracts";
-import { deriveGift, recalculateRsvp, templateForSend } from "@/lib/admin-dashboard-model";
+import {
+  deriveGift,
+  recalculateRsvp,
+  templateForSend,
+  trailingInboundCount
+} from "@/lib/admin-dashboard-model";
 import type {
   AdminDashboardSnapshot,
   AdminGift,
   AdminGuest,
   AdminInvitation,
+  AdminWhatsappFlowSnapshot,
   AdminWhatsappMessage,
   AdminWhatsappThreadLoadState,
   AdminWhatsappThreadPage
@@ -19,8 +25,6 @@ import type {
  */
 
 export type AdminDashboardState = AdminDashboardSnapshot & {
-  /** Invitation codes whose WhatsApp thread the operator has opened since load. */
-  readChats: string[];
   threadLoads: Record<string, AdminWhatsappThreadLoadState>;
 };
 
@@ -66,10 +70,11 @@ export type AdminDashboardAction =
       now: string;
     }
   | { type: "send-chat"; invitationCode: string; text: string; now: string }
-  | { type: "open-chat"; invitationCode: string }
   | { type: "thread-load-started"; invitationCode: string; loadMore: boolean }
   | { type: "thread-load-succeeded"; page: AdminWhatsappThreadPage; loadMore: boolean }
   | { type: "thread-load-failed"; invitationCode: string; loadMore: boolean }
+  | { type: "thread-error-cleared"; invitationCode: string }
+  | { type: "whatsapp-invitation-refreshed"; invitationCode: string; flow: AdminWhatsappFlowSnapshot }
   | { type: "replace-snapshot"; snapshot: AdminDashboardSnapshot };
 
 /**
@@ -118,20 +123,38 @@ export function giftIdFromName(name: string) {
   return `g-${slug}`;
 }
 
-/** Trailing inbound messages on a thread the operator has not opened yet. */
+/** Whether the newest page of a conversation is in `state.threads`. */
+function hasNewestPage(load: AdminWhatsappThreadLoadState | undefined) {
+  if (!load) return false;
+  if (load.status === "loaded") return true;
+  return (load.status === "loading" || load.status === "error") && load.hasLoaded;
+}
+
+/**
+ * Trailing inbound messages that still await an outbound reply.
+ *
+ * The precedence is deliberate and exhaustive, so no two sources of the number can ever be on
+ * screen at once:
+ *
+ * 1. Newest page loaded → the trailing inbound run over the loaded thread. A partially loaded
+ *    conversation counts here too: only older pages are ever appended, so the first page always
+ *    holds the newest end where the unread run lives.
+ * 2. Otherwise → the dashboard summary's `unreadCount`, which the backend derives with the same
+ *    trailing-inbound rule.
+ *
+ * `null` now means only "no summary and not loaded". For a conversation listed in the WhatsApp
+ * tab that is unreachable — the tab lists exactly the invitations that have a summary. It still
+ * occurs for the invitations that have never exchanged a message, which the Overview card reads
+ * over the whole invitation list.
+ */
 export function unreadCount(state: AdminDashboardState, invitationCode: string): number | null {
-  const load = state.threadLoads[invitationCode];
-  if (!load || load.status === "unloaded" || (load.status === "loading" && !load.hasLoaded) || (load.status === "error" && !load.hasLoaded)) {
-    return null;
+  if (hasNewestPage(state.threadLoads[invitationCode])) {
+    return trailingInboundCount(state.threads[invitationCode] ?? []);
   }
-  if (state.readChats.includes(invitationCode)) return 0;
-  const thread = state.threads[invitationCode] ?? [];
-  let count = 0;
-  for (let index = thread.length - 1; index >= 0; index -= 1) {
-    if (thread[index].direction === "outbound") break;
-    count += 1;
-  }
-  return count;
+  const summary = state.invitations.find(
+    (invitation) => invitation.invitationCode === invitationCode
+  )?.whatsappConversation;
+  return summary ? summary.unreadCount : null;
 }
 
 export function createInitialState(snapshot: AdminDashboardSnapshot): AdminDashboardState {
@@ -143,7 +166,7 @@ export function createInitialState(snapshot: AdminDashboardSnapshot): AdminDashb
         : { status: "unloaded" as const }
     ])
   );
-  return { ...snapshot, readChats: [], threadLoads };
+  return { ...snapshot, threadLoads };
 }
 
 function deduplicateMessages(messages: AdminWhatsappMessage[]) {
@@ -290,7 +313,10 @@ export function adminDashboardReducer(
           childrenSixOrYounger: 0
         },
         guests,
-        commands: []
+        commands: [],
+        // Nothing has been sent yet, so the invitation owns no message and stays out of the
+        // WhatsApp tab until a real conversation exists.
+        whatsappConversation: null
       };
       return { ...state, invitations: [invitation, ...state.invitations] };
     }
@@ -417,16 +443,8 @@ export function adminDashboardReducer(
         threads: {
           ...state.threads,
           [action.invitationCode]: [...(state.threads[action.invitationCode] ?? []), message]
-        },
-        readChats: state.readChats.includes(action.invitationCode)
-          ? state.readChats
-          : [...state.readChats, action.invitationCode]
+        }
       };
-    }
-
-    case "open-chat": {
-      if (state.readChats.includes(action.invitationCode)) return state;
-      return { ...state, readChats: [...state.readChats, action.invitationCode] };
     }
 
     case "thread-load-started": {
@@ -478,6 +496,99 @@ export function adminDashboardReducer(
           }
         }
       };
+    }
+
+    /**
+     * Retires a failed *load-more* without touching the messages it already holds.
+     *
+     * A pagination failure belongs to that one attempt, not to the conversation: the newest page
+     * is still loaded and still correct. Reopening the conversation therefore drops the alert and
+     * puts the load-older control back, with no request behind it — the cursor is retained, so the
+     * operator can try the same older page again whenever they want. A failed *first* load has no
+     * page to fall back on and is left alone, so reopening still retries it.
+     */
+    case "thread-error-cleared": {
+      const current = state.threadLoads[action.invitationCode];
+      if (!current || current.status !== "error" || !current.hasLoaded) return state;
+      return {
+        ...state,
+        threadLoads: {
+          ...state.threadLoads,
+          [action.invitationCode]: { status: "loaded", nextCursor: current.nextCursor }
+        }
+      };
+    }
+
+    /**
+     * Replaces flow fields for one invitation when refreshed from the backend.
+     *
+     * Precedence rule for local mutations vs server refresh:
+     * - Phone fields (phoneNumber, phoneNumberSource, phoneNumberUpdatedAt): If the local invitation
+     *   has a local update (phoneNumberUpdatedAt is non-null) that is newer than flow.phoneNumberUpdatedAt
+     *   (!flow.phoneNumberUpdatedAt || invitation.phoneNumberUpdatedAt > flow.phoneNumberUpdatedAt),
+     *   the local operator edit takes precedence and is retained.
+     * - Flow fields (status, stage, timestamps, failureReason, reconciliationStatus): If the local
+     *   invitation has a local mutation (whatsappFlowUpdatedAt is non-null) that is newer than
+     *   flow.whatsappFlowUpdatedAt (!flow.whatsappFlowUpdatedAt || invitation.whatsappFlowUpdatedAt > flow.whatsappFlowUpdatedAt),
+     *   the optimistic local mutation (e.g. queue-send or local confirm) is retained so in-flight refreshes
+     *   cannot silently revert an operator's local action.
+     * - In all other cases (initial load, server timestamp >= local timestamp, or no local update), the
+     *   refreshed server flow snapshot replaces the local flow attributes.
+     * - Non-flow fields (householdName, rsvp, guests, commands, whatsappConversation) and other invitations
+     *   are completely untouched, and list order is preserved via mapInvitation.
+     */
+    case "whatsapp-invitation-refreshed": {
+      return mapInvitation(state, action.invitationCode, (invitation) => {
+        const keepLocalPhone = Boolean(
+          invitation.phoneNumberUpdatedAt &&
+            action.flow.phoneNumberUpdatedAt &&
+            invitation.phoneNumberUpdatedAt > action.flow.phoneNumberUpdatedAt
+        );
+
+        const keepLocalFlow = Boolean(
+          invitation.whatsappFlowUpdatedAt &&
+            action.flow.whatsappFlowUpdatedAt &&
+            invitation.whatsappFlowUpdatedAt > action.flow.whatsappFlowUpdatedAt
+        );
+
+        return {
+          ...invitation,
+          phoneNumber: keepLocalPhone ? invitation.phoneNumber : action.flow.phoneNumber,
+          phoneNumberSource: keepLocalPhone
+            ? invitation.phoneNumberSource
+            : action.flow.phoneNumberSource,
+          phoneNumberUpdatedAt: keepLocalPhone
+            ? invitation.phoneNumberUpdatedAt
+            : action.flow.phoneNumberUpdatedAt,
+          whatsappFlowStatus: keepLocalFlow
+            ? invitation.whatsappFlowStatus
+            : action.flow.whatsappFlowStatus,
+          whatsappFlowStage: keepLocalFlow
+            ? invitation.whatsappFlowStage
+            : action.flow.whatsappFlowStage,
+          whatsappFlowUpdatedAt: keepLocalFlow
+            ? invitation.whatsappFlowUpdatedAt
+            : action.flow.whatsappFlowUpdatedAt,
+          whatsappFlowCompletedAt: keepLocalFlow
+            ? invitation.whatsappFlowCompletedAt
+            : action.flow.whatsappFlowCompletedAt,
+          whatsappFallbackSentAt: keepLocalFlow
+            ? invitation.whatsappFallbackSentAt
+            : action.flow.whatsappFallbackSentAt,
+          whatsappLastInboundMessageId: keepLocalFlow
+            ? invitation.whatsappLastInboundMessageId
+            : action.flow.whatsappLastInboundMessageId,
+          whatsappLastOutboundMessageId: keepLocalFlow
+            ? invitation.whatsappLastOutboundMessageId
+            : action.flow.whatsappLastOutboundMessageId,
+          whatsappFailureReason: keepLocalFlow
+            ? invitation.whatsappFailureReason
+            : action.flow.whatsappFailureReason,
+          reconciliationStatus: keepLocalFlow
+            ? invitation.reconciliationStatus
+            : action.flow.reconciliationStatus
+        };
+      });
     }
 
     case "replace-snapshot":

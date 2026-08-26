@@ -28,9 +28,14 @@ export function OverviewScreen({
   const suggestionPercent = state.invitations.length
     ? Math.round((musicSuggestions.length / state.invitations.length) * 100)
     : 0;
-  const loadedUnread = Object.values(unreadByCode).filter((count): count is number => count !== null);
-  const unreadTotal = loadedUnread.reduce((sum, count) => sum + count, 0);
-  const unreadChats = loadedUnread.filter((count) => count > 0).length;
+  // Only invitations that own a conversation can be unread, and each of those always resolves to
+  // a number — the dashboard summary before the thread loads, the loaded thread afterwards. So
+  // this is the real total from the first render, not a count of what happens to be open.
+  const conversationUnread = state.invitations
+    .filter((invitation) => invitation.whatsappConversation)
+    .map((invitation) => unreadByCode[invitation.invitationCode] ?? 0);
+  const unreadTotal = conversationUnread.reduce((sum, count) => sum + count, 0);
+  const unreadChats = conversationUnread.filter((count) => count > 0).length;
 
   const cards = [
     {
@@ -72,10 +77,8 @@ export function OverviewScreen({
       section: "whatsapp" as const,
       label: "WHATSAPP",
       icon: MessageCircle,
-      value: loadedUnread.length ? String(unreadTotal) : "—",
-      hint: loadedUnread.length
-        ? `${pluralize(unreadChats, "conversa sem resposta", "conversas sem resposta")} entre as abertas nesta sessão`
-        : "Conversas carregam sob demanda"
+      value: String(unreadTotal),
+      hint: `${pluralize(unreadChats, "conversa sem resposta", "conversas sem resposta")} de ${pluralize(conversationUnread.length, "conversa", "conversas")}`
     }
   ];
 

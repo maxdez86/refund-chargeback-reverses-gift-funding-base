@@ -191,3 +191,29 @@ body and sender ID for controlled correlation but never enter an invitation
 timeline or current HTTP response. Review privacy and deletion expectations
 after the wedding before changing retention; do not add a TTL without an
 explicit policy and deletion plan.
+
+## Admin dashboard WhatsApp integration
+
+The admin web panel integrates with the WhatsApp backend via a lazy-loaded,
+summary-backed architecture:
+
+- **Dashboard summary payload (`GET /admin/dashboard`)**: The initial load issues
+  a single dashboard request. Each invitation includes an optional
+  `whatsappConversation` summary if and only if it owns at least one matched
+  WhatsApp message (`messageCount > 0`). Absence is the exact "no conversation"
+  signal: invitations without messages never appear in the WhatsApp tab. The summary
+  contains `messageCount`, `unreadCount` (trailing inbound run), `lastMessageAt`,
+  `lastMessageDirection`, and `lastMessagePreview` (at most 160 characters).
+- **Two history-loading triggers**: Message history is never preloaded or polled.
+  Backend history calls occur on exactly two operator triggers:
+  1. Opening an invitation detail or its WhatsApp conversation.
+  2. Pressing the "Carregar mensagens anteriores" pagination control.
+- **Invitation open refresh**: Opening an invitation or conversation issues a single
+  coalesced request to `GET /admin/whatsapp/invitations/{invitationCode}`. This updates
+  the invitation's flow status, stage, failure reason, and command history in place
+  for that invitation only. The command list displayed in the panel is bounded to the
+  fetched page (50 entries).
+- **Session-local read state**: Marking a conversation read upon opening is tracked in
+  browser session state and is never persisted to DynamoDB. A full page reload or
+  clicking "Atualizar dados" replaces the snapshot and re-evaluates unread state from
+  the server's trailing inbound run.

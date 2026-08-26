@@ -50,6 +50,13 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [refreshState, setRefreshState] = useState<AdminDashboardRefreshState>({ status: "idle" });
   const [lastSuccessfulLoadAt, setLastSuccessfulLoadAt] = useState<string | null>(null);
+  /**
+   * Monotonic counter of installed snapshots. Every successful load or refresh replaces the whole
+   * state — including `threadLoads`, which returns to `unloaded` — so a consumer that has one
+   * conversation open needs a signal that the thread it was showing is gone. A counter rather than
+   * `lastSuccessfulLoadAt` because two loads can land in the same millisecond.
+   */
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
   const stateRef = useRef(state);
   stateRef.current = state;
   const nowRef = useRef(nowOption);
@@ -82,6 +89,7 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
         ) return;
         rawDispatch({ type: "replace-snapshot", snapshot });
         setLastSuccessfulLoadAt(nowRef.current ? nowRef.current() : new Date().toISOString());
+        setSnapshotVersion((version) => version + 1);
         setStatus("ready");
       })
       .catch(() => {
@@ -128,6 +136,7 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
         inFlightRef.current.clear();
         rawDispatch({ type: "replace-snapshot", snapshot });
         setLastSuccessfulLoadAt(nowRef.current ? nowRef.current() : new Date().toISOString());
+        setSnapshotVersion((version) => version + 1);
         setRefreshState({ status: "idle" });
       })
       .catch((error) => {
@@ -168,10 +177,11 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     const generation = generationRef.current;
     rawDispatch({ type: "thread-load-started", invitationCode, loadMore });
     const promise = source
-      .loadWhatsappThread(invitationCode, cursor ?? undefined, controller.signal)
-      .then((page) => {
+      .loadWhatsappInvitation(invitationCode, cursor ?? undefined, controller.signal)
+      .then(({ flow, page }) => {
         if (controller.signal.aborted || generation !== generationRef.current) return;
         if (page.invitationCode !== invitationCode) throw new Error("Conversation invitation mismatch.");
+        rawDispatch({ type: "whatsapp-invitation-refreshed", invitationCode, flow });
         rawDispatch({ type: "thread-load-succeeded", page, loadMore });
       })
       .catch((error) => {
@@ -188,17 +198,33 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     return promise;
   }, [source]);
 
-  const loadWhatsappThread = useCallback((invitationCode: string) => {
-    const current = stateRef.current.threadLoads[invitationCode];
-    if (current?.status === "error" && current.hasLoaded) return Promise.resolve();
-    return requestThread(invitationCode, false);
-  }, [requestThread]);
   const retryWhatsappThread = useCallback((invitationCode: string) => {
     const current = stateRef.current.threadLoads[invitationCode];
     return requestThread(invitationCode, current?.status === "error" && current.hasLoaded);
   }, [requestThread]);
   const loadMoreWhatsappThread = useCallback(
     (invitationCode: string) => requestThread(invitationCode, true),
+    [requestThread]
+  );
+  /**
+   * The "operator opened a conversation or invite detail" trigger. Everything it can do is bounded:
+   *
+   * - already loaded → nothing, the newest page is what opening asks for (`requestThread`);
+   * - a failed *load-more* → the alert is retired and the newest page is shown again, still with
+   *   no request: reopening must not restart a conversation whose first page is loaded and valid,
+   *   and leaving the alert up would otherwise greet the operator on every reopen forever;
+   * - a failed *first* load → a fresh request, because there is nothing to show without one.
+   */
+  const refreshWhatsappInvitation = useCallback((invitationCode: string) => {
+    const current = stateRef.current.threadLoads[invitationCode];
+    if (current?.status === "error" && current.hasLoaded) {
+      rawDispatch({ type: "thread-error-cleared", invitationCode });
+      return Promise.resolve();
+    }
+    return requestThread(invitationCode, false);
+  }, [requestThread]);
+  const retryWhatsappInvitation = useCallback(
+    (invitationCode: string) => requestThread(invitationCode, false),
     [requestThread]
   );
 
@@ -229,12 +255,14 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     refresh,
     refreshState,
     lastSuccessfulLoadAt,
+    snapshotVersion,
     dispatch,
     guestRows,
     unreadByCode,
-    loadWhatsappThread,
     retryWhatsappThread,
     loadMoreWhatsappThread,
+    refreshWhatsappInvitation,
+    retryWhatsappInvitation,
     demo: source.demo
   };
 }

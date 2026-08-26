@@ -6,7 +6,7 @@ import { WeddingRepository } from "../services/dynamodb/repositories/wedding-rep
 import { WhatsappTemplateRepository } from "../services/whatsapp/template-repository";
 import { enqueueWhatsappRsvp } from "../services/sqs/whatsapp-rsvp-publisher";
 import { WhatsappRecipientSchema } from "../services/whatsapp/schemas";
-import { flowStageForTemplate } from "../services/whatsapp/template-manifest";
+import { actionForButtonId, flowStageForTemplate } from "../services/whatsapp/template-manifest";
 import { decideWhatsappRsvpBranch } from "./whatsapp-rsvp-branches";
 import type { WhatsappWebhookEvent } from "@brimax/contracts";
 import { WhatsappCloudApiClient } from "../services/whatsapp/client";
@@ -153,6 +153,10 @@ export class WhatsappRsvpService {
         stage: entry.stage,
         providerMessageId: entry.direction === "outbound" ? entry.messageId : undefined,
         messageType: entry.messageType,
+        ...(entry.buttonId === undefined ? {} : {
+          buttonId: entry.buttonId,
+          buttonAction: actionForButtonId(entry.buttonId)
+        }),
         ...(entry.body === undefined ? {} : { body: entry.body }),
         providerErrorCategory: entry.providerErrorCategory
       };
@@ -160,7 +164,7 @@ export class WhatsappRsvpService {
     return WhatsappRsvpStatusResponseSchema.parse({
       ...status,
       history,
-      nextCursor: conversation.nextCursor
+      ...(conversation.nextCursor ? { nextCursor: conversation.nextCursor } : {})
     });
   }
 

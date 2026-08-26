@@ -4,6 +4,12 @@ import type { AdminSessionResponse } from "@brimax/contracts";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
+import type {
+  AdminWhatsappConversationSummary,
+  AdminWhatsappFlowSnapshot,
+  AdminWhatsappInvitationPage,
+  AdminWhatsappMessage
+} from "@/lib/admin-dashboard-types";
 
 const session: AdminSessionResponse = {
   authenticated: true,
@@ -36,6 +42,53 @@ const goTo = async (label: RegExp | string) => {
   fireEvent.click(within(nav).getByRole("link", { name: label }));
 };
 
+/** The live-mode shape — summaries only — with one conversation summary of the test's choosing. */
+const snapshotWithSummary = (invitationCode: string, summary: AdminWhatsappConversationSummary) => {
+  const snapshot = createFixtureDashboardSnapshot();
+  snapshot.threads = {};
+  snapshot.invitations = snapshot.invitations.map((invitation) => ({
+    ...invitation,
+    commands: [],
+    whatsappConversation:
+      invitation.invitationCode === invitationCode ? summary : invitation.whatsappConversation
+  }));
+  return snapshot;
+};
+
+const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
+  phoneNumber: "5511999999999",
+  phoneNumberSource: "guest",
+  phoneNumberUpdatedAt: null,
+  whatsappFlowStatus: "message_sent",
+  whatsappFlowStage: "pending",
+  whatsappFlowUpdatedAt: null,
+  whatsappFlowCompletedAt: null,
+  whatsappFallbackSentAt: null,
+  whatsappLastInboundMessageId: null,
+  whatsappLastOutboundMessageId: null,
+  whatsappFailureReason: null,
+  reconciliationStatus: "none"
+});
+
+const message = (
+  messageId: string,
+  sentAt: string,
+  text = messageId
+): AdminWhatsappMessage => ({ messageId, direction: "inbound", sentAt, text });
+
+const threadPage = (
+  invitationCode: string,
+  messages: AdminWhatsappMessage[],
+  nextCursor: string | null = null,
+  flowOverrides?: Partial<AdminWhatsappFlowSnapshot>
+): AdminWhatsappInvitationPage => ({
+  flow: { ...defaultFlow(invitationCode), ...flowOverrides },
+  page: { invitationCode, messages, commands: [], nextCursor }
+});
+
+const loadOlderControl = () =>
+  screen.queryByRole("button", { name: "Carregar mensagens anteriores" });
+
 describe("dashboard screens", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/dashboard");
@@ -55,7 +108,7 @@ describe("dashboard screens", () => {
     const source: AdminDashboardSource = {
       demo: false,
       load,
-      loadWhatsappThread: vi.fn()
+      loadWhatsappInvitation: vi.fn()
     };
     await renderShell(source);
 
@@ -84,32 +137,34 @@ describe("dashboard screens", () => {
     expect(screen.getByText(/^Atualizado/)).toBeInTheDocument();
   });
 
-  it("returns an open WhatsApp detail to the unloaded list after refresh without history fan-out", async () => {
+  it("keeps the open WhatsApp conversation across a refresh and reloads only that one", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
     snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
     const load = vi.fn().mockResolvedValue(snapshot);
-    const loadWhatsappThread = vi.fn().mockResolvedValue({
-      invitationCode: "SW2748",
-      messages: [],
-      commands: [],
-      nextCursor: null
-    });
-    await renderShell({ demo: false, load, loadWhatsappThread });
+    const loadWhatsappInvitation = vi.fn(
+      (invitationCode: string, _cursor?: string, _signal?: AbortSignal) =>
+        Promise.resolve(
+          threadPage(invitationCode, [message("m1", "2026-08-20T12:00:00Z", "Recarregada")])
+        )
+    );
+    await renderShell({ demo: false, load, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
-    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Atualizar dados" }));
 
-    await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "Eugênia Ribeiro" })).not.toBeInTheDocument()
-    );
-    expect(screen.getByRole("heading", { name: "WhatsApp" })).toBeInTheDocument();
-    expect(screen.getAllByText("Abrir para carregar")).toHaveLength(snapshot.invitations.length);
+    // A refresh empties every thread, so the conversation the operator is reading is reloaded —
+    // and it is the only one: the other six listed rows stay on their summaries.
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2));
+    expect(loadWhatsappInvitation.mock.calls.map((call) => call[0])).toEqual(["SW2748", "SW2748"]);
+    expect(loadWhatsappInvitation.mock.calls[1][1]).toBeUndefined();
+    expect(screen.getByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Recarregada")).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("list", { name: "Conversas" })).getAllByRole("button")).toHaveLength(7);
     expect(load).toHaveBeenCalledTimes(2);
-    expect(loadWhatsappThread).toHaveBeenCalledTimes(1);
   });
 
   it("opens an invitation from the list and returns with the back link", async () => {
@@ -118,7 +173,7 @@ describe("dashboard screens", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Abrir convite HL4120/ }));
     expect(await screen.findByRole("heading", { name: "Família Tavares" })).toBeInTheDocument();
-    expect(screen.getByText("Etapa atual · Follow-up")).toBeInTheDocument();
+    expect(screen.getByText("Envios recentes · Etapa Follow-up")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: /VOLTAR PARA CONVITES/ }));
     expect(await screen.findByRole("heading", { name: "Convites" })).toBeInTheDocument();
@@ -552,19 +607,130 @@ describe("dashboard screens", () => {
     expect(within(dialog).getByText(/Preencha nome, valor válido e imagem/)).toBeInTheDocument();
   });
 
-  it("opens a conversation, clears its unread badge and sends a reply", async () => {
+  it("lists only invitations that own messages, and keeps the excluded one everywhere else", async () => {
     await renderShell();
     await goTo(/WhatsApp/);
 
-    const chat = await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" });
-    expect(within(chat).getByText("Abrir para carregar")).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: "Conversas" });
+    expect(within(list).getAllByRole("button")).toHaveLength(7);
+    // LB6640 never exchanged a message, so it owns no conversation row.
+    expect(screen.queryByRole("button", { name: /Conversa com Luciana Barros Freitas/ })).not.toBeInTheDocument();
+
+    // A search that matches its household name still must not surface it.
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar conversa" }), {
+      target: { value: "luciana" }
+    });
+    expect(screen.queryByRole("button", { name: /Conversa com Luciana Barros Freitas/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Nenhuma conversa corresponde a este filtro.")).toBeInTheDocument();
+
+    // The exclusion is local to this tab: the invitation is untouched in Convites.
+    await goTo(/Convites/);
+    expect(await screen.findByRole("button", { name: /Abrir convite LB6640/ })).toBeInTheDocument();
+  });
+
+  it("reports the real unread total in the header and filters on it before any load", async () => {
+    await renderShell();
+    await goTo(/WhatsApp/);
+    await screen.findByRole("list", { name: "Conversas" });
+
+    // 2 unread on QP8814 plus 1 on ZR5567, across the 7 listed conversations.
+    expect(screen.getByText("3 mensagens sem resposta · 7 conversas")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Não lidas" }));
+
+    const list = screen.getByRole("list", { name: "Conversas" });
+    expect(within(list).getAllByRole("button").map((row) => row.getAttribute("aria-label"))).toEqual([
+      "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas",
+      "Conversa com Eduardo Nunes Filho, 1 mensagem não lida"
+    ]);
+    expect(screen.getByText("3 mensagens sem resposta · 2 conversas")).toBeInTheDocument();
+  });
+
+  it("names the empty list differently when no invitation has ever exchanged a message", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) => ({
+      ...invitation,
+      whatsappConversation: null
+    }));
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
+    await goTo(/WhatsApp/);
+
+    expect(await screen.findByText("Nenhum convite trocou mensagens no WhatsApp ainda.")).toBeInTheDocument();
+    expect(screen.getByText("0 mensagens sem resposta · 0 conversas")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Conversas" })).queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("sorts a loaded conversation and summary-only ones on one timeline", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    // RQ7712's summary is the oldest of the eight, but its loaded thread is the newest message
+    // in the panel — the loaded value has to win the sort.
+    snapshot.threads = {
+      RQ7712: [
+        { messageId: "rq-new", direction: "inbound", sentAt: "2026-09-01T09:00:00Z", text: "Mudei de ideia!" }
+      ]
+    };
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
+    await goTo(/WhatsApp/);
+
+    const list = await screen.findByRole("list", { name: "Conversas" });
+    expect(
+      within(list).getAllByRole("button").map((row) => row.getAttribute("aria-label")?.split(",")[0])
+    ).toEqual([
+      "Conversa com Rafael Queiroz",
+      "Conversa com Helena Prado Ribeiro",
+      "Conversa com Eugênia Ribeiro",
+      "Conversa com Amanda Moura e Chris Kaneda",
+      "Conversa com Eduardo Nunes Filho",
+      "Conversa com Família Tavares",
+      "Conversa com Marcos e Juliana Alves"
+    ]);
+    expect(within(list).getByText("Mudei de ideia!")).toBeInTheDocument();
+  });
+
+  it("shows a template-only summary preview with the outbound prefix", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((invitation) =>
+      invitation.invitationCode === "SW2748"
+        ? {
+            ...invitation,
+            whatsappConversation: {
+              messageCount: 1,
+              unreadCount: 0,
+              lastMessageAt: "2026-08-18T20:18:40Z",
+              lastMessageDirection: "outbound" as const,
+              lastMessageType: "template" as const,
+              lastMessageTemplateId: "wedding_rsvp_reconfirmation_single"
+            }
+          }
+        : invitation
+    );
+    const loadWhatsappInvitation = vi.fn();
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+
+    const row = await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" });
+    expect(within(row).getByText("Você: Mensagem de modelo: wedding_rsvp_reconfirmation_single")).toBeInTheDocument();
+    expect(loadWhatsappInvitation).not.toHaveBeenCalled();
+  });
+
+  it("opens a conversation, keeps its response-needed badge, and sends a reply", async () => {
+    await renderShell();
+    await goTo(/WhatsApp/);
+
+    const chat = await screen.findByRole("button", {
+      name: "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas"
+    });
+    // Preview and badge come from the summary, before any history request.
+    expect(within(chat).getByText("Consegui atualizar no site? Não apareceu nada lá")).toBeInTheDocument();
     fireEvent.click(chat);
 
     expect(await screen.findByRole("heading", { name: "Helena Prado Ribeiro" })).toBeInTheDocument();
     expect((await screen.findAllByText("Consegui atualizar no site? Não apareceu nada lá")).length).toBeGreaterThan(0);
     expect(
-      screen.queryByRole("button", { name: /Conversa com Helena Prado Ribeiro, 2/ })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas" })
+    ).toBeInTheDocument();
 
     const composer = screen.getByLabelText("Resposta para o convidado");
     fireEvent.change(composer, { target: { value: "Atualizamos aqui, Helena!" } });
@@ -572,6 +738,9 @@ describe("dashboard screens", () => {
 
     expect(await screen.findByText("Atualizamos aqui, Helena!")).toBeInTheDocument();
     expect(composer).toHaveValue("");
+    expect(
+      screen.queryByRole("button", { name: "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas" })
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the composer inert until there is something to send", async () => {
@@ -581,18 +750,24 @@ describe("dashboard screens", () => {
     expect(await screen.findByRole("button", { name: /^Enviar/ })).toBeDisabled();
   });
 
-  it("shows an unknown overview total before threads load and labels partial counts afterward", async () => {
+  it("shows the response-needed overview total until a reply is sent", async () => {
     await renderShell();
     const card = screen.getByRole("button", { name: /WHATSAPP/ });
-    expect(card).toHaveTextContent("—");
-    expect(card).toHaveTextContent("Conversas carregam sob demanda");
+    // QP8814 has 2 unread and ZR5567 has 1, across the 7 invitations that own a conversation.
+    expect(card).toHaveTextContent("3");
+    expect(card).toHaveTextContent("2 conversas sem resposta de 7 conversas");
+    expect(card).not.toHaveTextContent("carregam sob demanda");
 
     await goTo(/WhatsApp/);
-    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas" })
+    );
     await screen.findAllByText("Consegui atualizar no site? Não apareceu nada lá");
     await goTo(/Visão geral/);
 
-    expect(screen.getByRole("button", { name: /WHATSAPP/ })).toHaveTextContent("entre as abertas nesta sessão");
+    const updated = screen.getByRole("button", { name: /WHATSAPP/ });
+    expect(updated).toHaveTextContent("3");
+    expect(updated).toHaveTextContent("2 conversas sem resposta de 7 conversas");
   });
 
   it("renders loading, first-load error, retry, and an empty loaded conversation", async () => {
@@ -601,13 +776,13 @@ describe("dashboard screens", () => {
     snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
     let rejectFirst!: (error: Error) => void;
     const first = new Promise<never>((_, reject) => { rejectFirst = reject; });
-    const loadWhatsappThread = vi.fn()
+    const loadWhatsappInvitation = vi.fn()
       .mockReturnValueOnce(first)
-      .mockResolvedValueOnce({ invitationCode: "SW2748", messages: [], commands: [], nextCursor: null });
+      .mockResolvedValueOnce(threadPage("SW2748", []));
     const source: AdminDashboardSource = {
       demo: false,
       load: async () => snapshot,
-      loadWhatsappThread
+      loadWhatsappInvitation
     };
     await renderShell(source);
     await goTo(/WhatsApp/);
@@ -618,25 +793,21 @@ describe("dashboard screens", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar a conversa");
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     expect((await screen.findAllByText("Sem mensagens")).length).toBeGreaterThan(0);
-    expect(loadWhatsappThread).toHaveBeenCalledTimes(2);
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
   });
 
   it("loads older pages through the accessible pagination control", async () => {
     const snapshot = createFixtureDashboardSnapshot();
     snapshot.threads = {};
     snapshot.invitations = snapshot.invitations.map((invitation) => ({ ...invitation, commands: [] }));
-    const loadWhatsappThread = vi.fn()
-      .mockResolvedValueOnce({
-        invitationCode: "SW2748",
-        messages: [{ messageId: "new", direction: "inbound", sentAt: "2026-08-20T12:00:00Z", text: "Nova" }],
-        commands: [], nextCursor: "older"
-      })
-      .mockResolvedValueOnce({
-        invitationCode: "SW2748",
-        messages: [{ messageId: "old", direction: "outbound", sentAt: "2026-08-19T12:00:00Z", text: "Antiga" }],
-        commands: [], nextCursor: null
-      });
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappThread });
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("new", "2026-08-20T12:00:00Z", "Nova")], "older")
+      )
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("old", "2026-08-19T12:00:00Z", "Antiga")], null)
+      );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     const loadMore = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
@@ -646,6 +817,576 @@ describe("dashboard screens", () => {
     expect(await screen.findByText("Antiga")).toBeInTheDocument();
     expect(screen.getAllByText("Nova").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Histórico da conversa")).toHaveFocus();
-    expect(loadWhatsappThread).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
+  });
+
+  it("retains loaded messages on load-more error and retries with the same cursor", async () => {
+    const snapshot = snapshotWithSummary("SW2748", {
+      messageCount: 2,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Nova"
+    });
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("new", "2026-08-20T12:00:00Z", "Nova")], "older")
+      )
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("old", "2026-08-19T12:00:00Z", "Antiga")], null)
+      );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+    expect((await screen.findAllByText("Nova")).length).toBeGreaterThan(0);
+
+    const loadMore = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    fireEvent.click(loadMore);
+
+    // Failed load-more displays the error alert, while keeping the already-loaded message.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar a conversa");
+    expect(screen.getAllByText("Nova").length).toBeGreaterThan(0);
+
+    // Clicking retry resumes from the stored cursor "older".
+    const retry = screen.getByRole("button", { name: "Tentar novamente" });
+    fireEvent.click(retry);
+
+    expect(await screen.findByText("Antiga")).toBeInTheDocument();
+    expect(screen.getAllByText("Nova").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(3);
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(2, "SW2748", "older", expect.any(AbortSignal));
+    expect(loadWhatsappInvitation).toHaveBeenNthCalledWith(3, "SW2748", "older", expect.any(AbortSignal));
+  });
+
+  it("preserves scroll position and returns focus to the pagination control across older page loads", async () => {
+    const snapshot = snapshotWithSummary("SW2748", {
+      messageCount: 3,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Nova"
+    });
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("m3", "2026-08-20T12:00:00Z", "Mensagem 3")], "cursor-2")
+      )
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("m2", "2026-08-19T12:00:00Z", "Mensagem 2")], "cursor-1")
+      )
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [message("m1", "2026-08-18T12:00:00Z", "Mensagem 1")], null)
+      );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+    const historyContainer = await screen.findByLabelText("Histórico da conversa");
+
+    let scrollTopVal = 100;
+    Object.defineProperty(historyContainer, "scrollHeight", {
+      configurable: true,
+      get: () => (
+        historyContainer.textContent?.includes("Mensagem 1")
+          ? 1100
+          : historyContainer.textContent?.includes("Mensagem 2")
+            ? 800
+            : 500
+      )
+    });
+    Object.defineProperty(historyContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTopVal,
+      set: (val: number) => {
+        scrollTopVal = val;
+      }
+    });
+
+    const loadMore1 = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    fireEvent.click(loadMore1);
+
+    expect(await screen.findByText("Mensagem 2")).toBeInTheDocument();
+    // Scroll adjusted: scrollTop = preserved.top (100) + new scrollHeight (800) - old scrollHeight (500) = 400
+    expect(scrollTopVal).toBe(400);
+
+    // Focus returns to the load-older button because more messages remain (cursor-1, 2 of 3 loaded)
+    const loadMore2 = screen.getByRole("button", { name: "Carregar mensagens anteriores" });
+    expect(loadMore2).toHaveFocus();
+
+    // Now load the final page
+    fireEvent.click(loadMore2);
+
+    expect(await screen.findByText("Mensagem 1")).toBeInTheDocument();
+    expect(scrollTopVal).toBe(700);
+    // Because all 3 messages are now loaded, load-older unmounts and focus returns to the history container
+    expect(loadOlderControl()).not.toBeInTheDocument();
+    expect(historyContainer).toHaveFocus();
+  });
+
+  it("gates the load-older control on both cursor and summary count", async () => {
+    // Behavior 21: A query that exhausted the thread but still received a LastEvaluatedKey
+    // must NOT render the load-older button if messageCount is already met.
+    const snapshot = snapshotWithSummary("SW2748", {
+      messageCount: 2,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Nova"
+    });
+    const loadWhatsappInvitation = vi.fn().mockResolvedValueOnce(
+      threadPage(
+        "SW2748",
+        [
+          message("m1", "2026-08-19T12:00:00Z", "Antiga"),
+          message("m2", "2026-08-20T12:00:00Z", "Nova")
+        ],
+        "spurious-next-cursor"
+      )
+    );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+
+    expect((await screen.findAllByText("Nova")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Antiga")).toBeInTheDocument();
+    // Gated on summary count (2 loaded == 2 summary count), so the button is not offered
+    expect(loadOlderControl()).not.toBeInTheDocument();
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the load-older control when message count reaches summary without extra requests", async () => {
+    // Behavior 22: When paginating, the control disappears the moment loaded count reaches summary count
+    const snapshot = snapshotWithSummary("QP8814", {
+      messageCount: 2,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "QP Nova"
+    });
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(
+        threadPage("QP8814", [message("qp-new", "2026-08-20T12:00:00Z", "QP Nova")], "cursor-qp")
+      )
+      .mockResolvedValueOnce(
+        threadPage("QP8814", [message("qp-old", "2026-08-19T12:00:00Z", "QP Antiga")], "cursor-extra")
+      );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" }));
+
+    const loadMoreBtn = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    fireEvent.click(loadMoreBtn);
+
+    expect(await screen.findByText("QP Antiga")).toBeInTheDocument();
+    expect(loadOlderControl()).not.toBeInTheDocument();
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the loaded thread win for display when a summary is stale and keeps the pagination control available", async () => {
+    // Summary was taken earlier (messageCount: 2, lastMessageAt: 12:00).
+    // A guest message arrived at 13:00 (after snapshot).
+    // First page returns the 13:00 message and the 12:00 message, with nextCursor: "older-page".
+    const snapshot = snapshotWithSummary("SW2748", {
+      messageCount: 2,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Mensagem do snapshot"
+    });
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(
+        threadPage(
+          "SW2748",
+          [
+            message("m-snap", "2026-08-20T12:00:00Z", "Mensagem do snapshot"),
+            message("m-newer", "2026-08-20T13:00:00Z", "Mensagem recente pós-snapshot")
+          ],
+          "older-page"
+        )
+      )
+      .mockResolvedValueOnce(
+        threadPage(
+          "SW2748",
+          [message("m-oldest", "2026-08-19T10:00:00Z", "Mensagem mais antiga")],
+          null
+        )
+      );
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+
+    // Loaded thread wins for display
+    expect((await screen.findAllByText("Mensagem recente pós-snapshot")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Mensagem do snapshot")).toBeInTheDocument();
+
+    // Control is not stranded: the 13:00 message is discounted from the summary count, so
+    // only 1 message (<= 12:00) is accounted for against messageCount: 2.
+    const loadOlder = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    fireEvent.click(loadOlder);
+
+    expect(await screen.findByText("Mensagem mais antiga")).toBeInTheDocument();
+    expect(loadOlderControl()).not.toBeInTheDocument();
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders accessible loading status and button during thread loads", async () => {
+    const snapshot = snapshotWithSummary("SW2748", {
+      messageCount: 2,
+      unreadCount: 0,
+      lastMessageAt: "2026-08-20T12:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Nova"
+    });
+    let resolveFirst!: (page: AdminWhatsappInvitationPage) => void;
+    let resolveSecond!: (page: AdminWhatsappInvitationPage) => void;
+    const loadWhatsappInvitation = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await goTo(/WhatsApp/);
+    fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
+
+    // First load in flight: role="status" with accessible text
+    expect(await screen.findByRole("status")).toHaveTextContent("Carregando conversa…");
+
+    resolveFirst(threadPage("SW2748", [message("m2", "2026-08-20T12:00:00Z", "Nova")], "cursor-1"));
+    expect(await screen.findByRole("button", { name: "Carregar mensagens anteriores" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Carregar mensagens anteriores" }));
+
+    // Load-more in flight: disabled button with aria-busy="true" and loading label
+    const loadingMoreButton = await screen.findByRole("button", { name: "Carregando mensagens anteriores…" });
+    expect(loadingMoreButton).toBeDisabled();
+    expect(loadingMoreButton).toHaveAttribute("aria-busy", "true");
+
+    resolveSecond(threadPage("SW2748", [message("m1", "2026-08-19T12:00:00Z", "Antiga")], null));
+    expect(await screen.findByText("Antiga")).toBeInTheDocument();
+  });
+});
+
+describe("invite-detail WhatsApp flow panel states", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/dashboard");
+  });
+
+  it("renders loading state while invitation flow is loading", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    let resolveLoad!: (page: AdminWhatsappInvitationPage) => void;
+    const pendingLoad = new Promise<AdminWhatsappInvitationPage>((resolve) => {
+      resolveLoad = resolve;
+    });
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn(() => pendingLoad)
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Carregando fluxo do WhatsApp…");
+
+    resolveLoad(threadPage("SW2748", []));
+    await screen.findByText("Nenhuma mensagem enviada ainda. Este convite ainda não entrou no fluxo.");
+  });
+
+  it("renders error state with retry button on invitation flow load failure and retries successfully", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    const loadWhatsappInvitation = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(
+        threadPage("SW2748", [], null, {
+          whatsappFlowStatus: "attendance_confirmed_whatsapp"
+        })
+      );
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar o fluxo do WhatsApp");
+    const retryBtn = screen.getByRole("button", { name: "Tentar novamente" });
+    fireEvent.click(retryBtn);
+
+    expect(await screen.findByText("Nenhuma mensagem enviada ainda. Este convite ainda não entrou no fluxo.")).toBeInTheDocument();
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders empty state when invitation has zero commands", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByText("Nenhuma mensagem enviada ainda. Este convite ainda não entrou no fluxo.")).toBeInTheDocument();
+  });
+
+  it("renders populated commands and bounded-history copy", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    const invitationPageData: AdminWhatsappInvitationPage = {
+      flow: {
+        ...defaultFlow("SW2748"),
+        whatsappFlowStage: "reconfirmation"
+      },
+      page: {
+        invitationCode: "SW2748",
+        messages: [],
+        commands: [
+          {
+            commandId: "cmd-1",
+            createdAt: "2026-08-20T14:00:00Z",
+            templateId: "wedding_rsvp_reconfirmation_single",
+            stage: "reconfirmation",
+            status: "sent",
+            retryCount: 1,
+            reconciliationStatus: "none"
+          }
+        ],
+        nextCursor: null
+      }
+    };
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(invitationPageData)
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByText("Envios recentes · Etapa Reconfirmação")).toBeInTheDocument();
+    expect(screen.getByText("wedding_rsvp_reconfirmation_single")).toBeInTheDocument();
+    expect(screen.getByText(/1 tentativa/)).toBeInTheDocument();
+  });
+
+  it("renders the newest body independently for the last send and last response", async () => {
+    const summary: AdminWhatsappConversationSummary = {
+      messageCount: 4,
+      unreadCount: 1,
+      lastMessageAt: "2026-08-20T14:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "text",
+      lastMessagePreview: "Resposta mais nova",
+      lastOutboundMessagePreview: "Envio mais novo",
+      lastInboundMessagePreview: "Resposta mais nova"
+    };
+    const snapshot = snapshotWithSummary("SW2748", summary);
+    snapshot.threads = {};
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByText("Envio mais novo")).toBeInTheDocument();
+    expect(screen.getByText("Resposta mais nova")).toBeInTheDocument();
+  });
+
+  it("falls back to the direction-specific template IDs when bodies are unavailable", async () => {
+    const summary: AdminWhatsappConversationSummary = {
+      messageCount: 2,
+      unreadCount: 1,
+      lastMessageAt: "2026-08-20T14:00:00Z",
+      lastMessageDirection: "inbound",
+      lastMessageType: "template",
+      lastOutboundMessageTemplateId: "wedding_rsvp_attending_followup_website",
+      lastInboundMessageTemplateId: "wedding_rsvp_reconfirmation_single"
+    };
+    const snapshot = snapshotWithSummary("SW2748", summary);
+    snapshot.threads = {};
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByText("wedding_rsvp_attending_followup_website")).toBeInTheDocument();
+    expect(screen.getByText("wedding_rsvp_reconfirmation_single")).toBeInTheDocument();
+  });
+
+  it("renders failure reason and refreshed status in invitation flow state panel", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    const invitationPageData: AdminWhatsappInvitationPage = {
+      flow: {
+        ...defaultFlow("SW2748"),
+        whatsappFlowStatus: "failed",
+        whatsappFailureReason: "Número de WhatsApp inválido ou sem conta"
+      },
+      page: {
+        invitationCode: "SW2748",
+        messages: [],
+        commands: [],
+        nextCursor: null
+      }
+    };
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(invitationPageData)
+    };
+
+    await renderShell(source);
+    openHash("#convites/SW2748");
+
+    expect(await screen.findByText("Número de WhatsApp inválido ou sem conta")).toBeInTheDocument();
+    expect(screen.getByText("MOTIVO DA FALHA")).toBeInTheDocument();
+    expect(screen.getAllByText("Falha no envio").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("asserts the exact request sequence across a full operator session (decision 2 E2E)", async () => {
+    const requestLog: Array<{ type: "dashboard" } | { type: "whatsapp"; code: string; cursor?: string }> = [];
+
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    snapshot.invitations = snapshot.invitations.map((i) => ({ ...i, commands: [] }));
+
+    const load = vi.fn().mockImplementation(async () => {
+      requestLog.push({ type: "dashboard" });
+      return snapshot;
+    });
+
+    const page1Messages = [
+      message("sw-2", "2026-08-20T12:00:00Z", "Nova mensagem"),
+      message("sw-3", "2026-08-20T12:01:00Z", "Última mensagem")
+    ];
+    const page2Messages = [
+      message("sw-1", "2026-08-19T10:00:00Z", "Mensagem anterior")
+    ];
+
+    const loadWhatsappInvitation = vi.fn().mockImplementation(async (invitationCode: string, cursor?: string) => {
+      requestLog.push({ type: "whatsapp", code: invitationCode, cursor });
+      if (cursor === "cursor-older") {
+        return threadPage(invitationCode, page2Messages, null);
+      }
+      return threadPage(invitationCode, page1Messages, "cursor-older");
+    });
+
+    const source: AdminDashboardSource = {
+      demo: false,
+      load,
+      loadWhatsappInvitation
+    };
+
+    // 1. Initial dashboard load: exactly 1 dashboard request, 0 WhatsApp requests
+    await renderShell(source);
+    expect(requestLog).toEqual([{ type: "dashboard" }]);
+
+    // 2. Render every tab, search, and filter without issuing ANY network requests:
+    // 2a. Convites tab + search + filter
+    await goTo(/Convites/);
+    expect(await screen.findByRole("heading", { name: "Convites" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar convites" }), {
+      target: { value: "Tavares" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Pendentes" }));
+    expect(requestLog).toHaveLength(1);
+
+    // 2b. Convidados tab
+    await goTo(/Convidados/);
+    expect(await screen.findByRole("heading", { name: "Convidados" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(1);
+
+    // 2c. Recados tab
+    await goTo(/Recados/);
+    expect(await screen.findByRole("heading", { name: "Recados" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(1);
+
+    // 2d. Músicas tab
+    await goTo(/Músicas/);
+    expect(await screen.findByRole("heading", { name: "Músicas" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(1);
+
+    // 2e. Presentes tab
+    await goTo(/Presentes/);
+    expect(await screen.findByRole("heading", { name: "Presentes" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(1);
+
+    // 2f. WhatsApp tab + search + filter: renders summaries only, 0 WhatsApp requests
+    await goTo(/WhatsApp/);
+    expect(await screen.findByRole("heading", { name: "WhatsApp" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar conversa" }), {
+      target: { value: "Ribeiro" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Não lidas" }));
+    expect(requestLog).toHaveLength(1);
+
+    // 3. Open an invitation: exactly 1 WhatsApp request
+    openHash("#convites/SW2748");
+    expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    await waitFor(() => expect(requestLog).toHaveLength(2));
+    expect(requestLog[1]).toEqual({ type: "whatsapp", code: "SW2748", cursor: undefined });
+
+    // 4. Open its conversation: already loaded, 0 additional requests
+    openHash("#whatsapp/SW2748");
+    expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(2);
+
+    // 5. Load older messages: exactly 1 WhatsApp request with cursor
+    const olderBtn = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
+    fireEvent.click(olderBtn);
+    await waitFor(() => expect(requestLog).toHaveLength(3));
+    expect(requestLog[2]).toEqual({ type: "whatsapp", code: "SW2748", cursor: "cursor-older" });
+
+    // 6. Refresh: 1 dashboard request + 1 WhatsApp reload for currently open conversation
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar dados" }));
+    await waitFor(() => expect(requestLog).toHaveLength(5));
+    expect(requestLog[3]).toEqual({ type: "dashboard" });
+    expect(requestLog[4]).toEqual({ type: "whatsapp", code: "SW2748", cursor: undefined });
+
+    // 7. Reopen: navigate away to Overview, then back to WhatsApp conversation -> 0 new requests
+    await goTo(/Visão geral/);
+    expect(await screen.findByRole("heading", { name: "Visão geral" })).toBeInTheDocument();
+    openHash("#whatsapp/SW2748");
+    expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
+    expect(requestLog).toHaveLength(5);
+
+    // 8. Assert exact sequence
+    expect(requestLog).toEqual([
+      { type: "dashboard" },
+      { type: "whatsapp", code: "SW2748", cursor: undefined },
+      { type: "whatsapp", code: "SW2748", cursor: "cursor-older" },
+      { type: "dashboard" },
+      { type: "whatsapp", code: "SW2748", cursor: undefined }
+    ]);
   });
 });

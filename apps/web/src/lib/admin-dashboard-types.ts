@@ -5,8 +5,11 @@ import type {
   WhatsappCommandStatus,
   WhatsappFlowStage,
   WhatsappFlowStatus,
+  WhatsappMessageDirection,
+  WhatsappMessageType,
   WhatsappPhoneSource,
-  WhatsappReconciliationStatus
+  WhatsappReconciliationStatus,
+  WhatsappRsvpAction
 } from "@brimax/contracts";
 
 /**
@@ -80,6 +83,33 @@ export type AdminMusicSuggestion = {
   rsvpStatus: RsvpStatus;
 };
 
+/**
+ * Pre-load truth about one invitation's WhatsApp conversation, mirroring
+ * `AdminDashboardWhatsappConversation` from the contracts.
+ *
+ * It exists only when the invitation owns at least one message, so `messageCount` is always
+ * positive and its absence is the "this invitation has no conversation" signal the WhatsApp tab
+ * filters on. `unreadCount` is the trailing run of consecutive inbound messages at the newest
+ * end — the same rule `unreadCount()` applies to a loaded thread, so the summary and a loaded
+ * thread can never report two different numbers for the same conversation.
+ */
+export type AdminWhatsappConversationSummary = {
+  messageCount: number;
+  unreadCount: number;
+  lastMessageAt: string;
+  lastMessageDirection: WhatsappMessageDirection;
+  lastMessageType?: WhatsappMessageType;
+  lastMessageTemplateId?: string;
+  /** Bounded body of the newest message only; absent when it carried no text. */
+  lastMessagePreview?: string;
+  lastOutboundMessageTemplateId?: string;
+  lastOutboundMessagePreview?: string;
+  lastInboundMessageTemplateId?: string;
+  lastInboundMessagePreview?: string;
+  lastInboundMessageButtonId?: string;
+  lastInboundMessageButtonAction?: WhatsappRsvpAction;
+};
+
 /** Mirrors `HouseholdInvitation` plus the operational WhatsApp state admins act on. */
 export type AdminInvitation = {
   invitationCode: string;
@@ -101,6 +131,11 @@ export type AdminInvitation = {
   guests: AdminGuest[];
   /** Newest first. */
   commands: AdminWhatsappCommand[];
+  /**
+   * `null` when the invitation has never exchanged a WhatsApp message. Deliberately nullable
+   * rather than optional so every construction site has to state which it is.
+   */
+  whatsappConversation: AdminWhatsappConversationSummary | null;
 };
 
 export type AdminWhatsappMessage = {
@@ -108,6 +143,8 @@ export type AdminWhatsappMessage = {
   direction: "inbound" | "outbound";
   sentAt: string;
   text: string;
+  buttonId?: string;
+  buttonAction?: WhatsappRsvpAction;
   /** Set when the message was delivered from a template rather than typed by an operator. */
   templateId?: string;
   failed?: boolean;
@@ -120,6 +157,28 @@ export type AdminWhatsappThreadPage = {
   /** Newest first within this API page. */
   commands: AdminWhatsappCommand[];
   nextCursor: string | null;
+};
+
+/** Flow envelope returned alongside history for one invitation. */
+export type AdminWhatsappFlowSnapshot = {
+  phoneNumber: string;
+  phoneNumberSource: WhatsappPhoneSource;
+  phoneNumberUpdatedAt: string | null;
+  whatsappFlowStatus: WhatsappFlowStatus;
+  whatsappFlowStage: WhatsappFlowStage;
+  whatsappFlowUpdatedAt: string | null;
+  whatsappFlowCompletedAt: string | null;
+  whatsappFallbackSentAt: string | null;
+  whatsappLastInboundMessageId: string | null;
+  whatsappLastOutboundMessageId: string | null;
+  whatsappFailureReason?: string | null;
+  reconciliationStatus: WhatsappReconciliationStatus;
+};
+
+/** Combined flow envelope and history page returned by loadWhatsappInvitation. */
+export type AdminWhatsappInvitationPage = {
+  flow: AdminWhatsappFlowSnapshot;
+  page: AdminWhatsappThreadPage;
 };
 
 export type AdminWhatsappThreadLoadState =

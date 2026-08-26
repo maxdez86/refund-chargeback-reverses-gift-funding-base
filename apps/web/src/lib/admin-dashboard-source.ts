@@ -6,8 +6,11 @@ import {
   type AdminTokenAccessor
 } from "@/lib/admin-api";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
+import { deriveReconciliationStatus, messageFallback } from "@/lib/admin-dashboard-model";
 import type {
   AdminDashboardSnapshot,
+  AdminWhatsappFlowSnapshot,
+  AdminWhatsappInvitationPage,
   AdminWhatsappThreadPage
 } from "@/lib/admin-dashboard-types";
 
@@ -21,11 +24,11 @@ export type AdminDashboardSource = {
   /** Whether the data is demonstration-only; drives the banner that says so. */
   readonly demo: boolean;
   load(signal?: AbortSignal): Promise<AdminDashboardSnapshot>;
-  loadWhatsappThread(
+  loadWhatsappInvitation(
     invitationCode: string,
     cursor?: string,
     signal?: AbortSignal
-  ): Promise<AdminWhatsappThreadPage>;
+  ): Promise<AdminWhatsappInvitationPage>;
 };
 
 export const fixtureDashboardSource: AdminDashboardSource = {
@@ -37,23 +40,35 @@ export const fixtureDashboardSource: AdminDashboardSource = {
       threads: {}
     };
   },
-  async loadWhatsappThread(invitationCode) {
+  async loadWhatsappInvitation(invitationCode) {
     const snapshot = createFixtureDashboardSnapshot();
+    const invitation = snapshot.invitations.find((item) => item.invitationCode === invitationCode);
+    const flow: AdminWhatsappFlowSnapshot = {
+      phoneNumber: invitation?.phoneNumber ?? "",
+      phoneNumberSource: invitation?.phoneNumberSource ?? "import",
+      phoneNumberUpdatedAt: invitation?.phoneNumberUpdatedAt ?? null,
+      whatsappFlowStatus: invitation?.whatsappFlowStatus ?? "idle",
+      whatsappFlowStage: invitation?.whatsappFlowStage ?? "pending",
+      whatsappFlowUpdatedAt: invitation?.whatsappFlowUpdatedAt ?? null,
+      whatsappFlowCompletedAt: invitation?.whatsappFlowCompletedAt ?? null,
+      whatsappFallbackSentAt: invitation?.whatsappFallbackSentAt ?? null,
+      whatsappLastInboundMessageId: invitation?.whatsappLastInboundMessageId ?? null,
+      whatsappLastOutboundMessageId: invitation?.whatsappLastOutboundMessageId ?? null,
+      whatsappFailureReason: invitation?.whatsappFailureReason ?? null,
+      reconciliationStatus: invitation?.reconciliationStatus ?? "none"
+    };
     return {
-      invitationCode,
-      messages: snapshot.threads[invitationCode] ?? [],
-      commands:
-        snapshot.invitations.find((item) => item.invitationCode === invitationCode)?.commands ?? [],
-      nextCursor: null
+      flow,
+      page: {
+        invitationCode,
+        messages: snapshot.threads[invitationCode] ?? [],
+        commands:
+          snapshot.invitations.find((item) => item.invitationCode === invitationCode)?.commands ?? [],
+        nextCursor: null
+      }
     };
   }
 };
-
-function messageFallback(entry: NonNullable<WhatsappRsvpStatusResponse["history"]>[number]) {
-  if (entry.templateId) return `Mensagem de modelo: ${entry.templateId}`;
-  if (entry.messageType && entry.messageType !== "text") return `Mensagem ${entry.messageType}`;
-  return "Mensagem sem texto disponível";
-}
 
 /** Maps one newest-first API page without changing the accumulated thread order. */
 export function mapAdminWhatsappThreadPage(
@@ -68,6 +83,8 @@ export function mapAdminWhatsappThreadPage(
       direction: entry.direction!,
       sentAt: entry.createdAt,
       text: entry.body ?? messageFallback(entry),
+      buttonId: entry.buttonId,
+      buttonAction: entry.buttonAction,
       templateId: entry.templateId,
       failed: entry.status === "failed"
     }))
@@ -84,6 +101,26 @@ export function mapAdminWhatsappThreadPage(
       reconciliationStatus: entry.reconciliationStatus ?? "none"
     }));
   return { invitationCode, messages, commands, nextCursor: response.nextCursor ?? null };
+}
+
+/** Maps the top-level WhatsApp flow envelope from a status response into a view-model snapshot. */
+export function mapAdminWhatsappFlowSnapshot(
+  response: WhatsappRsvpStatusResponse
+): AdminWhatsappFlowSnapshot {
+  return {
+    phoneNumber: response.phoneNumber ?? "",
+    phoneNumberSource: response.phoneNumberSource ?? "import",
+    phoneNumberUpdatedAt: response.phoneNumberUpdatedAt ?? null,
+    whatsappFlowStatus: response.status ?? "idle",
+    whatsappFlowStage: response.stage ?? "pending",
+    whatsappFlowUpdatedAt: response.updatedAt ?? null,
+    whatsappFlowCompletedAt: response.completedAt ?? null,
+    whatsappFallbackSentAt: response.fallbackSentAt ?? null,
+    whatsappLastInboundMessageId: response.lastInboundMessageId ?? null,
+    whatsappLastOutboundMessageId: response.lastOutboundMessageId ?? null,
+    whatsappFailureReason: response.failureReason ?? null,
+    reconciliationStatus: deriveReconciliationStatus(response.status)
+  };
 }
 
 export function mapAdminDashboardResponse(
@@ -104,9 +141,13 @@ export function mapAdminDashboardResponse(
       whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ?? null,
       whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ?? null,
       whatsappFailureReason: invitation.whatsappFailureReason ?? null,
-      reconciliationStatus:
-        invitation.whatsappFlowStatus === "reconciliation_required" ? "required" : "none",
+      reconciliationStatus: deriveReconciliationStatus(invitation.whatsappFlowStatus),
       rsvp: { ...invitation.rsvp },
+      // Absent means "this invitation owns no WhatsApp message", which is what removes it from
+      // the WhatsApp tab. The API never sends a zero-valued summary, so `null` is unambiguous.
+      whatsappConversation: invitation.whatsappConversation
+        ? { ...invitation.whatsappConversation }
+        : null,
       guests: invitation.guests.map((guest) => ({
         ...guest,
         isChild: guest.isChild ?? false
@@ -155,14 +196,17 @@ export function createLiveDashboardSource(options: LiveSourceOptions): AdminDash
         throw error;
       }
     },
-    async loadWhatsappThread(invitationCode, cursor, signal) {
+    async loadWhatsappInvitation(invitationCode, cursor, signal) {
       try {
         const response = await getAdminWhatsappThread(invitationCode, options.getToken, cursor, {
           apiUrl: options.apiUrl,
           fetcher: options.fetcher,
           signal
         });
-        return mapAdminWhatsappThreadPage(invitationCode, response);
+        return {
+          flow: mapAdminWhatsappFlowSnapshot(response),
+          page: mapAdminWhatsappThreadPage(invitationCode, response)
+        };
       } catch (error) {
         if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
           options.onAuthError?.(error);

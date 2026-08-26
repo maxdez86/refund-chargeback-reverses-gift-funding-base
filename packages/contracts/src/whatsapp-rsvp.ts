@@ -131,6 +131,8 @@ export const WhatsappRsvpStatusResponseSchema = z.object({
     stage: WhatsappFlowStageSchema.optional(),
     providerMessageId: z.string().min(1).max(512).optional(),
     messageType: WhatsappMessageTypeSchema.optional(),
+    buttonId: z.string().min(1).max(256).optional(),
+    buttonAction: WhatsappRsvpActionSchema.optional(),
     body: WhatsappTextBodySchema.optional(),
     retryCount: z.number().int().min(0).optional(),
     reconciliationStatus: WhatsappReconciliationStatusSchema.optional(),

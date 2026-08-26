@@ -406,6 +406,165 @@ describe("WeddingRepository", () => {
       }]);
     });
 
+    const whatsappMessage = (
+      invitationCode: string,
+      messageId: string,
+      overrides: Record<string, unknown> = {}
+    ) => ({
+      PK: `INVITATION#${invitationCode}`,
+      SK: `WHATSAPP#MESSAGE#${messageId}`,
+      entityType: "WhatsappMessage",
+      invitationCode,
+      messageId,
+      direction: "inbound",
+      messageType: "text",
+      correlationStatus: "matched",
+      status: "received",
+      createdAt: "2026-08-20T12:00:00.000Z",
+      ...overrides
+    });
+
+    it("filters and projects exactly the attributes the conversation summary needs", async () => {
+      const send = vi.fn().mockResolvedValue({ Items: [] });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.listAdminDashboardInvitations();
+
+      const command = send.mock.calls[0][0] as ScanCommand;
+      expect(command.input.FilterExpression).toBe(
+        "entityType = :invitationType OR entityType = :guestType OR entityType = :rsvpType OR entityType = :messageType"
+      );
+      expect(command.input.ExpressionAttributeValues).toEqual({
+        ":invitationType": "Invitation",
+        ":guestType": "InvitationGuest",
+        ":rsvpType": "RsvpResponse",
+        ":messageType": "WhatsappMessage"
+      });
+      for (const attribute of [
+        "messageId", "direction", "messageType", "templateId", "buttonId", "body", "correlationStatus", "createdAt"
+      ]) {
+        expect(command.input.ProjectionExpression?.split(", ")).toContain(attribute);
+      }
+      // `status` stays behind the single existing alias; no second alias is introduced.
+      expect(command.input.ExpressionAttributeNames).toEqual({ "#note": "note", "#status": "status" });
+      expect(command.input.ProjectionExpression?.split(", ").filter((name) => name === "#status"))
+        .toHaveLength(1);
+      // Nothing a summary does not need leaks into the projection.
+      for (const attribute of [
+        "recipientPhone", "senderPhone", "replyContextMessageId",
+        "providerErrorCode", "providerErrorTitle", "commandId", "templateVersion"
+      ]) {
+        expect(command.input.ProjectionExpression?.split(", ")).not.toContain(attribute);
+      }
+    });
+
+    it("summarizes matched messages and omits the field when an invitation has none", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Items: [
+          invitation("AB2345", "Amanda e Chris"),
+          guest("AB2345", "g1", "Amanda", 1),
+          invitation("CD6789", "Família C"),
+          guest("CD6789", "g3", "Carla", 1),
+          whatsappMessage("AB2345", "m1", {
+            direction: "outbound",
+            messageType: "template",
+            templateId: "wedding_invitation",
+            status: "delivered",
+            createdAt: "2026-08-20T12:00:00.000Z"
+          }),
+          whatsappMessage("AB2345", "m2", { createdAt: "2026-08-20T12:05:00.000Z", body: "Vamos sim!" }),
+          whatsappMessage("AB2345", "m3", {
+            createdAt: "2026-08-20T12:06:00.000Z",
+            correlationStatus: "ambiguous_sender"
+          }),
+          {
+            PK: "INVITATION#AB2345",
+            SK: "WHATSAPP#COMMAND#cmd-1",
+            entityType: "WhatsappCommand",
+            invitationCode: "AB2345",
+            commandId: "cmd-1",
+            templateId: "wedding_invitation",
+            status: "sent",
+            createdAt: "2026-08-20T12:07:00.000Z"
+          }
+        ]
+      });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      expect(result[0]?.whatsappConversation).toEqual({
+        messageCount: 2,
+        unreadCount: 1,
+        lastMessageAt: "2026-08-20T12:05:00.000Z",
+        lastMessageDirection: "inbound",
+        lastMessageType: "text",
+        lastMessagePreview: "Vamos sim!",
+        lastOutboundMessageTemplateId: "wedding_invitation",
+        lastInboundMessagePreview: "Vamos sim!"
+      });
+      expect(result[1]?.whatsappConversation).toBeUndefined();
+      expect(JSON.stringify(result[1])).not.toContain("Vamos sim!");
+    });
+
+    it("accumulates message items across every scan page, including a message-only page", async () => {
+      const lastEvaluatedKey = { PK: "PAGE#1", SK: "PAGE#1" };
+      const send = vi.fn()
+        .mockResolvedValueOnce({
+          Items: [invitation("AB2345", "Amanda"), guest("AB2345", "g1", "Amanda", 1)],
+          LastEvaluatedKey: lastEvaluatedKey
+        })
+        .mockResolvedValueOnce({
+          Items: [
+            whatsappMessage("AB2345", "m1", { direction: "outbound", createdAt: "2026-08-20T12:00:00.000Z" }),
+            whatsappMessage("AB2345", "m2", { createdAt: "2026-08-20T12:01:00.000Z" })
+          ],
+          LastEvaluatedKey: { PK: "PAGE#2", SK: "PAGE#2" }
+        })
+        .mockResolvedValueOnce({
+          Items: [whatsappMessage("AB2345", "m3", { createdAt: "2026-08-20T12:02:00.000Z", body: "Última" })]
+        });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.whatsappConversation).toMatchObject({
+        messageCount: 3,
+        unreadCount: 2,
+        lastMessageAt: "2026-08-20T12:02:00.000Z",
+        lastMessagePreview: "Última"
+      });
+    });
+
+    it("drops a message whose invitation is absent and logs skipped records once", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const send = vi.fn().mockResolvedValue({
+        Items: [
+          invitation("AB2345", "Amanda"),
+          guest("AB2345", "g1", "Amanda", 1),
+          whatsappMessage("ORPHAN1", "orphan-1", { body: "Sem convite" }),
+          whatsappMessage("AB2345", "broken-1", { createdAt: undefined }),
+          whatsappMessage("AB2345", "broken-2", { direction: undefined })
+        ]
+      });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      expect(result.map((item) => item.invitationCode)).toEqual(["AB2345"]);
+      expect(result[0]?.whatsappConversation).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain("Sem convite");
+      expect(warn).toHaveBeenCalledTimes(1);
+      const logged = JSON.parse(warn.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+      expect(logged).toEqual({
+        metric: "ADMIN_DASHBOARD_WHATSAPP_MESSAGE_RECORD_SKIPPED",
+        skippedMessageRecords: 2
+      });
+      warn.mockRestore();
+    });
+
     it("drains pages before grouping and sorts invitations and malformed guest orders", async () => {
       const lastEvaluatedKey = { PK: "PAGE#1", SK: "PAGE#1" };
       const send = vi.fn()

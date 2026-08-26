@@ -144,6 +144,49 @@ describe("WhatsApp RSVP service", () => {
     expect(result.history?.[1]).not.toHaveProperty("body");
   });
 
+  it("exposes the stored button id and semantic action for inbound replies", async () => {
+    const repository = {
+      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({ invitationCode: "SW2748", status: "completed" }),
+      listWhatsappConversation: vi.fn().mockResolvedValue({
+        entries: [{
+          entityType: "WhatsappMessage", messageId: "wamid.decline", invitationCode: "SW2748",
+          direction: "inbound", messageType: "button_reply", buttonId: "rsvp_b2_decline",
+          status: "received", createdAt: "2026-08-17T12:00:00.000Z"
+        }]
+      })
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    await expect(service.getStatus("SW2748")).resolves.toMatchObject({
+      history: [{
+        kind: "message", messageType: "button_reply", buttonId: "rsvp_b2_decline", buttonAction: "decline"
+      }]
+    });
+  });
+
+  it("omits the status next cursor when the first page is complete", async () => {
+    const repository = {
+      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517"
+      }),
+      listWhatsappConversation: vi.fn().mockResolvedValue({
+        entries: [],
+        nextCursor: undefined
+      })
+    };
+    const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
+
+    const result = await service.getStatus("SW2748");
+
+    expect(result).toEqual({
+      invitationCode: "SW2748",
+      status: "message_sent",
+      phoneNumber: "5511963656517",
+      history: []
+    });
+    expect(result).not.toHaveProperty("nextCursor");
+  });
+
   it("returns a safe command projection and reports a missing command", async () => {
     const repository = {
       getWhatsappCommand: vi.fn().mockResolvedValue({
