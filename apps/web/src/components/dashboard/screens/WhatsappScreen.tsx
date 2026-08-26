@@ -22,6 +22,7 @@ import type {
   AdminWhatsappMessage,
   AdminWhatsappThreadLoadState
 } from "@/lib/admin-dashboard-types";
+import type { AdminWhatsappSendState } from "@/hooks/use-admin-dashboard";
 import { Eyebrow, FilterTabs, SearchField, StatusPill } from "@/components/dashboard/AdminPrimitives";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +102,8 @@ export function groupByDay(thread: AdminWhatsappMessage[]) {
   return groups;
 }
 
+const COMPOSER_NOTE_ID = "whatsapp-composer-note";
+
 export function WhatsappScreen({
   invitations,
   threads,
@@ -116,7 +119,8 @@ export function WhatsappScreen({
   onOpenInvitation,
   onRetry,
   onLoadMore,
-  onSend
+  onSend,
+  sendStates
 }: {
   invitations: AdminInvitation[];
   threads: Record<string, AdminWhatsappMessage[]>;
@@ -133,6 +137,8 @@ export function WhatsappScreen({
   onRetry: (invitationCode: string) => void;
   onLoadMore: (invitationCode: string) => void;
   onSend: (invitationCode: string, text: string) => void;
+  /** Per-invitation state of the composer's own send request. */
+  sendStates: Record<string, AdminWhatsappSendState>;
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -230,8 +236,22 @@ export function WhatsappScreen({
     onLoadMore(selectedCode);
   };
 
+  const sendState: AdminWhatsappSendState =
+    (selectedCode ? sendStates[selectedCode] : undefined) ?? { status: "idle" };
+  const sending = sendState.status === "loading";
+  // Meta only accepts free-form text for 24 h after the guest's last message. The window is
+  // server-derived, so the composer can say why it is closed instead of failing after the fact.
+  const freeTextWindow = selected?.invitation.whatsappFreeTextWindow;
+  const windowClosed = freeTextWindow !== undefined && !freeTextWindow.open;
+  const canSend = Boolean(draft.trim()) && !sending && !windowClosed;
+  // A closed window explains itself first: it is the reason the composer is inert, and a stale
+  // error from an earlier attempt would only compete with it.
+  const composerNote = windowClosed
+    ? "A janela de 24 h do WhatsApp expirou. Envie um modelo aprovado."
+    : sendState.status === "error" ? sendState.message : null;
+
   const send = () => {
-    if (!selectedCode || !draft.trim()) return;
+    if (!selectedCode || !canSend) return;
     onSend(selectedCode, draft);
     setDraft("");
   };
@@ -454,7 +474,7 @@ export function WhatsappScreen({
                                 : "rounded-[14px_14px_14px_4px] border-admin-line bg-admin-surface"
                             )}
                           >
-                            {message.templateId && (
+                            {message.templateId && !message.templateId.startsWith("__") && (
                               <p className="mb-1.5 text-[10.5px] font-semibold tracking-[0.14em] text-admin-gold">
                                 {templateLabel(message.templateId)}
                               </p>
@@ -469,9 +489,11 @@ export function WhatsappScreen({
                               )}
                             >
                               {mine
-                                ? message.failed
-                                  ? "Falha no envio"
-                                  : `Enviado ${formatClockTime(message.sentAt)}`
+                                ? message.pending
+                                  ? "Enviando…"
+                                  : message.failed
+                                    ? "Falha no envio"
+                                    : `Enviado ${formatClockTime(message.sentAt)}`
                                 : formatClockTime(message.sentAt)}
                             </p>
                           </div>
@@ -482,7 +504,16 @@ export function WhatsappScreen({
                 ))}
               </div>
 
-              <div className="flex flex-none items-end gap-3 border-t border-admin-line bg-admin-surface px-[22px] py-4">
+              <div className="flex-none border-t border-admin-line bg-admin-surface px-[22px] py-4">
+                {composerNote && (
+                  <p
+                    id={COMPOSER_NOTE_ID}
+                    className="mb-2.5 text-[12.5px] leading-[1.45] text-admin-danger"
+                  >
+                    {composerNote}
+                  </p>
+                )}
+                <div className="flex items-end gap-3">
                 <label className="min-w-0 flex-1">
                   <span className="sr-only">Resposta para o convidado</span>
                   <textarea
@@ -495,24 +526,31 @@ export function WhatsappScreen({
                         send();
                       }
                     }}
-                    placeholder="Escreva uma resposta para o convidado"
-                    className="max-h-[120px] w-full resize-none rounded-[11px] border border-admin-line-strong bg-admin-subtle px-[15px] py-3 text-[14.5px] leading-[1.5] text-admin-ink outline-none focus:border-admin-ink"
+                    placeholder={windowClosed
+                      ? "Janela de 24 h expirada — envie um modelo aprovado"
+                      : "Escreva uma resposta para o convidado"}
+                    disabled={windowClosed}
+                    aria-describedby={composerNote ? COMPOSER_NOTE_ID : undefined}
+                    className="max-h-[120px] w-full resize-none rounded-[11px] border border-admin-line-strong bg-admin-subtle px-[15px] py-3 text-[14.5px] leading-[1.5] text-admin-ink outline-none focus:border-admin-ink disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={send}
-                  disabled={!draft.trim()}
+                  disabled={!canSend}
+                  aria-busy={sending}
+                  aria-describedby={composerNote ? COMPOSER_NOTE_ID : undefined}
                   className={cn(
                     "flex min-h-11 flex-none items-center gap-2.5 rounded-[11px] px-5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ink",
-                    draft.trim()
+                    canSend
                       ? "bg-admin-ink text-white hover:bg-admin-ink-hover"
                       : "cursor-not-allowed bg-admin-send-off text-admin-fainter"
                   )}
                 >
-                  Enviar
+                  {sending ? "Enviando…" : "Enviar"}
                   <ArrowRight className="size-4 shrink-0" strokeWidth={1.7} aria-hidden="true" />
                 </button>
+                </div>
               </div>
             </>
           ) : (

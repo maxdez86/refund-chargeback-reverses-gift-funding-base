@@ -422,31 +422,34 @@ export function filterGifts(gifts: AdminGift[], filter: GiftFilter, query: strin
 }
 
 /**
- * Which send the backend will accept. A first send only opens a flow that has never
- * been contacted; a resend is only allowed out of a failed, reconciling, or undecided
- * flow — mirroring the transitions the WhatsApp RSVP service enforces.
+ * Decorates the backend-authoritative send availability with display-only facts.
+ * The browser does not reconstruct completed-pending eligibility from local history.
  */
 export function sendAvailability(invitation: AdminInvitation) {
   const sentCount = invitation.commands.length;
-  const failed =
-    invitation.whatsappFlowStatus === "failed" || invitation.reconciliationStatus === "required";
+  const failed = invitation.whatsappFlowStatus === "failed";
   const undecided = invitation.whatsappFlowStatus === "undecided";
   return {
     sentCount,
     failed,
     undecided,
-    firstAllowed: sentCount === 0,
-    resendAllowed: sentCount > 0 && (failed || undecided)
+    completedPending: invitation.whatsappSendAvailability.resendReason === "completed_pending",
+    ...invitation.whatsappSendAvailability
   };
 }
 
 /** The template a given send mode will use, matching `sendAvailability`. */
 export function templateForSend(
   invitation: AdminInvitation,
-  mode: "first" | "resend"
+  _mode: "first" | "resend"
 ): WhatsappRsvpTemplatePurpose {
-  if (mode === "first" || invitation.whatsappFlowStatus === "failed") return "wedding_invitation";
-  return invitation.guests.length > 1
-    ? "wedding_rsvp_pending_reminder_group"
-    : "wedding_rsvp_pending_reminder_single";
+  const confirmed = invitation.guests.some((guest) => guest.rsvpStatus === "attending");
+  if (confirmed) {
+    return invitation.guests.length === 1
+      ? "wedding_rsvp_reconfirmation_single"
+      : "wedding_rsvp_reconfirmation";
+  }
+  return invitation.guests.length === 1
+    ? "wedding_rsvp_pending_reminder_single"
+    : "wedding_rsvp_pending_reminder_group";
 }

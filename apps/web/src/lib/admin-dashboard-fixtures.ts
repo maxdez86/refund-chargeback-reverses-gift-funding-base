@@ -7,6 +7,7 @@ import type {
   AdminWhatsappConversationSummary,
   AdminWhatsappMessage
 } from "@/lib/admin-dashboard-types";
+import type { WhatsappFreeTextWindow } from "@brimax/contracts";
 
 /**
  * Demonstration data for the administrative dashboard.
@@ -20,7 +21,7 @@ import type {
  * Declared without `whatsappConversation`: the summary is derived from `threads` below so the
  * two can never drift, exactly as the backend derives it from the stored messages.
  */
-const invitations: Omit<AdminInvitation, "whatsappConversation">[] = [
+const invitations: Omit<AdminInvitation, "whatsappConversation" | "whatsappSendAvailability" | "whatsappFreeTextWindow">[] = [
   {
     invitationCode: "SW2748",
     householdName: "Eugênia Ribeiro",
@@ -793,6 +794,27 @@ function summarizeFixtureThread(
   };
 }
 
+const FIXTURE_FREE_TEXT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Fixtures are dated, so "now" is taken as the newest message in the whole fixture set rather
+ * than the wall clock. That keeps the demo deterministic while still showing both an open and a
+ * lapsed 24-hour window, which is what the composer branches on.
+ */
+function fixtureFreeTextWindow(
+  messages: AdminWhatsappMessage[],
+  fixtureNow: number
+): WhatsappFreeTextWindow {
+  const lastInbound = messages.filter((message) => message.direction === "inbound").at(-1);
+  if (!lastInbound) return { open: false };
+  const expiresAtMs = Date.parse(lastInbound.sentAt) + FIXTURE_FREE_TEXT_WINDOW_MS;
+  return {
+    open: fixtureNow < expiresAtMs,
+    lastInboundAt: lastInbound.sentAt,
+    expiresAt: new Date(expiresAtMs).toISOString()
+  };
+}
+
 /** A deep copy, so the reducer can mutate freely without leaking between mounts or tests. */
 export function createFixtureDashboardSnapshot(): AdminDashboardSnapshot {
   const identifiedThreads = Object.fromEntries(
@@ -804,9 +826,37 @@ export function createFixtureDashboardSnapshot(): AdminDashboardSnapshot {
       }))
     ])
   );
+  const fixtureNow = Math.max(
+    0,
+    ...Object.values(identifiedThreads).flatMap((messages) =>
+      messages.map((message) => Date.parse(message.sentAt))
+    )
+  );
   return structuredClone({
     invitations: invitations.map((invitation) => ({
       ...invitation,
+      whatsappFreeTextWindow: fixtureFreeTextWindow(
+        identifiedThreads[invitation.invitationCode] ?? [],
+        fixtureNow
+      ),
+      whatsappSendAvailability: (() => {
+        const completedPending =
+          invitation.whatsappFlowStatus === "completed" &&
+          Boolean(invitation.whatsappFlowCompletedAt) &&
+          invitation.guests.every((guest) => guest.rsvpStatus === "pending");
+        const resendReason = invitation.whatsappFlowStatus === "failed"
+          ? "failed" as const
+          : invitation.whatsappFlowStatus === "undecided"
+            ? "undecided" as const
+            : completedPending
+              ? "completed_pending" as const
+              : undefined;
+        return {
+          firstAllowed: invitation.whatsappFlowStatus === "idle" && !invitation.whatsappFlowCompletedAt,
+          resendAllowed: resendReason !== undefined,
+          ...(resendReason ? { resendReason } : {})
+        };
+      })(),
       whatsappConversation: summarizeFixtureThread(
         identifiedThreads[invitation.invitationCode] ?? []
       )

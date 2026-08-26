@@ -83,7 +83,9 @@ describe("WhatsApp RSVP service", () => {
   it("projects invitation-scoped text and paginated conversation history", async () => {
     const repository = {
       getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
-        invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517"
+        invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517",
+        sendAvailability: { firstAllowed: false, resendAllowed: false },
+        freeTextWindow: { open: false }
       }),
       listWhatsappConversation: vi.fn().mockResolvedValue({
         entries: [
@@ -102,6 +104,8 @@ describe("WhatsApp RSVP service", () => {
 
     await expect(service.getStatus("SW2748", { limit: 10, cursor: "cursor-1", order: "desc" })).resolves.toEqual({
       invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       history: [{
         kind: "message", id: "wamid.1", direction: "outbound", status: "sent",
         createdAt: "2026-08-17T12:00:00.000Z", providerMessageId: "wamid.1",
@@ -116,7 +120,11 @@ describe("WhatsApp RSVP service", () => {
 
   it("keeps command entries body-free and template messages without bodies valid", async () => {
     const repository = {
-      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({ invitationCode: "SW2748", status: "message_sent" }),
+      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", status: "message_sent",
+        sendAvailability: { firstAllowed: false, resendAllowed: false },
+        freeTextWindow: { open: false }
+      }),
       listWhatsappConversation: vi.fn().mockResolvedValue({
         entries: [
           {
@@ -146,7 +154,11 @@ describe("WhatsApp RSVP service", () => {
 
   it("exposes the stored button id and semantic action for inbound replies", async () => {
     const repository = {
-      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({ invitationCode: "SW2748", status: "completed" }),
+      getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
+        invitationCode: "SW2748", status: "completed",
+        sendAvailability: { firstAllowed: false, resendAllowed: false },
+        freeTextWindow: { open: false }
+      }),
       listWhatsappConversation: vi.fn().mockResolvedValue({
         entries: [{
           entityType: "WhatsappMessage", messageId: "wamid.decline", invitationCode: "SW2748",
@@ -167,7 +179,9 @@ describe("WhatsApp RSVP service", () => {
   it("omits the status next cursor when the first page is complete", async () => {
     const repository = {
       getInvitationWhatsappStatus: vi.fn().mockResolvedValue({
-        invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517"
+        invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517",
+        sendAvailability: { firstAllowed: false, resendAllowed: false },
+        freeTextWindow: { open: false }
       }),
       listWhatsappConversation: vi.fn().mockResolvedValue({
         entries: [],
@@ -182,6 +196,8 @@ describe("WhatsApp RSVP service", () => {
       invitationCode: "SW2748",
       status: "message_sent",
       phoneNumber: "5511963656517",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       history: []
     });
     expect(result).not.toHaveProperty("nextCursor");
@@ -275,6 +291,7 @@ describe("WhatsApp RSVP service", () => {
       getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(["SW2748"]),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
       createWhatsappCommand: vi.fn().mockResolvedValue(undefined)
@@ -314,6 +331,7 @@ describe("WhatsApp RSVP service", () => {
       getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(["SW2748"]),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
       createWhatsappCommand: vi.fn().mockResolvedValue(undefined)
@@ -338,6 +356,62 @@ describe("WhatsApp RSVP service", () => {
       senderPhone: undefined,
       correlationStatus: "matched"
     }));
+    // The free-text window opens on every correlated inbound message, fallback branch included.
+    expect(repository.touchWhatsappLastInboundAt).toHaveBeenCalledWith("SW2748", expect.any(String));
+  });
+
+  it("stamps the last inbound time for a correlated reply but not for an uncorrelated one", async () => {
+    const invitation = {
+      invitationCode: "SW2748",
+      householdName: "Família Silva",
+      phoneNumber: "5511963656517",
+      whatsappFlowStatus: "message_sent" as const,
+      guests: [{ guestId: "g1", guestName: "Silva 1", allowedPlusOnes: 0, rsvpStatus: "pending" as const }]
+    };
+    const build = (overrides: Record<string, unknown> = {}) => ({
+      recordWebhookEventIfNew: vi.fn().mockResolvedValue(true),
+      getWhatsappMessage: vi.fn().mockResolvedValue(undefined),
+      getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(["SW2748"]),
+      getInvitationByCode: vi.fn().mockResolvedValue(invitation),
+      putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
+      updateWhatsappFlow: vi.fn().mockResolvedValue(undefined),
+      markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
+      createWhatsappCommand: vi.fn().mockResolvedValue(undefined),
+      ...overrides
+    });
+
+    const matched = build();
+    const matchedService = new WhatsappRsvpService(matched as never, {} as never, {} as never);
+    vi.spyOn(matchedService, "queueFallbackText").mockResolvedValue("cmd-fallback" as never);
+    await matchedService.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.window-1",
+      type: "text",
+      messageId: "wamid.window-1",
+      senderWaId: "5511963656517",
+      body: "Oi",
+      timestamp: "1787832000",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "req-window-1");
+    // The provider's normalized event time, not the processing clock.
+    expect(matched.touchWhatsappLastInboundAt).toHaveBeenCalledWith(
+      "SW2748",
+      new Date(1787832000 * 1000).toISOString()
+    );
+
+    const unmatched = build({ getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue([]) });
+    const unmatchedService = new WhatsappRsvpService(unmatched as never, {} as never, {} as never);
+    await unmatchedService.handleWebhookEvent({
+      eventId: "whatsapp:message:wamid.window-2",
+      type: "text",
+      messageId: "wamid.window-2",
+      senderWaId: "5511900000000",
+      body: "Oi",
+      duplicateWithinPayload: false,
+      source: { entryIndex: 0, changeIndex: 0, collection: "messages", itemIndex: 0 }
+    }, "req-window-2");
+    expect(unmatched.touchWhatsappLastInboundAt).not.toHaveBeenCalled();
   });
 
   it("rejects button replies when invitation flow is already completed (terminal)", async () => {
@@ -357,6 +431,7 @@ describe("WhatsApp RSVP service", () => {
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
     };
     const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
@@ -386,6 +461,7 @@ describe("WhatsApp RSVP service", () => {
       recordWebhookEventIfNew: vi.fn().mockResolvedValue(false),
       getWebhookEvent: vi.fn().mockResolvedValue({ processingStatus: "processed" }),
       putWhatsappMessage: vi.fn(),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       getWhatsappMessage: vi.fn(),
       getInvitationByCode: vi.fn(),
       markWebhookEventProcessed: vi.fn()
@@ -417,6 +493,7 @@ describe("WhatsApp RSVP service", () => {
         guests: [{ guestId: "g1", guestName: "Guest", allowedPlusOnes: 0, rsvpStatus: "pending" }]
       }),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       reserveWhatsappBranch: vi.fn().mockRejectedValue(
         new TransactionCanceledException({ message: "website won", $metadata: {} })
@@ -456,6 +533,7 @@ describe("WhatsApp RSVP service", () => {
         guests: [{ guestId: "g1", guestName: "Guest", rsvpStatus: "attending" }]
       }),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn(),
       createWhatsappCommand: vi.fn()
@@ -484,6 +562,7 @@ describe("WhatsApp RSVP service", () => {
         guests: [{ guestId: "g1", guestName: "Guest", allowedPlusOnes: 0, rsvpStatus: "pending" }]
       }),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       reserveWhatsappBranch: vi.fn().mockRejectedValue(new Error("Dynamo unavailable")),
       markWebhookEventProcessed: vi.fn(),
@@ -517,6 +596,7 @@ describe("WhatsApp RSVP service", () => {
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       reserveWhatsappBranch,
       updateWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn(),
@@ -577,6 +657,7 @@ describe("WhatsApp RSVP service", () => {
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       reserveWhatsappBranch,
       updateWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn(),
@@ -638,6 +719,7 @@ describe("WhatsApp RSVP service", () => {
       getWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       reserveWhatsappBranch,
       updateWhatsappCommand: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn(),
@@ -729,6 +811,7 @@ describe("WhatsApp RSVP service", () => {
       getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(codes),
       getInvitationByCode: vi.fn(),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
     };
     const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
@@ -763,6 +846,7 @@ describe("WhatsApp RSVP service", () => {
         invitationCode: "SW2748", phoneNumber: "5511963656517", guests: []
       }),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
     };
     const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
@@ -793,6 +877,7 @@ describe("WhatsApp RSVP service", () => {
         invitationCode: "SW2748", phoneNumber: "5511963656517", guests: []
       }),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined),
       updateWhatsappFlow: vi.fn()
     };
@@ -933,6 +1018,7 @@ describe("WhatsApp RSVP service", () => {
       getWhatsappMessage: vi.fn().mockResolvedValue({ invitationCode: "DELETED1", direction: "outbound" }),
       getInvitationByCode: vi.fn().mockResolvedValue(null),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: true }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
     };
     const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);
@@ -971,6 +1057,7 @@ describe("WhatsApp RSVP service", () => {
       getInvitationsByWhatsappPhone: vi.fn().mockResolvedValue(["SW2748"]),
       getInvitationByCode: vi.fn().mockResolvedValue(invitation),
       putWhatsappMessage: vi.fn().mockResolvedValue({ created: false }),
+      touchWhatsappLastInboundAt: vi.fn().mockResolvedValue(undefined),
       markWebhookEventProcessed: vi.fn().mockResolvedValue(undefined)
     };
     const service = new WhatsappRsvpService(repository as never, {} as never, {} as never);

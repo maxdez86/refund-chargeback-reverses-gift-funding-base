@@ -89,8 +89,8 @@ describe("ObservabilityStack", () => {
     template.resourceCountIs("AWS::SNS::Topic", 1);
     template.resourceCountIs("AWS::SNS::Subscription", 1);
     template.resourceCountIs("AWS::CloudWatch::Dashboard", 1);
-    // 23 fixed alarms + one Lambda-throttle alarm per alarmed function (21).
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 44);
+    // 23 fixed alarms + one Lambda-throttle alarm per alarmed function (22).
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 45);
 
     template.hasResourceProperties("AWS::SNS::Subscription", {
       Endpoint: "alerts@example.com",

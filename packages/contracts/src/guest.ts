@@ -34,6 +34,8 @@ export const HouseholdInvitationSchema = z.object({
   whatsappFlowStage: WhatsappFlowStageSchema.optional(),
   whatsappLastOutboundMessageId: z.string().min(1).optional(),
   whatsappLastInboundMessageId: z.string().min(1).optional(),
+  // Normalized provider time of the newest inbound message. Drives the 24-hour free-text window.
+  whatsappLastInboundAt: z.string().datetime().optional(),
   whatsappFlowUpdatedAt: z.string().datetime().optional(),
   whatsappFlowCompletedAt: z.string().datetime().optional(),
   whatsappFallbackSentAt: z.string().datetime().optional(),
@@ -49,6 +51,7 @@ export const PublicHouseholdInvitationSchema = HouseholdInvitationSchema.omit({
   whatsappFlowStage: true,
   whatsappLastOutboundMessageId: true,
   whatsappLastInboundMessageId: true,
+  whatsappLastInboundAt: true,
   whatsappFlowUpdatedAt: true,
   whatsappFlowCompletedAt: true,
   whatsappFallbackSentAt: true,

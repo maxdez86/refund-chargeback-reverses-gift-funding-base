@@ -261,6 +261,7 @@ export class WeddingRepository {
     const result = await this.documentClient.send(
       new QueryCommand({
         TableName: this.tableName,
+        ConsistentRead: true,
         KeyConditionExpression: `${TABLE_PRIMARY_KEY} = :pk`,
         ExpressionAttributeValues: {
           ":pk": invitationKeys(invitationCode).PK
@@ -301,7 +302,7 @@ export class WeddingRepository {
           // nothing else. None of them is a DynamoDB reserved word, so none needs its own alias; the
           // existing `#status` alias already covers the message item's own `status` attribute.
           ProjectionExpression:
-            "PK, SK, entityType, invitationCode, householdName, phoneNumber, phoneNumberSource, phoneNumberUpdatedAt, whatsappFlowStatus, whatsappFlowStage, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappLastInboundMessageId, whatsappLastOutboundMessageId, whatsappFailureReason, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, submittedBy, guestResponses, attendingGuestCount, paidAttendingGuestCount, childSixOrYoungerAttendingCount, #note, #status, updatedAt, messageId, direction, messageType, templateId, buttonId, body, correlationStatus, createdAt",
+            "PK, SK, entityType, invitationCode, householdName, phoneNumber, phoneNumberSource, phoneNumberUpdatedAt, whatsappFlowStatus, whatsappFlowStage, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappLastInboundMessageId, whatsappLastInboundAt, whatsappLastOutboundMessageId, whatsappFailureReason, whatsappAttendance, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, submittedBy, guestResponses, attendingGuestCount, paidAttendingGuestCount, childSixOrYoungerAttendingCount, #note, #status, updatedAt, messageId, direction, messageType, templateId, buttonId, body, correlationStatus, createdAt",
           ExpressionAttributeNames: {
             "#note": "note",
             "#status": "status"
@@ -557,14 +558,22 @@ export class WeddingRepository {
         TableName: this.tableName,
         KeyConditionExpression: `${TABLE_PRIMARY_KEY} = :pk`,
         ExpressionAttributeValues: { ":pk": invitationKeys(invitationCode).PK },
+        ConsistentRead: true,
         ProjectionExpression:
-          "invitationCode, phoneNumber, phoneNumberUpdatedAt, phoneNumberSource, whatsappFlowStatus, whatsappFlowStage, whatsappLastOutboundMessageId, whatsappLastInboundMessageId, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappFailureReason, entityType"
+          "invitationCode, householdName, phoneNumber, phoneNumberUpdatedAt, phoneNumberSource, whatsappFlowStatus, whatsappFlowStage, whatsappLastOutboundMessageId, whatsappLastInboundMessageId, whatsappLastInboundAt, whatsappFlowUpdatedAt, whatsappFlowCompletedAt, whatsappFallbackSentAt, whatsappFailureReason, whatsappAttendance, entityType, guestId, guestName, sortOrder, allowedPlusOnes, rsvpStatus, isChild, dietaryNotes, guestResponses"
       })
     );
-    const invitation = (result.Items ?? []).find((item) => item.entityType === "Invitation") as
+    const items = (result.Items ?? []) as ItemRecord[];
+    const invitation = items.find((item) => item.entityType === "Invitation") as
       | ItemRecord
       | undefined;
-    return invitation ? toWhatsappRsvpStatus(invitation) : null;
+    if (!invitation) return null;
+    const householdInvitation = toHouseholdInvitation({
+      invitation,
+      guests: items.filter((item) => item.entityType === "InvitationGuest"),
+      rsvp: items.find((item) => item.entityType === "RsvpResponse")
+    });
+    return toWhatsappRsvpStatus(invitation, householdInvitation);
   }
 
   async createWhatsappCommand(input: WhatsappCommandInput) {
@@ -591,7 +600,11 @@ export class WeddingRepository {
     return command;
   }
 
-  async reserveWhatsappCommand(input: WhatsappCommandInput, expectedStatus: WhatsappFlowStatus | undefined) {
+  async reserveWhatsappCommand(
+    input: WhatsappCommandInput,
+    expectedStatus: WhatsappFlowStatus | undefined,
+    completedRestart?: { completedAt: string; rsvpUpdatedAt: string | null }
+  ) {
     const command = WhatsappCommandInputSchema.parse(input);
     const commandItem = {
       ...command,
@@ -613,23 +626,48 @@ export class WeddingRepository {
         Update: {
           TableName: this.tableName,
           Key: invitationKeys(command.invitationCode),
-          UpdateExpression: "SET #s = :sendQueued, #stage = :stage, #updated = :updated",
+          UpdateExpression:
+            "SET #s = :sendQueued, #stage = :stage, #updated = :updated" +
+            (completedRestart ? " REMOVE #completed, #failure, #fallback" : ""),
           ExpressionAttributeNames: {
             "#s": "whatsappFlowStatus",
             "#stage": "whatsappFlowStage",
-            "#updated": "whatsappFlowUpdatedAt"
+            "#updated": "whatsappFlowUpdatedAt",
+            ...(completedRestart ? {
+              "#completed": "whatsappFlowCompletedAt",
+              "#failure": "whatsappFailureReason",
+              "#fallback": "whatsappFallbackSentAt"
+            } : {})
           },
           ExpressionAttributeValues: {
             ":sendQueued": "send_queued",
             ":stage": command.stage,
             ":updated": command.createdAt,
-            ":expected": expectedStatus
+            ":expected": expectedStatus,
+            ...(completedRestart ? { ":completedAt": completedRestart.completedAt } : {})
           },
-          ConditionExpression: expectedStatus === "idle"
-            ? "attribute_exists(PK) AND (attribute_not_exists(#s) OR #s = :expected)"
-            : "attribute_exists(PK) AND #s = :expected"
+          ConditionExpression: completedRestart
+            ? "attribute_exists(PK) AND #s = :expected AND #completed = :completedAt"
+            : expectedStatus === "idle"
+              ? "attribute_exists(PK) AND (attribute_not_exists(#s) OR #s = :expected)"
+              : "attribute_exists(PK) AND #s = :expected"
         }
       });
+      if (completedRestart) {
+        transaction.push({
+          ConditionCheck: {
+            TableName: this.tableName,
+            Key: rsvpKeys(command.invitationCode),
+            ConditionExpression: completedRestart.rsvpUpdatedAt
+              ? "attribute_exists(PK) AND #updated = :rsvpUpdatedAt"
+              : "attribute_not_exists(PK)",
+            ...(completedRestart.rsvpUpdatedAt ? {
+              ExpressionAttributeNames: { "#updated": "updatedAt" },
+              ExpressionAttributeValues: { ":rsvpUpdatedAt": completedRestart.rsvpUpdatedAt }
+            } : {})
+          }
+        });
+      }
     }
     await this.documentClient.send(new TransactWriteCommand({ TransactItems: transaction }));
   }
@@ -749,6 +787,29 @@ export class WeddingRepository {
         ? `attribute_exists(PK) AND (${condition.expression})`
         : "attribute_exists(PK)"
     }));
+  }
+
+  /**
+   * Records the newest inbound message time, which the 24-hour free-text window is derived from.
+   *
+   * The condition makes the write monotonic: webhooks can be delivered out of order or replayed,
+   * and an older provider timestamp must never pull the window backwards. A no-op condition
+   * failure is the expected outcome in that case, not an error.
+   */
+  async touchWhatsappLastInboundAt(invitationCode: string, at: string): Promise<void> {
+    try {
+      await this.documentClient.send(new UpdateCommand({
+        TableName: this.tableName,
+        Key: invitationKeys(invitationCode),
+        UpdateExpression: "SET #a = :at",
+        ExpressionAttributeNames: { "#a": "whatsappLastInboundAt" },
+        ExpressionAttributeValues: { ":at": at },
+        ConditionExpression: "attribute_exists(PK) AND (attribute_not_exists(#a) OR #a < :at)"
+      }));
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) return;
+      throw error;
+    }
   }
 
   /**
@@ -877,15 +938,17 @@ export class WeddingRepository {
           TableName: this.tableName,
           Key: invitationKeys(input.invitationCode),
           UpdateExpression:
-            "SET #status = :completed, #lastOutbound = :messageId, #updated = :updated, #completedAt = :updated",
+            "SET #status = :completed, #stage = :stage, #lastOutbound = :messageId, #updated = :updated, #completedAt = :updated",
           ExpressionAttributeNames: {
             "#status": "whatsappFlowStatus",
+            "#stage": "whatsappFlowStage",
             "#lastOutbound": "whatsappLastOutboundMessageId",
             "#updated": "whatsappFlowUpdatedAt",
             "#completedAt": "whatsappFlowCompletedAt"
           },
           ExpressionAttributeValues: {
             ":completed": "completed",
+            ":stage": message.stage,
             ":messageId": message.messageId,
             ":updated": input.now,
             ":expected": input.expectedFlowStatus

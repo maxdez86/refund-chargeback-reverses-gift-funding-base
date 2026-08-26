@@ -75,6 +75,97 @@ const websiteRequest = {
 } as const;
 
 describe("WeddingRepository WhatsApp invitation phone", () => {
+  it("returns completed-pending availability from the invitation status read", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        {
+          PK: "INVITATION#AE8546",
+          SK: "INVITATION",
+          entityType: "Invitation",
+          invitationCode: "AE8546",
+          householdName: "Família Teste",
+          whatsappFlowStatus: "completed",
+          whatsappFlowCompletedAt: "2026-08-26T16:54:07.954Z"
+        },
+        {
+          PK: "INVITATION#AE8546",
+          SK: "GUEST#g1",
+          entityType: "InvitationGuest",
+          invitationCode: "AE8546",
+          guestId: "g1",
+          guestName: "Pessoa 1",
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending"
+        }
+      ]
+    });
+
+    const result = await repositoryWith(send).getInvitationWhatsappStatus("AE8546");
+
+    expect(result?.sendAvailability).toEqual({
+      firstAllowed: false,
+      resendAllowed: true,
+      resendReason: "completed_pending"
+    });
+    const command = send.mock.calls[0][0] as QueryCommand;
+    expect(command.input.ConsistentRead).toBe(true);
+  });
+
+  it("projects whatsappLastInboundAt so the status read reports an open free-text window", async () => {
+    const lastInboundAt = new Date(Date.now() - 60_000).toISOString();
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        {
+          PK: "INVITATION#AE8546",
+          SK: "INVITATION",
+          entityType: "Invitation",
+          invitationCode: "AE8546",
+          householdName: "Rafael Morais e família",
+          whatsappFlowStatus: "response_received",
+          whatsappLastInboundMessageId: WAMID,
+          whatsappLastInboundAt: lastInboundAt
+        }
+      ]
+    });
+
+    const result = await repositoryWith(send).getInvitationWhatsappStatus("AE8546");
+
+    // Guards the exact regression: an attribute the mapper reads but the projection never requested,
+    // which made deriveWhatsappFreeTextWindow see `undefined` and close the window for everyone.
+    const command = send.mock.calls[0][0] as QueryCommand;
+    expect(command.input.ProjectionExpression?.split(", ")).toContain("whatsappLastInboundAt");
+    expect(result?.freeTextWindow).toEqual({
+      open: true,
+      lastInboundAt,
+      expiresAt: new Date(Date.parse(lastInboundAt) + 24 * 60 * 60 * 1000).toISOString()
+    });
+  });
+
+  it("reports a closed free-text window once the stored inbound instant is older than 24 h", async () => {
+    const lastInboundAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        {
+          PK: "INVITATION#AE8546",
+          SK: "INVITATION",
+          entityType: "Invitation",
+          invitationCode: "AE8546",
+          householdName: "Rafael Morais e família",
+          whatsappFlowStatus: "response_received",
+          whatsappLastInboundAt: lastInboundAt
+        }
+      ]
+    });
+
+    const result = await repositoryWith(send).getInvitationWhatsappStatus("AE8546");
+
+    expect(result?.freeTextWindow).toEqual({
+      open: false,
+      lastInboundAt,
+      expiresAt: new Date(Date.parse(lastInboundAt) + 24 * 60 * 60 * 1000).toISOString()
+    });
+  });
+
   it("updates only invitation phone attributes with an existence guard", async () => {
     const commands: UpdateCommand[] = [];
     const client = {
@@ -127,14 +218,16 @@ describe("WeddingRepository WhatsApp invitation phone", () => {
       whatsappFlowStatus: "idle"
     };
 
-    expect(toWhatsappRsvpStatus(invitation)).toEqual({
+    const guestInvitation = toHouseholdInvitation({ invitation, guests: [] });
+    expect(toWhatsappRsvpStatus(invitation, guestInvitation)).toEqual({
       invitationCode: "SW2748",
       phoneNumber: "5511963656517",
       phoneNumberUpdatedAt: "2026-08-17T12:00:00.000Z",
       phoneNumberSource: "operator",
-      status: "idle"
+      status: "idle",
+      sendAvailability: { firstAllowed: true, resendAllowed: false },
+      freeTextWindow: { open: false }
     });
-    const guestInvitation = toHouseholdInvitation({ invitation, guests: [] });
     expect(guestInvitation).toEqual({
       invitationCode: "SW2748",
       householdName: "Eugênia Ribeiro",
@@ -151,6 +244,32 @@ describe("WeddingRepository WhatsApp invitation phone", () => {
       phoneNumber: undefined,
       guests: []
     });
+  });
+});
+
+describe("WeddingRepository last inbound timestamp", () => {
+  it("writes the inbound time under a forward-only condition", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).touchWhatsappLastInboundAt("SW2748", NOW);
+
+    const command = send.mock.calls[0][0] as UpdateCommand;
+    expect(command.input.UpdateExpression).toBe("SET #a = :at");
+    expect(command.input.ExpressionAttributeNames).toEqual({ "#a": "whatsappLastInboundAt" });
+    expect(command.input.ExpressionAttributeValues).toEqual({ ":at": NOW });
+    expect(command.input.ConditionExpression).toBe(
+      "attribute_exists(PK) AND (attribute_not_exists(#a) OR #a < :at)"
+    );
+  });
+
+  it("treats a losing out-of-order write as a no-op rather than an error", async () => {
+    const send = vi.fn().mockRejectedValue(conditionalFailure());
+    await expect(repositoryWith(send).touchWhatsappLastInboundAt("SW2748", NOW)).resolves.toBeUndefined();
+  });
+
+  it("propagates a failure that is not a condition check", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("DynamoDB unavailable"));
+    await expect(repositoryWith(send).touchWhatsappLastInboundAt("SW2748", NOW))
+      .rejects.toThrow("DynamoDB unavailable");
   });
 });
 
@@ -402,11 +521,45 @@ describe("WeddingRepository WhatsApp RSVP reservations", () => {
 });
 
 describe("WeddingRepository WhatsApp command records", () => {
+  it("atomically restarts a completed flow only while completion and RSVP versions match", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).reserveWhatsappCommand(
+      { ...commandInput, operatorSendMode: "resend" },
+      "completed",
+      { completedAt: NOW, rsvpUpdatedAt: "2026-08-17T11:00:00.000Z" }
+    );
+
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    const items = transaction.input.TransactItems ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[1]?.Update?.ConditionExpression).toContain("#completed = :completedAt");
+    expect(items[1]?.Update?.UpdateExpression).toContain("REMOVE #completed, #failure, #fallback");
+    expect(items[2]?.ConditionCheck).toMatchObject({
+      Key: { PK: "INVITATION#SW2748", SK: "RSVP#CURRENT" },
+      ConditionExpression: "attribute_exists(PK) AND #updated = :rsvpUpdatedAt",
+      ExpressionAttributeValues: { ":rsvpUpdatedAt": "2026-08-17T11:00:00.000Z" }
+    });
+  });
+
+  it("requires the RSVP record to remain absent for a completed pending restart without one", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await repositoryWith(send).reserveWhatsappCommand(
+      { ...commandInput, operatorSendMode: "resend" },
+      "completed",
+      { completedAt: NOW, rsvpUpdatedAt: null }
+    );
+
+    const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+    expect(transaction.input.TransactItems?.[2]?.ConditionCheck?.ConditionExpression)
+      .toBe("attribute_not_exists(PK)");
+  });
+
   it("creates a command conditionally, with keys the caller cannot override", async () => {
     const send = vi.fn().mockResolvedValue({});
 
     await repositoryWith(send).createWhatsappCommand({
       ...commandInput,
+      operatorSendMode: "resend",
       // Hostile extras: the schema strips unknown keys and the key builder is spread last.
       PK: "ATTACKER#1",
       SK: "OWNED",
@@ -422,7 +575,8 @@ describe("WeddingRepository WhatsApp command records", () => {
       GSI1PK: "INVITATION#SW2748",
       GSI1SK: `WHATSAPP#${NOW}#COMMAND#cmd-1`,
       retryCount: 0,
-      reconciliationStatus: "none"
+      reconciliationStatus: "none",
+      operatorSendMode: "resend"
     });
   });
 
@@ -569,7 +723,11 @@ describe("WeddingRepository WhatsApp message records", () => {
       expectedFlowStatus: expectedForWorker,
       fallback: false,
       now: NOW,
-      message: { ...messageInput, commandId: "cmd-1" }
+      message: {
+        ...messageInput,
+        commandId: "cmd-1",
+        ...(effect === "complete_on_send" ? { stage: "followup" as const } : {})
+      }
     });
 
     expect(result).toEqual({ outcome: "applied" });
@@ -583,8 +741,8 @@ describe("WeddingRepository WhatsApp message records", () => {
         invitationStatus === "completed" ? "#status = :expected" : "#status = :sending"
       );
       expect(items[2]?.Update?.ExpressionAttributeValues).toMatchObject(
-        invitationStatus === "completed"
-          ? { ":completed": "completed", ":expected": expectedFlowStatus }
+          invitationStatus === "completed"
+          ? { ":completed": "completed", ":stage": "followup", ":expected": expectedFlowStatus }
           : { ":messageSent": "message_sent" }
       );
     }

@@ -92,6 +92,62 @@ export const WhatsappRsvpActionSchema = z.enum([
   "confirm_all", "attend_all", "decline", "undecided"
 ]);
 export const WhatsappIdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/);
+export const WhatsappRsvpSendModeSchema = z.enum(["first", "resend"]);
+export const WhatsappRsvpSendAvailabilityReasonSchema = z.enum([
+  "failed",
+  "undecided",
+  "completed_pending"
+]);
+export const WhatsappRsvpSendAvailabilitySchema = z.object({
+  firstAllowed: z.boolean(),
+  resendAllowed: z.boolean(),
+  resendReason: WhatsappRsvpSendAvailabilityReasonSchema.optional()
+}).strict().superRefine((value, context) => {
+  if (value.resendAllowed !== Boolean(value.resendReason)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["resendReason"],
+      message: "resendReason must be present exactly when resendAllowed is true."
+    });
+  }
+});
+/**
+ * Meta only accepts free-form text within 24 hours of the guest's last inbound message.
+ * Outside that window only approved templates are deliverable, so the operator composer is
+ * gated on this before a send is attempted. `open` is derived from the stored last inbound
+ * timestamp; an invitation that has never replied reports a closed window with no timestamps.
+ */
+export const WhatsappFreeTextWindowSchema = z.object({
+  open: z.boolean(),
+  lastInboundAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional()
+}).strict().superRefine((value, context) => {
+  if (value.open && (!value.lastInboundAt || !value.expiresAt)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lastInboundAt"],
+      message: "An open free-text window requires both lastInboundAt and expiresAt."
+    });
+  }
+});
+/** Operator-composed free text. No approved template is involved. */
+export const WhatsappOperatorTextSendRequestSchema = z.object({
+  body: WhatsappTextBodySchema
+}).strict();
+/**
+ * Deliberately not WhatsappRsvpSendResponseSchema: that schema types `templateId` as a
+ * template purpose and requires a `templateVersion`, neither of which applies to the
+ * synthetic operator-text sentinel.
+ */
+export const WhatsappOperatorTextSendResponseSchema = z.object({
+  commandId: z.string().min(1).max(512),
+  invitationCode: InvitationCodeSchema,
+  status: WhatsappCommandStatusSchema,
+  replayed: z.boolean()
+}).strict();
+export const WhatsappRsvpAutoSendRequestSchema = z.object({
+  mode: WhatsappRsvpSendModeSchema.default("first")
+}).strict();
 export const WhatsappRsvpSendRequestSchema = z.object({
   invitationCode: InvitationCodeSchema,
   templateId: WhatsappRsvpTemplatePurposeSchema
@@ -106,6 +162,8 @@ export const WhatsappPhoneInputSchema = z.string()
 export const WhatsappPhoneUpdateRequestSchema = z.object({ phoneNumber: WhatsappPhoneInputSchema }).strict();
 export const WhatsappRsvpStatusResponseSchema = z.object({
   invitationCode: InvitationCodeSchema,
+  sendAvailability: WhatsappRsvpSendAvailabilitySchema,
+  freeTextWindow: WhatsappFreeTextWindowSchema,
   phoneNumber: z.string().regex(/^[1-9]\d{7,14}$/).optional(),
   phoneNumberUpdatedAt: z.string().datetime().optional(),
   phoneNumberSource: WhatsappPhoneSourceSchema.optional(),
@@ -202,7 +260,8 @@ export const WhatsappPhoneUpdateResponseSchema = z.object({
 export const WhatsappRsvpErrorCodeSchema = z.enum([
   "VALIDATION_ERROR", "INVITATION_NOT_FOUND", "TEMPLATE_NOT_FOUND", "INVALID_INVITATION_STATE",
   "INVALID_FLOW_TRANSITION", "IDEMPOTENCY_CONFLICT", "QUEUE_UNAVAILABLE", "QUEUE_FAILURE",
-  "PROVIDER_FAILURE", "COMMAND_NOT_FOUND", "RECONCILIATION_REQUIRED", "INTERNAL_ERROR"
+  "PROVIDER_FAILURE", "COMMAND_NOT_FOUND", "RECONCILIATION_REQUIRED", "FREE_TEXT_WINDOW_CLOSED",
+  "INTERNAL_ERROR"
 ]);
 export const WhatsappRsvpErrorResponseSchema = z.object({
   code: WhatsappRsvpErrorCodeSchema,
@@ -238,6 +297,13 @@ export type WhatsappMessageStatus = z.infer<typeof WhatsappMessageStatusSchema>;
 export type WhatsappReconciliationStatus = z.infer<typeof WhatsappReconciliationStatusSchema>;
 export type WhatsappPhoneSource = z.infer<typeof WhatsappPhoneSourceSchema>;
 export type WhatsappRsvpSendRequest = z.infer<typeof WhatsappRsvpSendRequestSchema>;
+export type WhatsappRsvpSendMode = z.infer<typeof WhatsappRsvpSendModeSchema>;
+export type WhatsappRsvpSendAvailability = z.infer<typeof WhatsappRsvpSendAvailabilitySchema>;
+export type WhatsappRsvpSendAvailabilityReason = z.infer<typeof WhatsappRsvpSendAvailabilityReasonSchema>;
+export type WhatsappRsvpAutoSendRequest = z.infer<typeof WhatsappRsvpAutoSendRequestSchema>;
+export type WhatsappFreeTextWindow = z.infer<typeof WhatsappFreeTextWindowSchema>;
+export type WhatsappOperatorTextSendRequest = z.infer<typeof WhatsappOperatorTextSendRequestSchema>;
+export type WhatsappOperatorTextSendResponse = z.infer<typeof WhatsappOperatorTextSendResponseSchema>;
 export type WhatsappRsvpTemplatePurpose = z.infer<typeof WhatsappRsvpTemplatePurposeSchema>;
 export type WhatsappRsvpAction = z.infer<typeof WhatsappRsvpActionSchema>;
 export type WhatsappRsvpSendResponse = z.infer<typeof WhatsappRsvpSendResponseSchema>;

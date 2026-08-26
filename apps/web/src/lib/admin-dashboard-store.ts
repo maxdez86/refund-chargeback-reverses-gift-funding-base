@@ -1,8 +1,7 @@
-import type { RsvpStatus } from "@brimax/contracts";
+import type { RsvpStatus, WhatsappRsvpSendResponse } from "@brimax/contracts";
 import {
   deriveGift,
   recalculateRsvp,
-  templateForSend,
   trailingInboundCount
 } from "@/lib/admin-dashboard-model";
 import type {
@@ -49,7 +48,7 @@ export type AdminDashboardAction =
       now: string;
     }
   | { type: "update-phone"; invitationCode: string; phoneNumber: string; now: string }
-  | { type: "queue-send"; invitationCode: string; mode: "first" | "resend"; now: string }
+  | { type: "whatsapp-send-accepted"; response: WhatsappRsvpSendResponse; now: string }
   | { type: "toggle-message-hidden"; messageId: string }
   | {
       type: "save-gift";
@@ -69,7 +68,9 @@ export type AdminDashboardAction =
       photoUrl: string | null;
       now: string;
     }
-  | { type: "send-chat"; invitationCode: string; text: string; now: string }
+  | { type: "send-chat"; invitationCode: string; messageId: string; text: string; now: string }
+  | { type: "chat-send-succeeded"; invitationCode: string; messageId: string }
+  | { type: "chat-send-failed"; invitationCode: string; messageId: string }
   | { type: "thread-load-started"; invitationCode: string; loadMore: boolean }
   | { type: "thread-load-succeeded"; page: AdminWhatsappThreadPage; loadMore: boolean }
   | { type: "thread-load-failed"; invitationCode: string; loadMore: boolean }
@@ -167,6 +168,11 @@ export function createInitialState(snapshot: AdminDashboardSnapshot): AdminDashb
     ])
   );
   return { ...snapshot, threadLoads };
+}
+
+/** Optimistic composer bubbles carry a client id; persisted ones carry the provider's `wamid`. */
+export function isLocalMessageId(messageId: string) {
+  return messageId.startsWith("local-");
 }
 
 function deduplicateMessages(messages: AdminWhatsappMessage[]) {
@@ -303,6 +309,9 @@ export function adminDashboardReducer(
         whatsappFallbackSentAt: null,
         whatsappLastInboundMessageId: null,
         whatsappLastOutboundMessageId: null,
+        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+        // A brand-new invitation has never received a reply, so free text is not yet deliverable.
+        whatsappFreeTextWindow: { open: false },
         reconciliationStatus: "none",
         rsvp: {
           status: "pending",
@@ -355,28 +364,24 @@ export function adminDashboardReducer(
       }));
     }
 
-    case "queue-send": {
-      return mapInvitation(state, action.invitationCode, (invitation) => {
-        const templateId = templateForSend(invitation, action.mode);
-        const previousAttempts = invitation.commands.filter(
-          (command) => command.templateId === templateId
-        ).length;
+    case "whatsapp-send-accepted": {
+      return mapInvitation(state, action.response.invitationCode, (invitation) => {
+        if (invitation.commands.some((command) => command.commandId === action.response.commandId)) {
+          return invitation;
+        }
+        const stage = action.response.templateId.includes("reconfirmation") ? "reconfirmation" : "pending";
         return {
           ...invitation,
-          whatsappFlowStatus: "send_queued",
-          whatsappFlowUpdatedAt: action.now,
-          commands: [
-            {
-              commandId: `cmd-${invitation.invitationCode}-${action.now}`,
-              createdAt: action.now,
-              templateId,
-              stage: action.mode === "first" ? "pending" : invitation.whatsappFlowStage,
-              status: "queued",
-              retryCount: action.mode === "first" ? 0 : previousAttempts,
-              reconciliationStatus: "none"
-            },
-            ...invitation.commands
-          ]
+          commands: [{
+            commandId: action.response.commandId,
+            createdAt: action.now,
+            templateId: action.response.templateId,
+            stage,
+            status: action.response.status,
+            retryCount: 0,
+            reconciliationStatus: "none",
+            replayed: action.response.replayed
+          }, ...invitation.commands]
         };
       });
     }
@@ -432,11 +437,14 @@ export function adminDashboardReducer(
     case "send-chat": {
       const text = action.text.trim();
       if (!text) return state;
+      // The caller owns the id so it can settle this exact bubble once the request resolves.
+      // Two sends in the same millisecond would otherwise collide and lose one to deduplication.
       const message: AdminWhatsappMessage = {
-        messageId: `local-${action.invitationCode}-${action.now}`,
+        messageId: action.messageId,
         direction: "outbound",
         sentAt: action.now,
-        text
+        text,
+        pending: true
       };
       return {
         ...state,
@@ -445,6 +453,21 @@ export function adminDashboardReducer(
           [action.invitationCode]: [...(state.threads[action.invitationCode] ?? []), message]
         }
       };
+    }
+
+    case "chat-send-succeeded":
+    case "chat-send-failed": {
+      const existing = state.threads[action.invitationCode];
+      if (!existing) return state;
+      const failed = action.type === "chat-send-failed";
+      let changed = false;
+      const messages = existing.map((message) => {
+        if (message.messageId !== action.messageId) return message;
+        changed = true;
+        return { ...message, pending: false, ...(failed ? { failed: true } : {}) };
+      });
+      if (!changed) return state;
+      return { ...state, threads: { ...state.threads, [action.invitationCode]: messages } };
     }
 
     case "thread-load-started": {
@@ -463,8 +486,19 @@ export function adminDashboardReducer(
     case "thread-load-succeeded": {
       const { invitationCode } = action.page;
       const existing = state.threads[invitationCode] ?? [];
-      // API pages predate any local composer message created while the request was in flight.
-      const messages = deduplicateMessages([...action.page.messages, ...existing]);
+      // API pages predate any local composer message created while the request was in flight,
+      // but a settled optimistic bubble is now also present in the page under its provider id.
+      // Drop those; keep failed ones, which never reached the server and are the only record
+      // the operator has of what did not send.
+      const newestServerSentAt = action.page.messages.at(-1)?.sentAt;
+      const retained = newestServerSentAt === undefined
+        ? existing
+        : existing.filter((message) =>
+          message.failed ||
+            message.pending ||
+            !isLocalMessageId(message.messageId) ||
+            message.sentAt > newestServerSentAt);
+      const messages = deduplicateMessages([...action.page.messages, ...retained]);
       return mapInvitation(
         {
           ...state,
@@ -584,6 +618,9 @@ export function adminDashboardReducer(
           whatsappFailureReason: keepLocalFlow
             ? invitation.whatsappFailureReason
             : action.flow.whatsappFailureReason,
+          whatsappSendAvailability: action.flow.whatsappSendAvailability,
+          // Time-derived and server-authoritative; a local snapshot of it is always the stale one.
+          whatsappFreeTextWindow: action.flow.whatsappFreeTextWindow,
           reconciliationStatus: keepLocalFlow
             ? invitation.reconciliationStatus
             : action.flow.reconciliationStatus

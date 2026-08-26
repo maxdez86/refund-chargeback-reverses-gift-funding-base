@@ -206,7 +206,13 @@ describe("WhatsApp send availability", () => {
   });
 
   it("offers a first send only to invitations that were never contacted", () => {
-    const fresh: AdminInvitation = { ...byCode("SW2748"), commands: [] };
+    const fresh: AdminInvitation = {
+      ...byCode("SW2748"),
+      commands: [],
+      whatsappFlowStatus: "idle",
+      whatsappFlowCompletedAt: null,
+      whatsappSendAvailability: { firstAllowed: true, resendAllowed: false }
+    };
     expect(sendAvailability(fresh)).toMatchObject({ firstAllowed: true, resendAllowed: false });
     expect(sendAvailability(byCode("SW2748"))).toMatchObject({
       firstAllowed: false,
@@ -214,23 +220,50 @@ describe("WhatsApp send availability", () => {
     });
   });
 
-  it("allows a resend only out of a failed, reconciling or undecided flow", () => {
+  it("uses authoritative resend availability for failed, undecided, and completed-pending flows", () => {
     expect(sendAvailability(byCode("LB6640")).resendAllowed).toBe(true); // failed
-    expect(sendAvailability(byCode("QP8814")).resendAllowed).toBe(true); // reconciliation required
+    expect(sendAvailability(byCode("QP8814")).resendAllowed).toBe(false); // reconciliation required
     expect(sendAvailability(byCode("ZR5567")).resendAllowed).toBe(true); // undecided
     expect(sendAvailability(byCode("MV2093")).resendAllowed).toBe(false); // completed
+    const completedPending: AdminInvitation = {
+      ...byCode("ZR5567"),
+      whatsappFlowStatus: "completed",
+      whatsappFlowCompletedAt: "2026-08-26T16:54:07.954Z",
+      whatsappSendAvailability: {
+        firstAllowed: false,
+        resendAllowed: true,
+        resendReason: "completed_pending"
+      }
+    };
+    expect(sendAvailability(completedPending)).toMatchObject({
+      resendAllowed: true,
+      completedPending: true,
+      resendReason: "completed_pending"
+    });
   });
 
-  it("picks the opener for first sends and failures, and the reminder otherwise", () => {
-    expect(templateForSend(byCode("ZR5567"), "first")).toBe("wedding_invitation");
-    expect(templateForSend(byCode("LB6640"), "resend")).toBe("wedding_invitation");
-    // Two guests take the group reminder, one guest takes the single variant.
+  it("mirrors confirmed/pending and single/group automatic template selection", () => {
+    expect(templateForSend(byCode("ZR5567"), "first")).toBe("wedding_rsvp_pending_reminder_group");
+    expect(templateForSend(byCode("LB6640"), "resend")).toBe("wedding_rsvp_pending_reminder_group");
     expect(templateForSend(byCode("ZR5567"), "resend")).toBe(
       "wedding_rsvp_pending_reminder_group"
     );
     expect(templateForSend(byCode("QP8814"), "resend")).toBe(
       "wedding_rsvp_pending_reminder_single"
     );
+    const singleConfirmed = {
+      ...byCode("QP8814"),
+      guests: [{ ...byCode("QP8814").guests[0], rsvpStatus: "attending" as const }]
+    };
+    const groupConfirmed = {
+      ...byCode("ZR5567"),
+      guests: byCode("ZR5567").guests.map((guest, index) => ({
+        ...guest,
+        rsvpStatus: index === 0 ? "attending" as const : guest.rsvpStatus
+      }))
+    };
+    expect(templateForSend(singleConfirmed, "first")).toBe("wedding_rsvp_reconfirmation_single");
+    expect(templateForSend(groupConfirmed, "resend")).toBe("wedding_rsvp_reconfirmation");
   });
 });
 

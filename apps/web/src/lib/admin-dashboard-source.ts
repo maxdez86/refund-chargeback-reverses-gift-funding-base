@@ -1,8 +1,10 @@
-import type { AdminDashboardResponse, WhatsappRsvpStatusResponse } from "@brimax/contracts";
+import type { AdminDashboardResponse, WhatsappOperatorTextSendResponse, WhatsappRsvpSendMode, WhatsappRsvpSendResponse, WhatsappRsvpStatusResponse } from "@brimax/contracts";
 import {
   AdminApiError,
   getAdminDashboard,
   getAdminWhatsappThread,
+  sendAdminWhatsappRsvp,
+  sendAdminWhatsappText,
   type AdminTokenAccessor
 } from "@/lib/admin-api";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
@@ -29,6 +31,18 @@ export type AdminDashboardSource = {
     cursor?: string,
     signal?: AbortSignal
   ): Promise<AdminWhatsappInvitationPage>;
+  sendWhatsappRsvp?(
+    invitationCode: string,
+    mode: WhatsappRsvpSendMode,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WhatsappRsvpSendResponse>;
+  sendWhatsappText?(
+    invitationCode: string,
+    body: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WhatsappOperatorTextSendResponse>;
 };
 
 export const fixtureDashboardSource: AdminDashboardSource = {
@@ -55,6 +69,11 @@ export const fixtureDashboardSource: AdminDashboardSource = {
       whatsappLastInboundMessageId: invitation?.whatsappLastInboundMessageId ?? null,
       whatsappLastOutboundMessageId: invitation?.whatsappLastOutboundMessageId ?? null,
       whatsappFailureReason: invitation?.whatsappFailureReason ?? null,
+      whatsappSendAvailability: invitation?.whatsappSendAvailability ?? {
+        firstAllowed: true,
+        resendAllowed: false
+      },
+      whatsappFreeTextWindow: invitation?.whatsappFreeTextWindow ?? { open: false },
       reconciliationStatus: invitation?.reconciliationStatus ?? "none"
     };
     return {
@@ -66,6 +85,43 @@ export const fixtureDashboardSource: AdminDashboardSource = {
           snapshot.invitations.find((item) => item.invitationCode === invitationCode)?.commands ?? [],
         nextCursor: null
       }
+    };
+  },
+  async sendWhatsappRsvp(invitationCode, mode, idempotencyKey) {
+    const snapshot = createFixtureDashboardSnapshot();
+    const invitation = snapshot.invitations.find((item) => item.invitationCode === invitationCode);
+    if (!invitation) throw new AdminApiError("Este convite não está mais disponível.", "rejected", 404, "INVITATION_NOT_FOUND");
+    const confirmed = invitation.guests.some((guest) => guest.rsvpStatus === "attending");
+    const single = invitation.guests.length === 1;
+    const templateId = confirmed
+      ? single ? "wedding_rsvp_reconfirmation_single" : "wedding_rsvp_reconfirmation"
+      : single ? "wedding_rsvp_pending_reminder_single" : "wedding_rsvp_pending_reminder_group";
+    return {
+      commandId: `idempotency-${idempotencyKey}`,
+      invitationCode,
+      templateId,
+      templateVersion: 1,
+      status: "queued",
+      replayed: false
+    };
+  },
+  async sendWhatsappText(invitationCode, _body, idempotencyKey) {
+    const snapshot = createFixtureDashboardSnapshot();
+    const invitation = snapshot.invitations.find((item) => item.invitationCode === invitationCode);
+    if (!invitation) throw new AdminApiError("Este convite não está mais disponível.", "rejected", 404, "INVITATION_NOT_FOUND");
+    if (!invitation.whatsappFreeTextWindow.open) {
+      throw new AdminApiError(
+        "A janela de 24 horas do WhatsApp expirou. Envie um modelo aprovado.",
+        "rejected",
+        409,
+        "FREE_TEXT_WINDOW_CLOSED"
+      );
+    }
+    return {
+      commandId: `idempotency-${idempotencyKey}`,
+      invitationCode,
+      status: "queued",
+      replayed: false
     };
   }
 };
@@ -119,6 +175,8 @@ export function mapAdminWhatsappFlowSnapshot(
     whatsappLastInboundMessageId: response.lastInboundMessageId ?? null,
     whatsappLastOutboundMessageId: response.lastOutboundMessageId ?? null,
     whatsappFailureReason: response.failureReason ?? null,
+    whatsappSendAvailability: response.sendAvailability,
+    whatsappFreeTextWindow: response.freeTextWindow,
     reconciliationStatus: deriveReconciliationStatus(response.status)
   };
 }
@@ -141,6 +199,8 @@ export function mapAdminDashboardResponse(
       whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ?? null,
       whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ?? null,
       whatsappFailureReason: invitation.whatsappFailureReason ?? null,
+      whatsappSendAvailability: invitation.whatsappSendAvailability,
+      whatsappFreeTextWindow: invitation.whatsappFreeTextWindow,
       reconciliationStatus: deriveReconciliationStatus(invitation.whatsappFlowStatus),
       rsvp: { ...invitation.rsvp },
       // Absent means "this invitation owns no WhatsApp message", which is what removes it from
@@ -207,6 +267,34 @@ export function createLiveDashboardSource(options: LiveSourceOptions): AdminDash
           flow: mapAdminWhatsappFlowSnapshot(response),
           page: mapAdminWhatsappThreadPage(invitationCode, response)
         };
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async sendWhatsappText(invitationCode, body, idempotencyKey, signal) {
+      try {
+        return await sendAdminWhatsappText(invitationCode, body, idempotencyKey, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async sendWhatsappRsvp(invitationCode, mode, idempotencyKey, signal) {
+      try {
+        return await sendAdminWhatsappRsvp(invitationCode, mode, idempotencyKey, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
       } catch (error) {
         if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
           options.onAuthError?.(error);

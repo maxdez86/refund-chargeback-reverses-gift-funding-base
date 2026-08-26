@@ -36,6 +36,8 @@ describe("GET /admin/dashboard", () => {
       invitations: [{
         invitationCode: "AB2345",
         householdName: "Amanda",
+        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+        whatsappFreeTextWindow: { open: false },
         guests: [{ guestId: "g1", guestName: "Amanda", allowedPlusOnes: 0, rsvpStatus: "pending" }],
         rsvp: {
           status: "pending",

@@ -219,7 +219,7 @@ describe("admin dashboard reducer", () => {
     });
   });
 
-  it("queues a first send as a fresh opener attempt", () => {
+  it("records an accepted first send using backend facts", () => {
     const state = adminDashboardReducer(freshState(), {
       type: "create-invitation",
       invitationCode: "NEW001",
@@ -229,36 +229,50 @@ describe("admin dashboard reducer", () => {
       now: NOW
     });
     const next = apply(state, {
-      type: "queue-send",
-      invitationCode: "NEW001",
-      mode: "first",
+      type: "whatsapp-send-accepted",
+      response: {
+        commandId: "command-from-api",
+        invitationCode: "NEW001",
+        templateId: "wedding_rsvp_pending_reminder_single",
+        templateVersion: 2,
+        status: "queued",
+        replayed: false
+      },
       now: NOW
     });
     const invitation = invitationOf(next, "NEW001");
 
-    expect(invitation.whatsappFlowStatus).toBe("send_queued");
+    expect(invitation.whatsappFlowStatus).toBe("idle");
     expect(invitation.commands[0]).toMatchObject({
-      templateId: "wedding_invitation",
+      commandId: "command-from-api",
+      templateId: "wedding_rsvp_pending_reminder_single",
       stage: "pending",
       status: "queued",
-      retryCount: 0
+      retryCount: 0,
+      replayed: false
     });
   });
 
-  it("counts a resend as another attempt on the same template", () => {
+  it("records an accepted resend as a distinct backend command", () => {
     const next = apply(freshState(), {
-      type: "queue-send",
-      invitationCode: "LB6640",
-      mode: "resend",
+      type: "whatsapp-send-accepted",
+      response: {
+        commandId: "resend-from-api",
+        invitationCode: "LB6640",
+        templateId: "wedding_rsvp_pending_reminder_group",
+        templateVersion: 3,
+        status: "queued",
+        replayed: false
+      },
       now: NOW
     });
     const invitation = invitationOf(next, "LB6640");
-    // LB6640 failed, so the resend repeats the opener — one was already sent.
     expect(invitation.commands[0]).toMatchObject({
-      templateId: "wedding_invitation",
+      commandId: "resend-from-api",
+      templateId: "wedding_rsvp_pending_reminder_group",
       status: "queued",
-      retryCount: 1,
-      stage: "fallback"
+      retryCount: 0,
+      stage: "pending"
     });
     expect(invitation.commands).toHaveLength(3);
   });
@@ -409,26 +423,56 @@ describe("WhatsApp conversation state", () => {
     expect(unreadCount(freshState(), "QP8814")).toBe(2);
   });
 
-  it("appends an outbound reply and clears the response-needed count", () => {
+  it("appends a pending outbound reply and clears the response-needed count", () => {
     const next = apply(freshState(), {
       type: "send-chat",
       invitationCode: "QP8814",
+      messageId: "local-abc",
       text: "  Oi Helena!  ",
       now: NOW
     });
     expect(next.threads.QP8814.at(-1)).toEqual({
-      messageId: `local-QP8814-${NOW}`,
+      messageId: "local-abc",
       direction: "outbound",
       sentAt: NOW,
-      text: "Oi Helena!"
+      text: "Oi Helena!",
+      pending: true
     });
     expect(unreadCount(next, "QP8814")).toBe(0);
+  });
+
+  it("settles the pending bubble when the backend accepts or rejects it", () => {
+    const sent = apply(freshState(), {
+      type: "send-chat", invitationCode: "QP8814", messageId: "local-abc", text: "Oi", now: NOW
+    });
+
+    const accepted = apply(sent, {
+      type: "chat-send-succeeded", invitationCode: "QP8814", messageId: "local-abc"
+    });
+    expect(accepted.threads.QP8814.at(-1)).toMatchObject({ pending: false });
+    expect(accepted.threads.QP8814.at(-1)).not.toMatchObject({ failed: true });
+
+    const rejected = apply(sent, {
+      type: "chat-send-failed", invitationCode: "QP8814", messageId: "local-abc"
+    });
+    expect(rejected.threads.QP8814.at(-1)).toMatchObject({ pending: false, failed: true });
+    // The failed bubble is the operator's only record of what did not send.
+    expect(rejected.threads.QP8814.at(-1)?.text).toBe("Oi");
+  });
+
+  it("leaves the thread untouched when settling an unknown message id", () => {
+    const sent = apply(freshState(), {
+      type: "send-chat", invitationCode: "QP8814", messageId: "local-abc", text: "Oi", now: NOW
+    });
+    expect(apply(sent, {
+      type: "chat-send-failed", invitationCode: "QP8814", messageId: "local-other"
+    })).toBe(sent);
   });
 
   it("ignores an empty reply", () => {
     const state = freshState();
     expect(
-      apply(state, { type: "send-chat", invitationCode: "QP8814", text: "   ", now: NOW })
+      apply(state, { type: "send-chat", invitationCode: "QP8814", messageId: "local-abc", text: "   ", now: NOW })
     ).toBe(state);
   });
 
@@ -631,7 +675,7 @@ describe("WhatsApp conversation state", () => {
 
   it("keeps a local composer reply after history that finishes loading later", () => {
     const local = apply(unloadedState(), {
-      type: "send-chat", invitationCode: "SW2748", text: "Resposta local", now: NOW
+      type: "send-chat", invitationCode: "SW2748", messageId: "local-sw", text: "Resposta local", now: NOW
     });
     const loaded = apply(local, {
       type: "thread-load-succeeded",
@@ -676,6 +720,8 @@ describe("WhatsApp invitation refreshed action", () => {
     whatsappLastInboundMessageId: "wamid.inbound.1",
     whatsappLastOutboundMessageId: "wamid.outbound.1",
     whatsappFailureReason: null,
+    whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+    whatsappFreeTextWindow: { open: false },
     reconciliationStatus: "none" as const
   };
 
@@ -701,6 +747,10 @@ describe("WhatsApp invitation refreshed action", () => {
     expect(updated.whatsappFlowUpdatedAt).toBe("2026-08-20T15:00:00.000Z");
     expect(updated.whatsappLastInboundMessageId).toBe("wamid.inbound.1");
     expect(updated.whatsappLastOutboundMessageId).toBe("wamid.outbound.1");
+    expect(updated.whatsappSendAvailability).toEqual({
+      firstAllowed: false,
+      resendAllowed: false
+    });
 
     // Non-flow fields (householdName, rsvp, guests, commands, whatsappConversation) stay untouched
     const before = invitationOf(initial, "SW2748");
@@ -758,9 +808,9 @@ describe("WhatsApp invitation refreshed action", () => {
   it("preserves local flow mutations when local whatsappFlowUpdatedAt is newer than refreshed flow", () => {
     const initial = unloadedState();
     const withLocalSend = apply(initial, {
-      type: "queue-send",
+      type: "confirm-guests",
       invitationCode: "SW2748",
-      mode: "first",
+      guestIds: [invitationOf(initial, "SW2748").guests[0].guestId],
       now: "2026-08-20T16:00:00.000Z"
     });
 
@@ -777,7 +827,7 @@ describe("WhatsApp invitation refreshed action", () => {
     });
 
     const target = invitationOf(next, "SW2748");
-    expect(target.whatsappFlowStatus).toBe("send_queued");
+    expect(target.whatsappFlowStatus).toBe("attendance_confirmed_whatsapp");
     expect(target.whatsappFlowUpdatedAt).toBe("2026-08-20T16:00:00.000Z");
   });
 

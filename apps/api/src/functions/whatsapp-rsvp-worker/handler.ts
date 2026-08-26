@@ -3,7 +3,11 @@ import type { WhatsappFlowStatus } from "@brimax/contracts";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { z } from "zod";
 import { deriveTemplateParameters } from "../../domain/whatsapp-template-variables";
-import { WHATSAPP_FALLBACK_TEMPLATE_ID, WHATSAPP_FALLBACK_TEXT } from "../../domain/whatsapp-rsvp-service";
+import {
+  WHATSAPP_FALLBACK_TEMPLATE_ID,
+  WHATSAPP_FALLBACK_TEXT,
+  isWhatsappTextCommandTemplateId
+} from "../../domain/whatsapp-text-commands";
 import { classifyWhatsappSendError } from "../../domain/whatsapp-send-outcome";
 import { transitionCondition } from "../../domain/whatsapp-flow-state";
 import { AppError } from "../../lib/errors";
@@ -207,7 +211,7 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
 
   let definition;
   try {
-    definition = command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID
+    definition = isWhatsappTextCommandTemplateId(String(command.templateId))
       ? undefined
       : await dependencies.templates.getVersion(String(command.templateId), Number(command.templateVersion));
   } catch (error) {
@@ -284,10 +288,19 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
   };
 
   if (!invitation.phoneNumber) return handleFailure(new Error("WhatsApp command invitation has no phone number."));
-  if (!definition && command.templateId !== WHATSAPP_FALLBACK_TEMPLATE_ID) return handleFailure(new Error("WhatsApp command template is no longer active."));
+  const isTextCommand = isWhatsappTextCommandTemplateId(String(command.templateId));
+  if (!definition && !isTextCommand) return handleFailure(new Error("WhatsApp command template is no longer active."));
   const textSender = dependencies.textSender;
-  if (command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID && !textSender) {
+  if (isTextCommand && !textSender) {
     return handleFailure(new Error("WhatsApp text sender is not configured."));
+  }
+  // The fallback body is a fixed constant; operator free text carries its own on the command.
+  const isFallbackText = command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID;
+  const textBody = isTextCommand
+    ? (isFallbackText ? WHATSAPP_FALLBACK_TEXT : command.body)
+    : undefined;
+  if (isTextCommand && !textBody) {
+    return handleFailure(new Error("WhatsApp text command has no body."));
   }
 
   const parameters = definition ? deriveTemplateParameters(invitation, definition) : undefined;
@@ -304,11 +317,11 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
 
   let result: { messageId: string };
   try {
-    if (command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID) {
+    if (isTextCommand) {
       let acceptedMessageId: string | undefined;
       try {
         const accepted = await textSender!.sendText(
-          { to: invitation.phoneNumber, text: { body: WHATSAPP_FALLBACK_TEXT } },
+          { to: invitation.phoneNumber, text: { body: textBody! } },
           { requestId: commandId },
           async (providerResult) => {
             acceptedMessageId = providerResult.messageId;
@@ -318,7 +331,7 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
               effect,
               expectedFlowStatus,
               now: attemptAt,
-              fallback: true,
+              fallback: isFallbackText,
               message: {
                 messageId: providerResult.messageId,
                 invitationCode: invitation.invitationCode,
@@ -330,7 +343,7 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
                 templateId: command.templateId,
                 templateVersion: command.templateVersion,
                 stage: command.stage,
-                body: WHATSAPP_FALLBACK_TEXT,
+                body: textBody!,
                 createdAt: attemptAt,
                 persistedAt: attemptAt,
                 timestampSource: "processing"
@@ -403,7 +416,7 @@ async function processRecord(record: SQSRecord, dependencies: WhatsappRsvpWorker
       effect,
       expectedFlowStatus,
       now: attemptAt,
-      fallback: command.templateId === WHATSAPP_FALLBACK_TEMPLATE_ID,
+      fallback: isFallbackText,
       message: {
       messageId: result.messageId, invitationCode: invitation.invitationCode, direction: "outbound", status: "sent",
       messageType: "template", correlationStatus: "matched", commandId, templateId: command.templateId,

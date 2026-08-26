@@ -11,10 +11,12 @@ import {
   WhatsappTimestampSourceSchema,
   WhatsappTextBodySchema,
   WhatsappReconciliationStatusSchema
+  ,WhatsappRsvpSendModeSchema
 } from "@brimax/contracts";
 import { z } from "zod";
 import { AppError } from "../../lib/errors";
 import { WhatsappRecipientSchema } from "../whatsapp/schemas";
+import { WHATSAPP_OPERATOR_TEXT_TEMPLATE_ID } from "../../domain/whatsapp-text-commands";
 
 /**
  * Stored shapes for the WhatsApp command (outbox) and message records.
@@ -124,10 +126,17 @@ const WhatsappCommandShapeSchema = z.object({
   ,expectedFlowStatus: WhatsappFlowStatusSchema.optional()
   // Read compatibility for records deployed before the explicit effect field.
   ,preserveFlowStatus: z.boolean().optional()
+  ,operatorSendMode: WhatsappRsvpSendModeSchema.optional()
+  // Only text commands carry a body. The fallback text is a fixed constant resolved by the
+  // worker, so it stays absent there; operator free text must persist what was typed.
+  ,body: WhatsappTextBodySchema.optional()
 }).superRefine((value, context) => {
   const effect = value.effect ?? (value.preserveFlowStatus === true ? "preserve" : "opener");
   if (effect === "complete_on_send" && !value.expectedFlowStatus) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["expectedFlowStatus"], message: "complete_on_send commands require expectedFlowStatus" });
+  }
+  if (value.templateId === WHATSAPP_OPERATOR_TEXT_TEMPLATE_ID && !value.body) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "operator text commands require a body" });
   }
 });
 

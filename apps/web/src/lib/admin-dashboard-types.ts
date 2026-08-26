@@ -10,6 +10,8 @@ import type {
   WhatsappPhoneSource,
   WhatsappReconciliationStatus,
   WhatsappRsvpAction
+  ,WhatsappRsvpSendAvailability
+  ,WhatsappFreeTextWindow
 } from "@brimax/contracts";
 
 /**
@@ -48,6 +50,7 @@ export type AdminWhatsappCommand = {
   status: WhatsappCommandStatus;
   retryCount: number;
   reconciliationStatus: WhatsappReconciliationStatus;
+  replayed?: boolean;
 };
 
 /** The invitation-level RSVP roll-up the panel reads; derived from the guest answers. */
@@ -125,6 +128,8 @@ export type AdminInvitation = {
   whatsappLastInboundMessageId: string | null;
   whatsappLastOutboundMessageId: string | null;
   whatsappFailureReason?: string | null;
+  whatsappSendAvailability: WhatsappRsvpSendAvailability;
+  whatsappFreeTextWindow: WhatsappFreeTextWindow;
   reconciliationStatus: WhatsappReconciliationStatus;
   rsvp: AdminRsvpSummary;
   /** Ordered; index 0 is the primary guest who answers for the invitation. */
@@ -148,6 +153,8 @@ export type AdminWhatsappMessage = {
   /** Set when the message was delivered from a template rather than typed by an operator. */
   templateId?: string;
   failed?: boolean;
+  /** Set on an optimistic composer bubble until the backend accepts or rejects the send. */
+  pending?: boolean;
 };
 
 export type AdminWhatsappThreadPage = {
@@ -172,6 +179,8 @@ export type AdminWhatsappFlowSnapshot = {
   whatsappLastInboundMessageId: string | null;
   whatsappLastOutboundMessageId: string | null;
   whatsappFailureReason?: string | null;
+  whatsappSendAvailability: WhatsappRsvpSendAvailability;
+  whatsappFreeTextWindow: WhatsappFreeTextWindow;
   reconciliationStatus: WhatsappReconciliationStatus;
 };
 

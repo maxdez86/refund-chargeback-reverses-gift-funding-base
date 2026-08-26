@@ -93,6 +93,8 @@ describe("WhatsApp RSVP operator handlers", () => {
 
     getStatusMock.mockResolvedValue({
       invitationCode: "SW2748", status: "message_sent", phoneNumber: "5511963656517",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       history: [{ kind: "message", id: "wamid.1", direction: "outbound", status: "sent", createdAt: "2026-08-17T12:00:00.000Z" }],
       nextCursor: "cursor-1"
     });

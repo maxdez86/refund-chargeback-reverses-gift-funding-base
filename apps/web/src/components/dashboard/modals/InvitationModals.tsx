@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, CircleAlert, Plus, Trash2 } from "lucide-react";
 import {
   formatPhone,
@@ -16,6 +16,7 @@ import {
   templateForSend
 } from "@/lib/admin-dashboard-model";
 import type { AdminInvitation } from "@/lib/admin-dashboard-types";
+import type { AdminWhatsappSendState } from "@/hooks/use-admin-dashboard";
 import {
   ADMIN_BUTTON,
   AdminModal,
@@ -599,11 +600,13 @@ export function AddGuestsModal({
 export function SendWhatsappModal({
   invitation,
   onCancel,
-  onSend
+  onSend,
+  sendState
 }: {
   invitation: AdminInvitation;
   onCancel: () => void;
-  onSend: (mode: "first" | "resend") => void;
+  onSend: (mode: "first" | "resend") => void | Promise<void>;
+  sendState: AdminWhatsappSendState;
 }) {
   const availability = sendAvailability(invitation);
   const [mode, setMode] = useState<"first" | "resend">(
@@ -613,6 +616,13 @@ export function SendWhatsappModal({
   const allowed =
     (mode === "first" && availability.firstAllowed) ||
     (mode === "resend" && availability.resendAllowed);
+  const submitting = sendState.status === "loading";
+
+  useEffect(() => {
+    if (submitting || allowed) return;
+    if (availability.firstAllowed) setMode("first");
+    else if (availability.resendAllowed) setMode("resend");
+  }, [allowed, availability.firstAllowed, availability.resendAllowed, submitting]);
 
   const options = [
     {
@@ -623,15 +633,15 @@ export function SendWhatsappModal({
       description:
         "Abre o fluxo com o convite e o pedido de RSVP. Disponível apenas para convites que ainda não receberam mensagem.",
       template: templateForSend(invitation, "first"),
-      disabled: availability.sentCount > 0
+      disabled: !availability.firstAllowed
     },
     {
       key: "resend" as const,
       title: "Reenvio",
-      tag: availability.failed ? "RETENTATIVA" : availability.undecided ? "PERMITIDO" : "BLOQUEADO",
+      tag: availability.failed ? "RETENTATIVA" : availability.undecided || availability.completedPending ? "PERMITIDO" : "BLOQUEADO",
       tagTone: availability.failed
         ? ("err" as const)
-        : availability.undecided
+        : availability.undecided || availability.completedPending
           ? ("ok" as const)
           : ("mute" as const),
       description:
@@ -641,7 +651,9 @@ export function SendWhatsappModal({
             ? "A última tentativa falhou. Corrija o telefone ou os dados do convite e repita o envio — conta como nova tentativa."
             : availability.undecided
               ? "O convidado respondeu como indeciso e o fluxo segue aberto. Envia novamente o pedido de confirmação."
-              : "O backend só aceita reenvio quando o convidado está indeciso ou quando houve falha no envio. Este convite não está em nenhuma das duas situações.",
+              : availability.completedPending
+                ? "O fluxo anterior terminou, mas todos os convidados continuam pendentes. Envia novamente o pedido de confirmação."
+              : "O backend aceita reenvio após falha, enquanto o fluxo está indeciso ou quando um fluxo concluído ainda tem todos os convidados pendentes. Os demais estados permanecem bloqueados.",
       template: templateForSend(invitation, "resend"),
       disabled: !availability.resendAllowed
     }
@@ -650,7 +662,7 @@ export function SendWhatsappModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       alignTop
       widthClassName="max-w-[600px]"
       eyebrow={`CONVITE ${invitation.invitationCode}`}
@@ -658,24 +670,27 @@ export function SendWhatsappModal({
       description={`Para ${invitation.householdName} · ${formatPhone(invitation.phoneNumber)}`}
       footer={
         <>
-          <ModalNote tone={anyAllowed ? "info" : "error"}>
-            {!anyAllowed
+          <ModalNote tone={sendState.status === "error" || !anyAllowed ? "error" : "info"}>
+            {sendState.status === "error"
+              ? "O envio não foi confirmado. Revise o erro abaixo antes de tentar novamente."
+              : !anyAllowed
               ? "Nenhum envio disponível: o fluxo deste convite já foi iniciado e não está indeciso nem com falha."
               : mode === "first"
                 ? "A mensagem entra na fila e o fluxo passa a acompanhar a resposta."
-                : "O reenvio mantém o histórico anterior e soma uma tentativa."}
+                : "O reenvio mantém o histórico e cria um novo comando de envio."}
           </ModalNote>
           <ModalActions>
-            <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+            <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel} disabled={submitting}>
               Cancelar
             </button>
             <button
               type="button"
               className={ADMIN_BUTTON.primary}
-              disabled={!allowed}
+              disabled={!allowed || submitting}
+              aria-busy={submitting}
               onClick={() => onSend(mode)}
             >
-              {mode === "first" ? "Enviar confirmação" : "Reenviar mensagem"}
+              {submitting ? "Enviando…" : mode === "first" ? "Enviar confirmação" : "Reenviar mensagem"}
             </button>
           </ModalActions>
         </>
@@ -694,7 +709,7 @@ export function SendWhatsappModal({
               type="button"
               role="radio"
               aria-checked={on}
-              disabled={option.disabled}
+              disabled={option.disabled || submitting}
               onClick={() => setMode(option.key)}
               className={cn(
                 "flex w-full items-start gap-3.5 rounded-xl border px-4 py-[15px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-ink",
@@ -731,6 +746,17 @@ export function SendWhatsappModal({
           );
         })}
       </div>
+
+      {submitting && (
+        <p role="status" className="mt-4 text-sm text-admin-muted">
+          Solicitando o envio ao serviço de WhatsApp…
+        </p>
+      )}
+      {sendState.status === "error" && (
+        <p role="alert" className="mt-4 text-sm leading-relaxed text-admin-danger">
+          {sendState.message}
+        </p>
+      )}
 
       <div className="mt-6 border-t border-admin-line pt-5">
         <div className="flex flex-wrap items-baseline gap-3">

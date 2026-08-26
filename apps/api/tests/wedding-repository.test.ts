@@ -375,6 +375,8 @@ describe("WeddingRepository", () => {
       expect(result).toEqual([{
         invitationCode: "AB2345",
         householdName: "Amanda e Chris",
+        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+        whatsappFreeTextWindow: { open: false },
         guests: [
           {
             guestId: "g1",
@@ -404,6 +406,29 @@ describe("WeddingRepository", () => {
           note: "Música sugerida: Dreams"
         }
       }]);
+    });
+
+    it("projects completed-pending resend availability without requiring a migration", async () => {
+      const send = vi.fn().mockResolvedValue({
+        Items: [
+          {
+            ...invitation("AE8546", "Família Teste"),
+            whatsappFlowStatus: "completed",
+            whatsappFlowCompletedAt: "2026-08-26T16:54:07.954Z"
+          },
+          guest("AE8546", "g1", "Pessoa 1", 1),
+          guest("AE8546", "g2", "Pessoa 2", 2)
+        ]
+      });
+
+      const result = await new WeddingRepository({ send } as never, "table-test")
+        .listAdminDashboardInvitations();
+
+      expect(result[0]?.whatsappSendAvailability).toEqual({
+        firstAllowed: false,
+        resendAllowed: true,
+        resendReason: "completed_pending"
+      });
     });
 
     const whatsappMessage = (
@@ -456,6 +481,28 @@ describe("WeddingRepository", () => {
       ]) {
         expect(command.input.ProjectionExpression?.split(", ")).not.toContain(attribute);
       }
+    });
+
+    it("projects whatsappLastInboundAt so the dashboard reports an open free-text window", async () => {
+      const lastInboundAt = new Date(Date.now() - 60_000).toISOString();
+      const send = vi.fn().mockResolvedValue({
+        Items: [
+          { ...invitation("AB2345", "Amanda e Chris"), whatsappLastInboundAt: lastInboundAt },
+          guest("AB2345", "g1", "Amanda", 1)
+        ]
+      });
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const result = await repository.listAdminDashboardInvitations();
+
+      // Guards the exact regression: an attribute the mapper reads but the projection never requested.
+      const command = send.mock.calls[0][0] as ScanCommand;
+      expect(command.input.ProjectionExpression?.split(", ")).toContain("whatsappLastInboundAt");
+      expect(result[0]?.whatsappFreeTextWindow).toEqual({
+        open: true,
+        lastInboundAt,
+        expiresAt: new Date(Date.parse(lastInboundAt) + 24 * 60 * 60 * 1000).toISOString()
+      });
     });
 
     it("summarizes matched messages and omits the field when an invitation has none", async () => {

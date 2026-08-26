@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminSessionResponse } from "@brimax/contracts";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import { fixtureDashboardSource } from "@/lib/admin-dashboard-source";
+import { AdminApiError } from "@/lib/admin-api";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
 import type {
   AdminWhatsappConversationSummary,
@@ -56,6 +58,7 @@ const snapshotWithSummary = (invitationCode: string, summary: AdminWhatsappConve
 };
 
 const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
+  whatsappFreeTextWindow: { open: false },
   phoneNumber: "5511999999999",
   phoneNumberSource: "guest",
   phoneNumberUpdatedAt: null,
@@ -67,6 +70,7 @@ const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
   whatsappLastInboundMessageId: null,
   whatsappLastOutboundMessageId: null,
   whatsappFailureReason: null,
+  whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
   reconciliationStatus: "none"
 });
 
@@ -324,6 +328,47 @@ describe("dashboard screens", () => {
     expect(within(dialog).getByText(/Nenhum envio disponível/)).toBeInTheDocument();
   });
 
+  it("enables a resend for an authoritative completed-pending journey", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.invitations = snapshot.invitations.map((invitation) =>
+      invitation.invitationCode === "ZR5567"
+        ? {
+            ...invitation,
+            whatsappFlowStatus: "completed",
+            whatsappFlowCompletedAt: "2026-08-26T16:54:07.954Z",
+            whatsappSendAvailability: {
+              firstAllowed: false,
+              resendAllowed: true,
+              resendReason: "completed_pending"
+            }
+          }
+        : invitation
+    );
+    const source: AdminDashboardSource = {
+      ...fixtureDashboardSource,
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("ZR5567", [], null, {
+        whatsappFlowStatus: "completed",
+        whatsappFlowCompletedAt: "2026-08-26T16:54:07.954Z",
+        whatsappSendAvailability: {
+          firstAllowed: false,
+          resendAllowed: true,
+          resendReason: "completed_pending"
+        }
+      }))
+    };
+    await renderShell(source);
+    openHash("#convites/ZR5567");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar WhatsApp" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("PERMITIDO")).toBeInTheDocument();
+    expect(within(dialog).getByText(/todos os convidados continuam pendentes/)).toBeInTheDocument();
+    expect(within(dialog).getAllByText("wedding_rsvp_pending_reminder_group")).toHaveLength(2);
+    expect(within(dialog).getByRole("button", { name: "Reenviar mensagem" })).toBeEnabled();
+  });
+
   it("queues a retry for a failed invitation", async () => {
     await renderShell();
     openHash("#convites/LB6640");
@@ -334,9 +379,104 @@ describe("dashboard screens", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Reenviar mensagem" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    // The queued opener heads the timeline and the flow badge follows it.
+    // The response-backed command appears immediately; flow state remains server-authoritative.
     expect(screen.getByText("NA FILA")).toBeInTheDocument();
-    expect(screen.getAllByText("Envio na fila").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Falha no envio").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the send modal busy and prevents duplicate submission until the backend accepts", async () => {
+    let resolveSend!: (value: {
+      commandId: string; invitationCode: "LB6640"; templateId: "wedding_rsvp_pending_reminder_group";
+      templateVersion: number; status: "queued"; replayed: false;
+    }) => void;
+    const sendWhatsappRsvp = vi.fn(() => new Promise<Parameters<typeof resolveSend>[0]>((resolve) => {
+      resolveSend = resolve;
+    }));
+    const source: AdminDashboardSource = { ...fixtureDashboardSource, demo: false, sendWhatsappRsvp };
+    await renderShell(source);
+    openHash("#convites/LB6640");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar WhatsApp" }));
+    const dialog = await screen.findByRole("dialog");
+    const submit = within(dialog).getByRole("button", { name: "Reenviar mensagem" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect(sendWhatsappRsvp).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole("button", { name: "Enviando…" })).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(within(dialog).getAllByRole("radio").every((radio) => radio.hasAttribute("disabled"))).toBe(true);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Solicitando o envio");
+
+    resolveSend({
+      commandId: "accepted-resend",
+      invitationCode: "LB6640",
+      templateId: "wedding_rsvp_pending_reminder_group",
+      templateVersion: 2,
+      status: "queued",
+      replayed: false
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("NA FILA")).toBeInTheDocument();
+  });
+
+  it("keeps the modal open with an alert and no queued state when the backend rejects", async () => {
+    const source: AdminDashboardSource = {
+      ...fixtureDashboardSource,
+      demo: false,
+      sendWhatsappRsvp: vi.fn().mockRejectedValue(
+        new AdminApiError("O estado do fluxo mudou e este envio não é mais permitido.", "rejected", 409, "INVALID_FLOW_TRANSITION")
+      )
+    };
+    await renderShell(source);
+    openHash("#convites/LB6640");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar WhatsApp" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Reenviar mensagem" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("O estado do fluxo mudou");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText("NA FILA")).not.toBeInTheDocument();
+  });
+
+  it("disables a stale resend after a 409 refresh returns blocked availability", async () => {
+    const failedFlow: Partial<AdminWhatsappFlowSnapshot> = {
+      whatsappFlowStatus: "failed",
+      whatsappSendAvailability: {
+        firstAllowed: false,
+        resendAllowed: true,
+        resendReason: "failed"
+      }
+    };
+    const blockedFlow: Partial<AdminWhatsappFlowSnapshot> = {
+      whatsappFlowStatus: "completed",
+      whatsappFlowCompletedAt: "2026-08-26T17:00:00.000Z",
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false }
+    };
+    const loadWhatsappInvitation = vi.fn()
+      .mockResolvedValueOnce(threadPage("LB6640", [], null, failedFlow))
+      .mockResolvedValueOnce(threadPage("LB6640", [], null, blockedFlow));
+    const source: AdminDashboardSource = {
+      ...fixtureDashboardSource,
+      demo: false,
+      loadWhatsappInvitation,
+      sendWhatsappRsvp: vi.fn().mockRejectedValue(
+        new AdminApiError("O estado do fluxo mudou.", "rejected", 409, "INVALID_FLOW_TRANSITION")
+      )
+    };
+    await renderShell(source);
+    openHash("#convites/LB6640");
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enviar WhatsApp" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Reenviar mensagem" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("O estado do fluxo mudou");
+    await waitFor(() => expect(loadWhatsappInvitation).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Reenviar mensagem" })).toBeDisabled());
+    expect(screen.queryByText("NA FILA")).not.toBeInTheDocument();
   });
 
   it("lists every person with their invitation, role and courtesy flag", async () => {
@@ -741,6 +881,93 @@ describe("dashboard screens", () => {
     expect(
       screen.queryByRole("button", { name: "Conversa com Helena Prado Ribeiro, 2 mensagens não lidas" })
     ).not.toBeInTheDocument();
+  });
+
+  it("renders a pending bubble that settles once the backend accepts the reply", async () => {
+    // Threads cleared so the conversation loads on open and the flow refresh applies.
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    let resolveSend!: () => void;
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: async (invitationCode) =>
+        threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: true, lastInboundAt: "2026-08-20T12:00:00.000Z", expiresAt: "2126-08-21T12:00:00.000Z" } }),
+      sendWhatsappText: () => new Promise((resolve) => {
+        resolveSend = () => resolve({
+          commandId: "idempotency-admin-text-1", invitationCode: "QP8814", status: "queued", replayed: false
+        });
+      })
+    };
+    await renderShell(source);
+    openHash("#whatsapp/QP8814");
+
+    const composer = await screen.findByLabelText("Resposta para o convidado");
+    fireEvent.change(composer, { target: { value: "Já atualizamos!" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+
+    expect(await screen.findByText("Já atualizamos!")).toBeInTheDocument();
+    // The bubble footer and the button both say so while the request is in flight.
+    await waitFor(() => expect(screen.getAllByText("Enviando…")).toHaveLength(2));
+    expect(screen.getByRole("button", { name: /Enviando/ })).toBeDisabled();
+
+    await act(async () => {
+      resolveSend();
+    });
+
+    await waitFor(() => expect(screen.queryAllByText("Enviando…")).toHaveLength(0));
+    expect(screen.queryByText("Falha no envio")).not.toBeInTheDocument();
+  });
+
+  it("marks a rejected reply as failed and explains why in the composer", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: async (invitationCode) =>
+        threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: true, lastInboundAt: "2026-08-20T12:00:00.000Z", expiresAt: "2126-08-21T12:00:00.000Z" } }),
+      sendWhatsappText: async () => {
+        throw new AdminApiError("A janela de 24 horas do WhatsApp expirou.", "rejected", 422, "INVALID_INVITATION_STATE");
+      }
+    };
+    await renderShell(source);
+    openHash("#whatsapp/QP8814");
+
+    const composer = await screen.findByLabelText("Resposta para o convidado");
+    fireEvent.change(composer, { target: { value: "Tentativa" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+
+    // The failed bubble is the only surviving record of the text the composer already cleared.
+    expect(await screen.findByText("Falha no envio")).toBeInTheDocument();
+    expect(screen.getByText("Tentativa")).toBeInTheDocument();
+    expect(await screen.findByText("A janela de 24 horas do WhatsApp expirou.")).toBeInTheDocument();
+  });
+
+  it("disables the composer with a reason once the 24-hour window has closed", async () => {
+    const snapshot = createFixtureDashboardSnapshot();
+    snapshot.threads = {};
+    const sendWhatsappText = vi.fn();
+    const source: AdminDashboardSource = {
+      demo: false,
+      load: async () => snapshot,
+      loadWhatsappInvitation: async (invitationCode) =>
+        threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: false } }),
+      sendWhatsappText
+    };
+    await renderShell(source);
+    openHash("#whatsapp/QP8814");
+
+    const composer = await screen.findByLabelText("Resposta para o convidado");
+    await waitFor(() => expect(composer).toBeDisabled());
+    expect(
+      screen.getByText("A janela de 24 h do WhatsApp expirou. Envie um modelo aprovado.")
+    ).toBeInTheDocument();
+
+    fireEvent.change(composer, { target: { value: "Oi!" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(sendWhatsappText).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^Enviar/ })).toBeDisabled();
   });
 
   it("keeps the composer inert until there is something to send", async () => {

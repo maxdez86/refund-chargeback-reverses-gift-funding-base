@@ -89,6 +89,8 @@ describe("AdminDashboardService", () => {
     const withConversation = {
       invitationCode: "AB2345",
       householdName: "Amanda e Chris",
+      whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       guests: [{
         guestId: "guest-1",
         guestName: "Amanda",

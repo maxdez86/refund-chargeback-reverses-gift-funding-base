@@ -117,6 +117,11 @@ describe("AppStack", () => {
       AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/whatsapp/invitations/{invitationCode}/messages",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /admin/whatsapp/invitations/{invitationCode}",
       AuthorizationType: "CUSTOM",
       AuthorizerId: Match.anyValue()
@@ -160,7 +165,8 @@ describe("AppStack", () => {
       ['"WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED"', "whatsapp-rsvp-reconciliation-required-dev"],
       ['"WHATSAPP_RSVP_BRANCH"', "whatsapp-rsvp-branch-dev"],
       ['"WHATSAPP_RSVP_INBOUND_CORRELATION"', "whatsapp-rsvp-inbound-correlation-dev"],
-      ['"WHATSAPP_WEBHOOK_WORKER_OUTCOME"', "whatsapp-webhook-worker-outcome-dev"]
+      ['"WHATSAPP_WEBHOOK_WORKER_OUTCOME"', "whatsapp-webhook-worker-outcome-dev"],
+      ['"WHATSAPP_OPERATOR_TEXT_SEND"', "whatsapp-operator-text-send-dev"]
     ] as const) {
       template.hasResourceProperties("AWS::Logs::MetricFilter", {
         MetricTransformations: Match.arrayWith([Match.objectLike({ MetricName: metricName, MetricNamespace: "Brimax/Payments" })])
@@ -474,7 +480,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(adminRoutes).toHaveLength(8);
+    expect(adminRoutes).toHaveLength(9);
     const adminAuthorizerIds = new Set(
       adminRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))
     );
@@ -855,7 +861,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(protectedRoutes).toHaveLength(8);
+    expect(protectedRoutes).toHaveLength(9);
     expect(protectedRoutes.every((route) => route.Properties?.AuthorizationType === "CUSTOM")).toBe(true);
     expect(new Set(protectedRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))).size).toBe(1);
     const authorizerInvokePermissions = Object.values(resources).filter(

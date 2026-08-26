@@ -3,6 +3,12 @@ import {
   WhatsappIdempotencyKeySchema,
   WhatsappPhoneUpdateRequestSchema,
   WhatsappPhoneUpdateResponseSchema,
+  WhatsappRsvpAutoSendRequestSchema,
+  WhatsappRsvpSendAvailabilitySchema,
+  WhatsappFreeTextWindowSchema,
+  WhatsappOperatorTextSendRequestSchema,
+  WhatsappOperatorTextSendResponseSchema,
+  WhatsappRsvpErrorCodeSchema,
   WhatsappRsvpErrorResponseSchema,
   WhatsappRsvpSendRequestSchema,
   WhatsappRsvpSendResponseSchema,
@@ -15,8 +21,62 @@ import {
 } from "@brimax/contracts";
 
 const invitationCode = "SW2748";
+const blockedAvailability = { firstAllowed: false, resendAllowed: false } as const;
 
 describe("WhatsApp RSVP contracts", () => {
+  it("strictly validates automatic send modes and defaults legacy empty bodies", () => {
+    expect(WhatsappRsvpAutoSendRequestSchema.parse({})).toEqual({ mode: "first" });
+    expect(WhatsappRsvpAutoSendRequestSchema.parse({ mode: "first" })).toEqual({ mode: "first" });
+    expect(WhatsappRsvpAutoSendRequestSchema.parse({ mode: "resend" })).toEqual({ mode: "resend" });
+    expect(() => WhatsappRsvpAutoSendRequestSchema.parse({ mode: "later" })).toThrow();
+    expect(() => WhatsappRsvpAutoSendRequestSchema.parse({ mode: "first", extra: true })).toThrow();
+  });
+
+  it("strictly validates authoritative send availability", () => {
+    expect(WhatsappRsvpSendAvailabilitySchema.parse({
+      firstAllowed: false,
+      resendAllowed: true,
+      resendReason: "completed_pending"
+    })).toEqual({ firstAllowed: false, resendAllowed: true, resendReason: "completed_pending" });
+    expect(() => WhatsappRsvpSendAvailabilitySchema.parse({ firstAllowed: false, resendAllowed: true })).toThrow();
+    expect(() => WhatsappRsvpSendAvailabilitySchema.parse({ ...blockedAvailability, extra: true })).toThrow();
+  });
+
+  it("strictly validates the free-text window and its timestamp pairing", () => {
+    expect(WhatsappFreeTextWindowSchema.parse({ open: false })).toEqual({ open: false });
+    expect(WhatsappFreeTextWindowSchema.parse({
+      open: true,
+      lastInboundAt: "2026-08-20T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:00:00.000Z"
+    })).toEqual({
+      open: true,
+      lastInboundAt: "2026-08-20T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:00:00.000Z"
+    });
+    // An open window without its timestamps would leave the UI unable to explain itself.
+    expect(() => WhatsappFreeTextWindowSchema.parse({ open: true })).toThrow();
+    expect(() => WhatsappFreeTextWindowSchema.parse({
+      open: true, lastInboundAt: "2026-08-20T12:00:00.000Z"
+    })).toThrow();
+    expect(() => WhatsappFreeTextWindowSchema.parse({ open: false, extra: true })).toThrow();
+  });
+
+  it("strictly validates operator free-text sends", () => {
+    expect(WhatsappOperatorTextSendRequestSchema.parse({ body: "Oi!" })).toEqual({ body: "Oi!" });
+    expect(WhatsappOperatorTextSendRequestSchema.parse({ body: "a".repeat(4096) }).body).toHaveLength(4096);
+    expect(() => WhatsappOperatorTextSendRequestSchema.parse({ body: "" })).toThrow();
+    expect(() => WhatsappOperatorTextSendRequestSchema.parse({ body: "a".repeat(4097) })).toThrow();
+    expect(() => WhatsappOperatorTextSendRequestSchema.parse({ body: "Oi!", invitationCode })).toThrow();
+
+    const accepted = { commandId: "idempotency-key-1", invitationCode, status: "queued", replayed: false };
+    expect(WhatsappOperatorTextSendResponseSchema.parse(accepted)).toEqual(accepted);
+    // The synthetic sentinel is not a template purpose, so it never appears on the response.
+    expect(() => WhatsappOperatorTextSendResponseSchema.parse({
+      ...accepted, templateId: "__whatsapp_operator_text__"
+    })).toThrow();
+    expect(WhatsappRsvpErrorCodeSchema.parse("FREE_TEXT_WINDOW_CLOSED")).toBe("FREE_TEXT_WINDOW_CLOSED");
+  });
+
   it("strictly validates operator send requests", () => {
     for (const templateId of WHATSAPP_RSVP_TEMPLATE_PURPOSES) {
       expect(WhatsappRsvpSendRequestSchema.parse({ invitationCode, templateId })).toEqual({ invitationCode, templateId });
@@ -65,15 +125,19 @@ describe("WhatsApp RSVP contracts", () => {
   });
 
   it("parses status, phone, and shared error responses", () => {
-    expect(WhatsappRsvpStatusResponseSchema.parse({ invitationCode, status: "idle" })).toEqual({ invitationCode, status: "idle" });
+    expect(WhatsappRsvpStatusResponseSchema.parse({ invitationCode, status: "idle", sendAvailability: { firstAllowed: true, resendAllowed: false }, freeTextWindow: { open: false } })).toEqual({ invitationCode, status: "idle", sendAvailability: { firstAllowed: true, resendAllowed: false }, freeTextWindow: { open: false } });
     expect(WhatsappRsvpStatusResponseSchema.parse({
       invitationCode,
-      status: "website_followup_pending"
-    })).toEqual({ invitationCode, status: "website_followup_pending" });
+      status: "website_followup_pending",
+      sendAvailability: blockedAvailability,
+      freeTextWindow: { open: false }
+    })).toEqual({ invitationCode, status: "website_followup_pending", sendAvailability: blockedAvailability, freeTextWindow: { open: false } });
     expect(WhatsappRsvpStatusResponseSchema.parse({
       invitationCode,
-      status: "website_update_required"
-    })).toEqual({ invitationCode, status: "website_update_required" });
+      status: "website_update_required",
+      sendAvailability: blockedAvailability,
+      freeTextWindow: { open: false }
+    })).toEqual({ invitationCode, status: "website_update_required", sendAvailability: blockedAvailability, freeTextWindow: { open: false } });
     expect(WhatsappPhoneUpdateResponseSchema.parse({ invitationCode, phoneNumber: "5511963656517", updatedAt: "2026-08-17T12:00:00.000Z" })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request." })).toBeTruthy();
     expect(WhatsappRsvpErrorResponseSchema.parse({ code: "VALIDATION_ERROR", message: "Invalid request.", issues: [{ path: ["templateId"], message: "Invalid" }] })).toBeTruthy();
@@ -87,7 +151,7 @@ describe("WhatsApp RSVP contracts", () => {
     });
     expect(() => WhatsappRsvpStatusQuerySchema.parse({ order: "newest" })).toThrow();
 
-    const base = { invitationCode, status: "message_sent" as const };
+    const base = { invitationCode, status: "message_sent" as const, sendAvailability: blockedAvailability, freeTextWindow: { open: false } };
     expect(WhatsappRsvpStatusResponseSchema.parse({
       ...base,
       history: [{

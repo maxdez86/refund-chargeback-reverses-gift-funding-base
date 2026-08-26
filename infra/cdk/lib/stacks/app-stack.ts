@@ -526,6 +526,10 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-auto-send/handler.ts"),
       environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(15)
     });
+    const whatsappOperatorTextFn = this.createTaggedNodejsFunction("WhatsappOperatorTextFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-operator-text/handler.ts"),
+      environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(15)
+    });
     const whatsappRsvpStatusFn = this.createTaggedNodejsFunction("WhatsappRsvpStatusFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/whatsapp-rsvp-status/handler.ts"),
       environment: commonEnvironment, handler: "handler", projectRoot, runtime: lambda.Runtime.NODEJS_24_X, timeout: cdk.Duration.seconds(10)
@@ -574,6 +578,7 @@ export class AppStack extends cdk.Stack {
       whatsappRsvpWorkerFn,
       whatsappWebhookWorkerFn,
       whatsappRsvpSendFn,
+      whatsappOperatorTextFn,
       whatsappRsvpStatusFn,
       whatsappRsvpCommandStatusFn,
       whatsappRsvpPhoneFn
@@ -682,11 +687,13 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadWriteData(whatsappRsvpWorkerFn);
     props.table.grantReadWriteData(whatsappRsvpSendFn);
     props.table.grantReadWriteData(whatsappRsvpAutoSendFn);
+    props.table.grantReadWriteData(whatsappOperatorTextFn);
     props.table.grantReadData(whatsappRsvpStatusFn);
     props.table.grantReadData(whatsappRsvpCommandStatusFn);
     props.table.grantReadWriteData(whatsappRsvpPhoneFn);
     whatsappRsvpQueue.grantSendMessages(whatsappRsvpSendFn);
     whatsappRsvpQueue.grantSendMessages(whatsappRsvpAutoSendFn);
+    whatsappRsvpQueue.grantSendMessages(whatsappOperatorTextFn);
     whatsappRsvpQueue.grantConsumeMessages(whatsappRsvpWorkerFn);
     props.table.grantReadWriteData(whatsappWebhookFn);
     props.table.grantReadWriteData(whatsappWebhookWorkerFn);
@@ -849,6 +856,12 @@ export class AppStack extends cdk.Stack {
       [apigwv2.HttpMethod.POST],
       new apigwv2Integrations.HttpLambdaIntegration("WhatsappRsvpAutoSendIntegration", whatsappRsvpAutoSendFn)
     );
+    const whatsappOperatorTextRoutes = addAdminRoutes(
+      "WhatsappOperatorTextRoute",
+      "/admin/whatsapp/invitations/{invitationCode}/messages",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration("WhatsappOperatorTextIntegration", whatsappOperatorTextFn)
+    );
     const whatsappStatusRoutes = addAdminRoutes(
       "WhatsappStatusRoute",
       "/admin/whatsapp/invitations/{invitationCode}",
@@ -880,6 +893,7 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, deleteGuestMessageRoutes);
       addStageRouteDependency(defaultStage, whatsappSendRoutes);
       addStageRouteDependency(defaultStage, whatsappAutoSendRoutes);
+      addStageRouteDependency(defaultStage, whatsappOperatorTextRoutes);
       addStageRouteDependency(defaultStage, whatsappStatusRoutes);
       addStageRouteDependency(defaultStage, whatsappCommandStatusRoutes);
       addStageRouteDependency(defaultStage, whatsappPhoneRoutes);
@@ -1140,13 +1154,15 @@ export class AppStack extends cdk.Stack {
       ["WhatsappRsvpReconciliationMetric", "WHATSAPP_RSVP_WORKER_RECONCILIATION_REQUIRED", "whatsapp-rsvp-reconciliation-required"],
       ["WhatsappRsvpBranchMetric", "WHATSAPP_RSVP_BRANCH", "whatsapp-rsvp-branch"],
       ["WhatsappRsvpCorrelationMetric", "WHATSAPP_RSVP_INBOUND_CORRELATION", "whatsapp-rsvp-inbound-correlation"],
-      ["WhatsappWebhookWorkerOutcomeMetric", "WHATSAPP_WEBHOOK_WORKER_OUTCOME", "whatsapp-webhook-worker-outcome"]
+      ["WhatsappWebhookWorkerOutcomeMetric", "WHATSAPP_WEBHOOK_WORKER_OUTCOME", "whatsapp-webhook-worker-outcome"],
+      ["WhatsappOperatorTextSendMetric", "WHATSAPP_OPERATOR_TEXT_SEND", "whatsapp-operator-text-send"]
     ];
 
     for (const [id, term, name] of filters) {
       new logs.MetricFilter(this, id, {
         logGroup: this.getFunctionLogGroup(
           id === "WhatsappRsvpSendMetric" ? "WhatsappRsvpSendFunction" :
+            id === "WhatsappOperatorTextSendMetric" ? "WhatsappOperatorTextFunction" :
             id === "WhatsappRsvpBranchMetric" || id === "WhatsappRsvpCorrelationMetric" || id === "WhatsappWebhookWorkerOutcomeMetric"
               ? "WhatsappWebhookWorkerFunction"
               : "WhatsappRsvpWorkerFunction"

@@ -8,11 +8,13 @@ import { useDashboardFonts } from "@/hooks/use-dashboard-fonts";
 import { useDashboardRoute } from "@/hooks/use-dashboard-route";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
 import { fixtureDashboardSource, type AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import { AdminApiError } from "@/lib/admin-api";
 import type { AdminDashboardSnapshot, AdminWhatsappFlowSnapshot } from "@/lib/admin-dashboard-types";
 
 type InvitationPage = Awaited<ReturnType<AdminDashboardSource["loadWhatsappInvitation"]>>;
 
 const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
+  whatsappFreeTextWindow: { open: false },
   phoneNumber: "5511999999999",
   phoneNumberSource: "guest",
   phoneNumberUpdatedAt: null,
@@ -24,6 +26,7 @@ const defaultFlow = (_invitationCode: string): AdminWhatsappFlowSnapshot => ({
   whatsappLastInboundMessageId: null,
   whatsappLastOutboundMessageId: null,
   whatsappFailureReason: null,
+  whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
   reconciliationStatus: "none"
 });
 
@@ -675,6 +678,156 @@ describe("useAdminDashboard", () => {
     await act(async () => Promise.resolve());
     expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
     expect(result.current.state.threads.SW2748).toBeUndefined();
+  });
+
+  it("deduplicates an in-flight send, records backend facts, and force-refreshes the invitation", async () => {
+    let resolveSend!: (value: {
+      commandId: string; invitationCode: "SW2748"; templateId: "wedding_rsvp_pending_reminder_group";
+      templateVersion: number; status: "queued"; replayed: false;
+    }) => void;
+    const sendWhatsappRsvp = vi.fn(() => new Promise<Parameters<typeof resolveSend>[0]>((resolve) => {
+      resolveSend = resolve;
+    }));
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    source.sendWhatsappRsvp = sendWhatsappRsvp;
+    const { result } = renderHook(() => useAdminDashboard({
+      source,
+      now: () => "2026-08-20T16:00:00.000Z",
+      createIdempotencyKey: () => "admin-rsvp-first-fixedkey"
+    }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    act(() => {
+      first = result.current.sendWhatsappRsvp("SW2748", "first");
+      second = result.current.sendWhatsappRsvp("SW2748", "first");
+    });
+    expect(first).toBe(second);
+    expect(sendWhatsappRsvp).toHaveBeenCalledTimes(1);
+    expect(result.current.whatsappSendStates.SW2748).toEqual({ status: "loading" });
+
+    resolveSend({
+      commandId: "command-from-api",
+      invitationCode: "SW2748",
+      templateId: "wedding_rsvp_pending_reminder_group",
+      templateVersion: 2,
+      status: "queued",
+      replayed: false
+    });
+    await act(() => first);
+
+    expect(result.current.whatsappSendStates.SW2748).toEqual({ status: "idle" });
+    expect(result.current.state.invitations.find((item) => item.invitationCode === "SW2748")?.commands[0])
+      .toMatchObject({ commandId: "command-from-api", status: "queued" });
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps state unchanged on rejection and rotates only definitive idempotency keys", async () => {
+    const sendWhatsappRsvp = vi.fn()
+      .mockRejectedValueOnce(new AdminApiError("offline", "unavailable"))
+      .mockRejectedValueOnce(new AdminApiError("offline", "unavailable"))
+      .mockRejectedValueOnce(new AdminApiError("stale", "rejected", 409, "INVALID_FLOW_TRANSITION"))
+      .mockRejectedValueOnce(new AdminApiError("stale", "rejected", 409, "INVALID_FLOW_TRANSITION"));
+    const { source } = spySource(unloadedSnapshot());
+    source.sendWhatsappRsvp = sendWhatsappRsvp;
+    const keys = vi.fn()
+      .mockReturnValueOnce("admin-rsvp-first-ambiguous")
+      .mockReturnValueOnce("admin-rsvp-first-definitive")
+      .mockReturnValueOnce("admin-rsvp-first-rotated");
+    const { result } = renderHook(() => useAdminDashboard({ source, createIdempotencyKey: keys }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    const before = result.current.state.invitations.find((item) => item.invitationCode === "SW2748")?.commands.length;
+
+    await act(() => result.current.sendWhatsappRsvp("SW2748", "first").catch(() => undefined));
+    await act(() => result.current.sendWhatsappRsvp("SW2748", "first").catch(() => undefined));
+    expect(sendWhatsappRsvp.mock.calls[0][2]).toBe("admin-rsvp-first-ambiguous");
+    expect(sendWhatsappRsvp.mock.calls[1][2]).toBe("admin-rsvp-first-ambiguous");
+
+    await act(() => result.current.sendWhatsappRsvp("SW2748", "first").catch(() => undefined));
+    await act(() => result.current.sendWhatsappRsvp("SW2748", "first").catch(() => undefined));
+    expect(sendWhatsappRsvp.mock.calls[2][2]).toBe("admin-rsvp-first-ambiguous");
+    expect(sendWhatsappRsvp.mock.calls[3][2]).toBe("admin-rsvp-first-definitive");
+    expect(result.current.state.invitations.find((item) => item.invitationCode === "SW2748")?.commands.length).toBe(before);
+    expect(result.current.whatsappSendStates.SW2748).toMatchObject({ status: "error" });
+  });
+
+  it("shows a pending composer bubble, settles it, and force-refreshes the thread", async () => {
+    let resolveSend!: (value: {
+      commandId: string; invitationCode: string; status: "queued"; replayed: false;
+    }) => void;
+    const sendWhatsappText = vi.fn((
+      _invitationCode: string,
+      _body: string,
+      _idempotencyKey: string
+    ) => new Promise<Parameters<typeof resolveSend>[0]>((resolve) => {
+      resolveSend = resolve;
+    }));
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    source.sendWhatsappText = sendWhatsappText;
+    const { result } = renderHook(() => useAdminDashboard({
+      source,
+      now: () => "2026-08-20T16:00:00.000Z"
+    }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    act(() => {
+      first = result.current.sendWhatsappText("SW2748", "  Oi Helena!  ");
+      second = result.current.sendWhatsappText("SW2748", "Segunda tentativa");
+    });
+    // One send per invitation at a time; the second call joins the first rather than racing it.
+    expect(first).toBe(second);
+    expect(sendWhatsappText).toHaveBeenCalledTimes(1);
+    expect(sendWhatsappText.mock.calls[0][1]).toBe("Oi Helena!");
+    expect(result.current.whatsappTextSendStates.SW2748).toEqual({ status: "loading" });
+    expect(result.current.state.threads.SW2748?.at(-1)).toMatchObject({
+      direction: "outbound", text: "Oi Helena!", pending: true
+    });
+
+    resolveSend({
+      commandId: "idempotency-admin-text-1", invitationCode: "SW2748", status: "queued", replayed: false
+    });
+    await act(() => first);
+
+    expect(result.current.whatsappTextSendStates.SW2748).toEqual({ status: "idle" });
+    expect(result.current.state.threads.SW2748?.at(-1)).toMatchObject({ pending: false });
+    expect(result.current.state.threads.SW2748?.at(-1)).not.toMatchObject({ failed: true });
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the bubble failed on rejection and never sends an empty draft", async () => {
+    const sendWhatsappText = vi.fn().mockRejectedValue(
+      new AdminApiError("A janela de 24 horas do WhatsApp expirou.", "rejected", 409, "FREE_TEXT_WINDOW_CLOSED")
+    );
+    const { source, loadWhatsappInvitation } = spySource(unloadedSnapshot());
+    source.sendWhatsappText = sendWhatsappText;
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    await act(() => result.current.sendWhatsappText("SW2748", "   "));
+    expect(sendWhatsappText).not.toHaveBeenCalled();
+
+    await act(() => result.current.sendWhatsappText("SW2748", "Oi!"));
+
+    expect(result.current.whatsappTextSendStates.SW2748).toMatchObject({ status: "error" });
+    expect(result.current.state.threads.SW2748?.at(-1)).toMatchObject({
+      text: "Oi!", pending: false, failed: true
+    });
+    // A 409 means the invitation state the composer was working from is stale.
+    expect(loadWhatsappInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a free-text send when the source cannot perform one", async () => {
+    const { source } = spySource(unloadedSnapshot());
+    delete source.sendWhatsappText;
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    await act(() => result.current.sendWhatsappText("SW2748", "Oi!"));
+    expect(result.current.whatsappTextSendStates.SW2748).toMatchObject({ status: "error" });
+    expect(result.current.state.threads.SW2748?.at(-1)).toMatchObject({ failed: true });
   });
 });
 

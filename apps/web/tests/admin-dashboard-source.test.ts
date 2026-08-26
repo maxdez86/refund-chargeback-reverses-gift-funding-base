@@ -30,6 +30,8 @@ const completeResponse: AdminDashboardResponse = {
       whatsappLastInboundMessageId: "wamid.inbound",
       whatsappLastOutboundMessageId: "wamid.outbound",
       whatsappFailureReason: "provider mismatch",
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       guests: [
         {
           guestId: "guest-2",
@@ -113,6 +115,8 @@ describe("admin dashboard response mapping", () => {
       whatsappLastInboundMessageId: "wamid.inbound",
       whatsappLastOutboundMessageId: "wamid.outbound",
       whatsappFailureReason: "provider mismatch",
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       reconciliationStatus: "required",
       rsvp: {
         status: "attending",
@@ -159,6 +163,8 @@ describe("admin dashboard response mapping", () => {
         {
           invitationCode: "CD6789",
           householdName: "Família Costa",
+          whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+          whatsappFreeTextWindow: { open: false },
           guests: [
             {
               guestId: "guest-1",
@@ -221,7 +227,69 @@ describe("admin dashboard response mapping", () => {
   });
 });
 
+describe("admin WhatsApp free-text source", () => {
+  it("delegates a live free-text send with auth and reports auth failures", async () => {
+    const response = {
+      commandId: "idempotency-admin-text-12345678",
+      invitationCode: "SW2748",
+      status: "queued",
+      replayed: false
+    };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 202 }));
+    const live = createLiveDashboardSource({ getToken: () => "test-token", apiUrl: "/api", fetcher });
+
+    await expect(live.sendWhatsappText?.("SW2748", "Oi!", "admin-text-12345678")).resolves.toEqual(response);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toBe("/api/admin/whatsapp/invitations/SW2748/messages");
+
+    const onAuthError = vi.fn();
+    const unauthorized = createLiveDashboardSource({
+      getToken: () => "test-token",
+      apiUrl: "/api",
+      fetcher: vi.fn().mockResolvedValue(new Response("{}", { status: 401 })),
+      onAuthError
+    });
+    await expect(unauthorized.sendWhatsappText?.("SW2748", "Oi!", "admin-text-12345678")).rejects.toThrow();
+    expect(onAuthError).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a fixture free-text send once the fixture window has lapsed", async () => {
+    const snapshot = await fixtureDashboardSource.load();
+    const open = snapshot.invitations.find((invitation) => invitation.whatsappFreeTextWindow.open);
+    const closed = snapshot.invitations.find((invitation) => !invitation.whatsappFreeTextWindow.open);
+    // The fixture set is meant to demonstrate both composer states.
+    expect(open).toBeDefined();
+    expect(closed).toBeDefined();
+
+    await expect(fixtureDashboardSource.sendWhatsappText?.(open!.invitationCode, "Oi!", "admin-text-12345678"))
+      .resolves.toMatchObject({ invitationCode: open!.invitationCode, status: "queued" });
+    await expect(fixtureDashboardSource.sendWhatsappText?.(closed!.invitationCode, "Oi!", "admin-text-12345678"))
+      .rejects.toMatchObject({ code: "FREE_TEXT_WINDOW_CLOSED", status: 409 });
+  });
+});
+
 describe("admin dashboard source selection", () => {
+  it("delegates live sends with auth and keeps fixture sends local", async () => {
+    const response = {
+      commandId: "idempotency-admin-rsvp-first-12345678",
+      invitationCode: "SW2748",
+      templateId: "wedding_rsvp_pending_reminder_group",
+      templateVersion: 2,
+      status: "queued",
+      replayed: false
+    };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 202 }));
+    const live = createLiveDashboardSource({ getToken: () => "test-token", apiUrl: "/api", fetcher });
+
+    await expect(live.sendWhatsappRsvp?.("SW2748", "first", "admin-rsvp-first-12345678")).resolves.toEqual(response);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await expect(fixtureDashboardSource.sendWhatsappRsvp?.(
+      "SW2748", "first", "admin-rsvp-first-abcdefgh"
+    )).resolves.toMatchObject({ invitationCode: "SW2748", status: "queued" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps fixture mode isolated without calling the live endpoint", async () => {
     const fetcher = vi.fn();
     const live = createLiveDashboardSource({ getToken: () => "test-token", fetcher });
@@ -272,6 +340,8 @@ describe("admin dashboard source selection", () => {
     const threadResponse = {
       invitationCode: "SW2748",
       status: "message_sent",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       history: [
         {
           kind: "message",
@@ -331,6 +401,8 @@ describe("WhatsApp flow snapshot mapping", () => {
       phoneNumberSource: "guest",
       phoneNumberUpdatedAt: "2026-08-20T10:00:00.000Z",
       status: "reconciliation_required",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       stage: "followup",
       updatedAt: "2026-08-20T11:00:00.000Z",
       completedAt: "2026-08-20T12:00:00.000Z",
@@ -354,6 +426,8 @@ describe("WhatsApp flow snapshot mapping", () => {
       whatsappLastInboundMessageId: "wamid.inbound",
       whatsappLastOutboundMessageId: "wamid.outbound",
       whatsappFailureReason: "provider mismatch",
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       reconciliationStatus: "required"
     });
   });
@@ -361,7 +435,9 @@ describe("WhatsApp flow snapshot mapping", () => {
   it("maps a minimal status response with optional fields absent and default fallbacks", () => {
     const response: WhatsappRsvpStatusResponse = {
       invitationCode: "AB2345",
-      status: "message_sent"
+      status: "message_sent",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false }
     };
 
     const flow = mapAdminWhatsappFlowSnapshot(response);
@@ -378,6 +454,8 @@ describe("WhatsApp flow snapshot mapping", () => {
       whatsappLastInboundMessageId: null,
       whatsappLastOutboundMessageId: null,
       whatsappFailureReason: null,
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       reconciliationStatus: "none"
     });
   });
@@ -397,6 +475,8 @@ describe("WhatsApp history page mapping", () => {
     const page = mapAdminWhatsappThreadPage("AB2345", {
       invitationCode: "AB2345",
       status: "message_sent",
+      sendAvailability: { firstAllowed: false, resendAllowed: false },
+      freeTextWindow: { open: false },
       history: [
         {
           kind: "message", id: "message-new", direction: "inbound", status: "received",
@@ -437,7 +517,8 @@ describe("WhatsApp history page mapping", () => {
 
   it("maps a bodyless decline button into a visible response", () => {
     const page = mapAdminWhatsappThreadPage("AB2345", {
-      invitationCode: "AB2345", status: "completed", history: [{
+      invitationCode: "AB2345", status: "completed",
+      sendAvailability: { firstAllowed: false, resendAllowed: false }, freeTextWindow: { open: false }, history: [{
         kind: "message", id: "message-decline", direction: "inbound", status: "received",
         createdAt: "2026-08-20T12:00:00.000Z", messageType: "button_reply",
         buttonId: "rsvp_b2_decline", buttonAction: "decline"
@@ -518,6 +599,8 @@ describe("WhatsApp history page mapping", () => {
       json: async () => ({
         invitationCode: "SW2748",
         status: "message_sent",
+        sendAvailability: { firstAllowed: false, resendAllowed: false },
+        freeTextWindow: { open: false },
         stage: "pending",
         phoneNumber: "5511999999999",
         phoneNumberSource: "guest",
@@ -563,6 +646,8 @@ describe("WhatsApp history page mapping", () => {
       whatsappLastInboundMessageId: null,
       whatsappLastOutboundMessageId: null,
       whatsappFailureReason: null,
+      whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       reconciliationStatus: "none"
     });
     expect(result.page.invitationCode).toBe("SW2748");

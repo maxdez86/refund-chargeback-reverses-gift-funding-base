@@ -19,6 +19,8 @@ const completeInvitation = {
   whatsappLastInboundMessageId: "wamid.in",
   whatsappLastOutboundMessageId: "wamid.out",
   whatsappFailureReason: "Previous attempt failed.",
+  whatsappSendAvailability: { firstAllowed: false, resendAllowed: false },
+  whatsappFreeTextWindow: { open: false },
   guests: [
     {
       guestId: "guest-1",
@@ -65,6 +67,8 @@ describe("admin dashboard contracts", () => {
     const invitation = {
       invitationCode: "CD6789",
       householdName: "Família Silva",
+      whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       guests: [{
         guestId: "guest-2",
         guestName: "Carlos",
@@ -103,6 +107,8 @@ describe("admin dashboard contracts", () => {
     const invitation = {
       invitationCode: "EF7893",
       householdName: "Família Souza",
+      whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+      whatsappFreeTextWindow: { open: false },
       guests: [{
         guestId: "guest-3",
         guestName: "Duda",
@@ -266,6 +272,8 @@ describe("admin dashboard contracts", () => {
         {
           invitationCode: "AB2345",
           householdName: "Amanda e Chris",
+          whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+          whatsappFreeTextWindow: { open: false },
           guests: [
             {
               guestId: "guest-1",

@@ -4,7 +4,9 @@ import {
   getAdminDashboard,
   getAdminSession,
   getAdminWhatsappThread,
-  resolveAdminApiUrl
+  resolveAdminApiUrl,
+  sendAdminWhatsappRsvp,
+  sendAdminWhatsappText
 } from "@/lib/admin-api";
 
 const session = {
@@ -69,6 +71,8 @@ describe("admin WhatsApp history API adapter", () => {
   const history = {
     invitationCode: "AB2345",
     status: "message_sent",
+    sendAvailability: { firstAllowed: false, resendAllowed: false },
+    freeTextWindow: { open: false },
     history: [{
       kind: "message", id: "wamid.1", direction: "inbound", status: "received",
       createdAt: "2026-08-20T12:00:00.000Z", body: "Olá"
@@ -157,5 +161,159 @@ describe("admin dashboard API adapter", () => {
     await expect(
       getAdminDashboard(() => "test-token", { apiUrl: "/api", fetcher })
     ).rejects.toMatchObject({ kind: "invalid-response" });
+  });
+});
+
+describe("admin WhatsApp send API adapter", () => {
+  const accepted = {
+    commandId: "idempotency-admin-rsvp-first-12345678",
+    invitationCode: "AB2345",
+    templateId: "wedding_rsvp_pending_reminder_single",
+    templateVersion: 2,
+    status: "queued",
+    replayed: false
+  } as const;
+
+  it("posts the mode with bearer auth and an idempotency key, then validates the response", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(accepted), { status: 202 }));
+    await expect(sendAdminWhatsappRsvp(
+      "AB2345",
+      "first",
+      "admin-rsvp-first-12345678",
+      () => "test-token",
+      { apiUrl: "/api", fetcher }
+    )).resolves.toEqual(accepted);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/admin/whatsapp/invitations/AB2345/send-rsvp",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+          "Idempotency-Key": "admin-rsvp-first-12345678"
+        },
+        body: JSON.stringify({ mode: "first" }),
+        signal: undefined
+      }
+    );
+  });
+
+  it.each([[401, "unauthorized"], [403, "forbidden"]] as const)(
+    "maps send HTTP %s to %s without parsing gateway bodies",
+    async (status, kind) => {
+      await expect(sendAdminWhatsappRsvp("AB2345", "first", "admin-rsvp-first-12345678", () => "token", {
+        apiUrl: "/api",
+        fetcher: vi.fn().mockResolvedValue(new Response("", { status }))
+      })).rejects.toMatchObject({ kind, status });
+    }
+  );
+
+  it.each([
+    [409, "INVALID_FLOW_TRANSITION", "rejected"],
+    [422, "INVALID_INVITATION_STATE", "rejected"],
+    [503, "QUEUE_FAILURE", "unavailable"]
+  ] as const)("parses a structured %s send rejection", async (status, code, kind) => {
+    await expect(sendAdminWhatsappRsvp("AB2345", "resend", "admin-rsvp-resend-12345678", () => "token", {
+      apiUrl: "/api",
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({ code, message: "safe backend message" }), { status }))
+    })).rejects.toMatchObject({ kind, status, code });
+  });
+
+  it("rejects missing credentials, network failures, and mismatched success payloads", async () => {
+    const fetcher = vi.fn();
+    await expect(sendAdminWhatsappRsvp("AB2345", "first", "admin-rsvp-first-12345678", () => null, {
+      apiUrl: "/api", fetcher
+    })).rejects.toMatchObject({ kind: "unauthorized" });
+    expect(fetcher).not.toHaveBeenCalled();
+
+    await expect(sendAdminWhatsappRsvp("AB2345", "first", "admin-rsvp-first-12345678", () => "secret-token", {
+      apiUrl: "/api", fetcher: vi.fn().mockRejectedValue(new Error("offline"))
+    })).rejects.toMatchObject({ kind: "unavailable", status: undefined });
+
+    await expect(sendAdminWhatsappRsvp("AB2345", "first", "admin-rsvp-first-12345678", () => "secret-token", {
+      apiUrl: "/api",
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...accepted, invitationCode: "CD6789" }), { status: 202 }))
+    })).rejects.toMatchObject({ kind: "invalid-response" });
+  });
+});
+
+describe("admin WhatsApp free-text API adapter", () => {
+  const accepted = {
+    commandId: "idempotency-admin-text-12345678",
+    invitationCode: "AB2345",
+    status: "queued",
+    replayed: false
+  } as const;
+
+  it("posts the body with bearer auth and an idempotency key, then validates the response", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(accepted), { status: 202 }));
+    await expect(sendAdminWhatsappText(
+      "AB2345",
+      "Oi! Podemos ajudar?",
+      "admin-text-12345678",
+      () => "test-token",
+      { apiUrl: "/api", fetcher }
+    )).resolves.toEqual(accepted);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/admin/whatsapp/invitations/AB2345/messages",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+          "Idempotency-Key": "admin-text-12345678"
+        },
+        body: JSON.stringify({ body: "Oi! Podemos ajudar?" }),
+        signal: undefined
+      }
+    );
+  });
+
+  it("rejects an empty or oversized body before reaching the network", async () => {
+    const fetcher = vi.fn();
+    await expect(sendAdminWhatsappText("AB2345", "", "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher }))
+      .rejects.toThrow();
+    await expect(sendAdminWhatsappText("AB2345", "a".repeat(4097), "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher }))
+      .rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([[401, "unauthorized"], [403, "forbidden"]] as const)(
+    "maps %i onto the %s error kind",
+    async (status, kind) => {
+      const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status }));
+      await expect(sendAdminWhatsappText("AB2345", "Oi!", "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher }))
+        .rejects.toMatchObject({ kind, status });
+    }
+  );
+
+  it("surfaces a closed 24-hour window as a localized rejection carrying its code", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: "FREE_TEXT_WINDOW_CLOSED", message: "closed" }),
+      { status: 409 }
+    ));
+    await expect(sendAdminWhatsappText("AB2345", "Oi!", "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher }))
+      .rejects.toMatchObject({
+        kind: "rejected",
+        status: 409,
+        code: "FREE_TEXT_WINDOW_CLOSED",
+        message: "A janela de 24 horas do WhatsApp expirou. Envie um modelo aprovado."
+      });
+  });
+
+  it("treats a 5xx as unavailable and a mismatched invitation as an invalid response", async () => {
+    const unavailable = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: "QUEUE_FAILURE", message: "down" }),
+      { status: 503 }
+    ));
+    await expect(sendAdminWhatsappText("AB2345", "Oi!", "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher: unavailable }))
+      .rejects.toMatchObject({ kind: "unavailable", status: 503 });
+
+    const mismatched = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ ...accepted, invitationCode: "ZZ9999" }),
+      { status: 202 }
+    ));
+    await expect(sendAdminWhatsappText("AB2345", "Oi!", "admin-text-12345678", () => "test-token", { apiUrl: "/api", fetcher: mismatched }))
+      .rejects.toMatchObject({ kind: "invalid-response" });
   });
 });

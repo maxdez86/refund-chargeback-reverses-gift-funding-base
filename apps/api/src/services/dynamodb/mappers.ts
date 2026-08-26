@@ -20,6 +20,8 @@ import type {
 } from "@brimax/contracts";
 import { RsvpResponseItemSchema } from "./rsvp-items";
 import { actionForButtonId } from "../whatsapp/template-manifest";
+import { deriveWhatsappRsvpSendAvailability } from "../../domain/whatsapp-rsvp-send-availability";
+import { deriveWhatsappFreeTextWindow } from "../../domain/whatsapp-free-text-window";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -47,6 +49,8 @@ type GroupedDashboardInvitationItems = GroupedInvitationItems & {
 type DashboardInvitationOptions = {
   /** Invoked once per message record dropped for a missing messageId, direction, or createdAt. */
   onSkippedMessage?: () => void;
+  /** Evaluation instant for time-derived state such as the free-text window. Injectable for tests. */
+  now?: Date;
 };
 
 /**
@@ -200,6 +204,8 @@ export function toAdminDashboardInvitation(
     parsedRsvp?.guestResponses.map((response) => [response.guestId, response]) ?? []
   );
 
+  const householdInvitation = toHouseholdInvitation({ invitation, guests, rsvp });
+  const now = options.now ?? new Date();
   return AdminDashboardInvitationSchema.parse({
     invitationCode: String(invitation.invitationCode ?? ""),
     householdName: String(invitation.householdName ?? ""),
@@ -214,6 +220,8 @@ export function toAdminDashboardInvitation(
     whatsappLastInboundMessageId: optionalString(invitation.whatsappLastInboundMessageId),
     whatsappLastOutboundMessageId: optionalString(invitation.whatsappLastOutboundMessageId),
     whatsappFailureReason: optionalString(invitation.whatsappFailureReason),
+    whatsappSendAvailability: deriveWhatsappRsvpSendAvailability(householdInvitation),
+    whatsappFreeTextWindow: deriveWhatsappFreeTextWindow(householdInvitation, now),
     whatsappConversation: toAdminDashboardWhatsappConversation(messages, options),
     guests: guests
       .slice()
@@ -288,6 +296,7 @@ export function toHouseholdInvitation({
       : undefined,
     whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ? String(invitation.whatsappLastOutboundMessageId) : undefined,
     whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ? String(invitation.whatsappLastInboundMessageId) : undefined,
+    whatsappLastInboundAt: invitation.whatsappLastInboundAt ? String(invitation.whatsappLastInboundAt) : undefined,
     whatsappFlowUpdatedAt: invitation.whatsappFlowUpdatedAt ? String(invitation.whatsappFlowUpdatedAt) : undefined,
     whatsappFlowCompletedAt: invitation.whatsappFlowCompletedAt ? String(invitation.whatsappFlowCompletedAt) : undefined,
     whatsappFallbackSentAt: invitation.whatsappFallbackSentAt ? String(invitation.whatsappFallbackSentAt) : undefined,
@@ -308,9 +317,15 @@ export function toHouseholdInvitation({
   };
 }
 
-export function toWhatsappRsvpStatus(invitation: UnknownRecord): WhatsappRsvpStatusResponse {
+export function toWhatsappRsvpStatus(
+  invitation: UnknownRecord,
+  householdInvitation: HouseholdInvitation,
+  now: Date = new Date()
+): WhatsappRsvpStatusResponse {
   return WhatsappRsvpStatusResponseSchema.parse({
     invitationCode: String(invitation.invitationCode ?? ""),
+    sendAvailability: deriveWhatsappRsvpSendAvailability(householdInvitation),
+    freeTextWindow: deriveWhatsappFreeTextWindow(householdInvitation, now),
     phoneNumber: invitation.phoneNumber ? String(invitation.phoneNumber) : undefined,
     phoneNumberUpdatedAt: invitation.phoneNumberUpdatedAt
       ? String(invitation.phoneNumberUpdatedAt)

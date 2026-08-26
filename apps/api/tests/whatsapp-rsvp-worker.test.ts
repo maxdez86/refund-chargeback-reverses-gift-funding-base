@@ -4,6 +4,7 @@ import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { WhatsappApiError } from "../src/services/whatsapp/client";
 import { createWhatsappRsvpWorker } from "../src/functions/whatsapp-rsvp-worker/handler";
 import { WHATSAPP_FALLBACK_TEMPLATE_ID, WHATSAPP_FALLBACK_TEXT } from "../src/domain/whatsapp-rsvp-service";
+import { WHATSAPP_OPERATOR_TEXT_TEMPLATE_ID } from "../src/domain/whatsapp-text-commands";
 
 const invitation = {
   invitationCode: "SW2748", householdName: "Household", phoneNumber: "5511963656517",
@@ -76,7 +77,7 @@ function setup(overrides: Record<string, unknown> = {}) {
       if (input.effect === "opener") {
         state.invitation = { ...state.invitation, whatsappFlowStatus: "message_sent", whatsappLastOutboundMessageId: input.message.messageId, whatsappFlowUpdatedAt: input.now };
       } else if (input.effect === "complete_on_send") {
-        state.invitation = { ...state.invitation, whatsappFlowStatus: "completed", whatsappFlowCompletedAt: input.now, whatsappLastOutboundMessageId: input.message.messageId, whatsappFlowUpdatedAt: input.now };
+        state.invitation = { ...state.invitation, whatsappFlowStatus: "completed", whatsappFlowStage: input.message.stage, whatsappFlowCompletedAt: input.now, whatsappLastOutboundMessageId: input.message.messageId, whatsappFlowUpdatedAt: input.now };
       } else if (input.fallback) {
         state.invitation = { ...state.invitation, whatsappFallbackSentAt: input.now };
       }
@@ -148,6 +149,7 @@ describe("WhatsApp RSVP worker", () => {
       command: command({
         effect: "complete_on_send",
         expectedFlowStatus: "attendance_declined",
+        stage: "followup",
         templateId: "wedding_rsvp_declined_followup_single"
       }),
       invitation: { ...invitation, whatsappFlowStatus: "attendance_declined" as const }
@@ -157,6 +159,7 @@ describe("WhatsApp RSVP worker", () => {
 
     expect(sender.send).toHaveBeenCalledTimes(1);
     expect(state.invitation.whatsappFlowStatus).toBe("completed");
+    expect(state.invitation.whatsappFlowStage).toBe("followup");
     expect(state.invitation.whatsappFlowCompletedAt).toBe("2026-08-17T12:00:00.000Z");
   });
 
@@ -416,6 +419,51 @@ describe("WhatsApp RSVP worker", () => {
     expect(repository.finalizeAcceptedWhatsappSend).toHaveBeenCalledWith(expect.objectContaining({
       effect: "preserve", fallback: true, now: "2026-08-17T12:00:00.000Z"
     }));
+  });
+
+  it("sends the operator's own body and leaves the fallback guard untouched", async () => {
+    const { handler, sender, textSender, state, repository } = setup({
+      command: command({
+        templateId: WHATSAPP_OPERATOR_TEXT_TEMPLATE_ID,
+        body: "Oi! Podemos ajudar?",
+        preserveFlowStatus: true
+      }),
+      invitation: { ...invitation, whatsappFlowStatus: "message_sent" as const, whatsappLastOutboundMessageId: "wamid.rsvp" }
+    });
+
+    await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(textSender.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: { body: "Oi! Podemos ajudar?" } }),
+      expect.anything(),
+      expect.any(Function)
+    );
+    expect(state.command.status).toBe("sent");
+    // An operator reply must never advance the RSVP flow...
+    expect(state.invitation.whatsappFlowStatus).toBe("message_sent");
+    expect(state.invitation.whatsappLastOutboundMessageId).toBe("wamid.rsvp");
+    // ...nor consume the once-per-invitation automatic fallback.
+    expect(state.invitation.whatsappFallbackSentAt).toBeUndefined();
+    expect(repository.finalizeAcceptedWhatsappSend).toHaveBeenCalledWith(expect.objectContaining({
+      effect: "preserve", fallback: false
+    }));
+    expect(repository.finalizeAcceptedWhatsappSend).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ messageType: "text", body: "Oi! Podemos ajudar?" })
+    }));
+  });
+
+  it("permanently fails an operator text command that lost its body", async () => {
+    const { handler, textSender, state } = setup({
+      command: command({ templateId: WHATSAPP_OPERATOR_TEXT_TEMPLATE_ID, preserveFlowStatus: true }),
+      invitation: { ...invitation, whatsappFlowStatus: "message_sent" as const }
+    });
+
+    const result = await handler({ Records: [record()] } as unknown as SQSEvent);
+
+    expect(result).toEqual({ batchItemFailures: [] });
+    expect(textSender.sendText).not.toHaveBeenCalled();
+    expect(state.command.status).toBe("failed");
   });
 
   it("never retries fallback text after provider acceptance when finalization fails", async () => {

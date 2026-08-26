@@ -5,11 +5,13 @@ import { InvitationCodeSchema } from "./invitation-code";
 import { GuestMessageSchema } from "./messages";
 import {
   WhatsappFlowStageSchema,
+  WhatsappFreeTextWindowSchema,
   WhatsappFlowStatusSchema,
   WhatsappMessageDirectionSchema,
   WhatsappMessageTypeSchema,
   WhatsappPhoneSourceSchema,
-  WhatsappRsvpActionSchema
+  WhatsappRsvpActionSchema,
+  WhatsappRsvpSendAvailabilitySchema
 } from "./whatsapp-rsvp";
 
 export const AdminGuestExportRowSchema = z.object({
@@ -109,6 +111,8 @@ export const AdminDashboardInvitationSchema = z
     whatsappLastInboundMessageId: z.string().min(1).optional(),
     whatsappLastOutboundMessageId: z.string().min(1).optional(),
     whatsappFailureReason: z.string().min(1).optional(),
+    whatsappSendAvailability: WhatsappRsvpSendAvailabilitySchema,
+    whatsappFreeTextWindow: WhatsappFreeTextWindowSchema,
     guests: z.array(AdminDashboardGuestSchema).min(1),
     rsvp: AdminDashboardRsvpSummarySchema,
     whatsappConversation: AdminDashboardWhatsappConversationSchema.optional()

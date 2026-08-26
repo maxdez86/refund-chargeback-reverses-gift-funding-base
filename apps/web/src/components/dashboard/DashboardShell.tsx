@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AdminSessionResponse } from "@brimax/contracts";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
+import { toast } from "sonner";
 import { useAdminDashboard } from "@/hooks/use-admin-dashboard";
 import { useDashboardRoute } from "@/hooks/use-dashboard-route";
 import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
@@ -61,7 +62,9 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     state, status, dispatch, guestRows, unreadByCode,
     refresh, refreshState, lastSuccessfulLoadAt, snapshotVersion,
     retryWhatsappThread, loadMoreWhatsappThread,
-    refreshWhatsappInvitation, retryWhatsappInvitation, demo
+    refreshWhatsappInvitation, retryWhatsappInvitation,
+    sendWhatsappRsvp, whatsappSendStates,
+    sendWhatsappText, whatsappTextSendStates, demo
   } = useAdminDashboard({ source });
 
   const [collapsed, setCollapsed] = useState(false);
@@ -292,7 +295,8 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
             onOpenInvitation={openInvitation}
             onRetry={(invitationCode) => void retryWhatsappThread(invitationCode).catch(() => undefined)}
             onLoadMore={(invitationCode) => void loadMoreWhatsappThread(invitationCode).catch(() => undefined)}
-            onSend={(invitationCode, text) => dispatch({ type: "send-chat", invitationCode, text })}
+            onSend={(invitationCode, text) => void sendWhatsappText(invitationCode, text)}
+            sendStates={whatsappTextSendStates}
           />
         );
 
@@ -515,9 +519,15 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
             <SendWhatsappModal
               invitation={invitation}
               onCancel={closeModal}
-              onSend={(mode) => {
-                dispatch({ type: "queue-send", invitationCode: invitation.invitationCode, mode });
-                closeModal();
+              sendState={whatsappSendStates[invitation.invitationCode] ?? { status: "idle" }}
+              onSend={async (mode) => {
+                try {
+                  await sendWhatsappRsvp(invitation.invitationCode, mode);
+                  closeModal();
+                  toast.success("Mensagem adicionada à fila do WhatsApp.");
+                } catch {
+                  // The hook keeps the modal open and exposes a safe localized error.
+                }
               }}
             />
           );

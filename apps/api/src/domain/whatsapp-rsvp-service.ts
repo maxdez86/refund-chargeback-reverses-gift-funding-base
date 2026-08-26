@@ -17,9 +17,12 @@ import { WhatsappRsvpSendService } from "../services/whatsapp/rsvp-send-service"
 import type { WhatsappCommandInput } from "../services/dynamodb/whatsapp-items";
 import { whatsappPhoneDigits, whatsappPhonesMatch } from "./whatsapp-phone-match";
 import { normalizeWhatsappTimestamp } from "./whatsapp-timestamp";
+import { WHATSAPP_FALLBACK_TEXT, WHATSAPP_FALLBACK_TEMPLATE_ID } from "./whatsapp-text-commands";
+import { recordWhatsappCommandEnqueued } from "../services/whatsapp/command-enqueue";
 
-export const WHATSAPP_FALLBACK_TEXT = "Ops! 😅 Como sou um assistente virtual novato, por enquanto só consigo ajudar com as confirmações de presença.\n\nPara qualquer outra dúvida, recadinho ou informação, por favor, envie um e-mail para casamento@brimax.life. A Brida e o Max vão adorar responder você por lá! 🤍";
-export const WHATSAPP_FALLBACK_TEMPLATE_ID = "__whatsapp_fallback_text__";
+// Re-exported so existing importers keep their path; the definitions live with the operator
+// text sentinel in whatsapp-text-commands.
+export { WHATSAPP_FALLBACK_TEXT, WHATSAPP_FALLBACK_TEMPLATE_ID };
 
 export class WhatsappStatusMessageMissingError extends AppError {
   constructor() {
@@ -73,11 +76,7 @@ export class WhatsappRsvpService {
   private async publishReservedCommand(command: WhatsappCommandInput, requestId: string) {
     try {
       const queued = await this.publish(command.commandId, { requestId });
-      await this.repository.updateWhatsappCommand(command.commandId, {
-        status: queued.status,
-        enqueuedAt: queued.enqueuedAt,
-        updatedAt: queued.enqueuedAt
-      });
+      await recordWhatsappCommandEnqueued(this.repository, command.commandId, queued);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Unable to enqueue WhatsApp RSVP command.";
       await this.repository.updateWhatsappCommand(command.commandId, {
@@ -457,6 +456,11 @@ export class WhatsappRsvpService {
               : "unknown_message"
         };
       }
+
+      // Recorded for every correlated inbound message, before the branch decision, so the
+      // 24-hour free-text window reflects guest activity regardless of how the reply is routed
+      // (branch, fallback, or rejection). Monotonic, so replays cannot rewind it.
+      await this.repository.touchWhatsappLastInboundAt(invitationCode, eventTime.timestamp);
 
       const currentStatus = invitation.whatsappFlowStatus ?? "idle";
       const buttonId = incoming.type === "button_reply" ? incoming.buttonId : undefined;

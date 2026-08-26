@@ -109,6 +109,40 @@ describe("WhatsApp item schemas", () => {
     }).success).toBe(false);
   });
 
+  it("round-trips an operator text body and requires one for that sentinel only", () => {
+    const operatorText = WhatsappCommandInputSchema.parse({
+      commandId: "idempotency-text-key-1",
+      invitationCode: "SW2748",
+      templateId: "__whatsapp_operator_text__",
+      status: "queued",
+      createdAt: NOW,
+      effect: "preserve",
+      body: "Oi! Podemos ajudar?"
+    });
+    expect(operatorText.body).toBe("Oi! Podemos ajudar?");
+    expect(operatorText.effect).toBe("preserve");
+
+    // The operator sentinel is the only command whose body is load-bearing.
+    expect(WhatsappCommandInputSchema.safeParse({
+      commandId: "idempotency-text-key-2",
+      invitationCode: "SW2748",
+      templateId: "__whatsapp_operator_text__",
+      status: "queued",
+      createdAt: NOW,
+      effect: "preserve"
+    }).success).toBe(false);
+
+    // The fallback text is a fixed constant resolved by the worker, so it stays body-free.
+    expect(WhatsappCommandInputSchema.safeParse({
+      commandId: "cmd-fallback",
+      invitationCode: "SW2748",
+      templateId: "__whatsapp_fallback_text__",
+      status: "queued",
+      createdAt: NOW,
+      effect: "preserve"
+    }).success).toBe(true);
+  });
+
   it("rejects a message ID that would produce an undefined partition key", () => {
     expect(
       WhatsappMessageInputSchema.safeParse({
