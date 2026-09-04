@@ -15,6 +15,8 @@ import type {
   GuestProfile,
   GuestSummary,
   HouseholdInvitation,
+  RsvpGuestAnswer,
+  RsvpStatus,
   RsvpSubmissionRequest,
   WhatsappRsvpStatusResponse
 } from "@brimax/contracts";
@@ -409,11 +411,37 @@ export function toAdminExportRows({
     }));
 }
 
+/**
+ * Overall invitation status for a partially answered RSVP.
+ *
+ * `deriveOverallRsvpStatus()` cannot serve here: a website submission answers for every guest at
+ * once, so it only ever yields `attending` or `declined`. An admin correction touches one guest at
+ * a time and leaves the rest unanswered, which has to stay visible as `pending` rather than being
+ * rounded down to `declined`.
+ *
+ * The rule is the one the dashboard's own `recalculateRsvp()` already applies, so the value the API
+ * stores and the value the panel would compute can never disagree. The guest list is never empty —
+ * `HouseholdInvitationSchema` requires at least one guest — so the empty case is unreachable.
+ */
+export function deriveAdminRsvpStatus(
+  guestResponses: Pick<RsvpGuestAnswer, "status">[]
+): RsvpStatus {
+  if (guestResponses.some((response) => response.status === "attending")) return "attending";
+  return guestResponses.some((response) => response.status === "pending") ? "pending" : "declined";
+}
+
 export function deriveOverallRsvpStatus(request: RsvpSubmissionRequest): GuestProfile["rsvpStatus"] {
   return deriveRsvpCounts(request).attendingGuestCount > 0 ? "attending" : "declined";
 }
 
-export function deriveRsvpCounts(request: RsvpSubmissionRequest): RsvpCounts {
+/**
+ * Aggregates from a set of answers. Takes only `guestResponses` so the admin path can pass the
+ * invitation's effective per-guest view — which includes guests who have no stored answer yet —
+ * without inventing the rest of a submission request.
+ */
+export function deriveRsvpCounts(
+  request: Pick<RsvpSubmissionRequest, "guestResponses">
+): RsvpCounts {
   return request.guestResponses.reduce<RsvpCounts>(
     (counts, response) => {
       if (response.status !== "attending") {

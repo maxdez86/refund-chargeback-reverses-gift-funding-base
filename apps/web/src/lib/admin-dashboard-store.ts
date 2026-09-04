@@ -1,13 +1,11 @@
-import type { RsvpStatus, WhatsappRsvpSendResponse } from "@brimax/contracts";
+import type { AdminInvitationRsvpWriteResponse, WhatsappRsvpSendResponse } from "@brimax/contracts";
 import {
   deriveGift,
-  recalculateRsvp,
   trailingInboundCount
 } from "@/lib/admin-dashboard-model";
 import type {
   AdminDashboardSnapshot,
   AdminGift,
-  AdminGuest,
   AdminInvitation,
   AdminWhatsappFlowSnapshot,
   AdminWhatsappMessage,
@@ -28,28 +26,26 @@ export type AdminDashboardState = AdminDashboardSnapshot & {
 };
 
 export type AdminDashboardAction =
-  | { type: "confirm-guests"; invitationCode: string; guestIds: string[]; now: string }
-  | { type: "set-guest-status"; guestId: string; status: RsvpStatus; now: string }
-  | { type: "set-guest-child"; guestId: string; isChild: boolean; now: string }
-  | { type: "remove-guest"; guestId: string; now: string }
+  /**
+   * Installs one invitation's guests and RSVP aggregate exactly as the API recomputed them.
+   *
+   * The three guest writes — confirm, decline, criança — and confirm-all all land here. They are
+   * reconciliations, not optimistic updates: the reducer never guesses the new counts, so what the
+   * panel shows after a write is what a later refetch will show.
+   */
+  | { type: "apply-invitation-rsvp"; response: AdminInvitationRsvpWriteResponse }
   | { type: "delete-invitation"; invitationCode: string }
-  | {
-      type: "create-invitation";
-      invitationCode: string;
-      householdName: string;
-      phoneNumber: string;
-      guests: { name: string; isChild: boolean }[];
-      now: string;
-    }
-  | {
-      type: "add-guests";
-      invitationCode: string;
-      rows: { name: string; isChild: boolean }[];
-      now: string;
-    }
+  /**
+   * Inserts the invitation the API just created, mapped by the same rules a snapshot goes through.
+   *
+   * Like `apply-invitation-rsvp` this is a reconciliation: the reducer no longer mints guest ids or
+   * guesses a WhatsApp state, because the server owns both and a refetch would contradict a guess.
+   * Adding and removing guests reconcile through `apply-invitation-rsvp` for the same reason.
+   */
+  | { type: "create-invitation"; invitation: AdminInvitation }
   | { type: "update-phone"; invitationCode: string; phoneNumber: string; now: string }
   | { type: "whatsapp-send-accepted"; response: WhatsappRsvpSendResponse; now: string }
-  | { type: "toggle-message-hidden"; messageId: string }
+  | { type: "remove-message"; messageId: string }
   | {
       type: "save-gift";
       giftId: string;
@@ -89,8 +85,6 @@ export type AdminDashboardIntent =
       : Action
     : never;
 
-const pad2 = (value: number) => String(value).padStart(2, "0");
-
 /** Replaces one invitation, leaving list order untouched. */
 function mapInvitation(
   state: AdminDashboardState,
@@ -106,11 +100,6 @@ function mapInvitation(
   return changed ? { ...state, invitations } : state;
 }
 
-function invitationOfGuest(state: AdminDashboardState, guestId: string) {
-  return state.invitations.find((invitation) =>
-    invitation.guests.some((guest) => guest.guestId === guestId)
-  );
-}
 
 /** Slugifies a gift name into the id shape the catalog uses ("Jogo de jantar" -> "g-jogo-de-jantar"). */
 export function giftIdFromName(name: string) {
@@ -196,81 +185,17 @@ export function adminDashboardReducer(
   action: AdminDashboardAction
 ): AdminDashboardState {
   switch (action.type) {
-    case "confirm-guests": {
-      if (action.guestIds.length === 0) return state;
-      return mapInvitation(state, action.invitationCode, (invitation) => {
-        const guests = invitation.guests.map((guest) =>
-          action.guestIds.includes(guest.guestId)
-            ? { ...guest, rsvpStatus: "attending" as const }
-            : guest
-        );
-        return {
-          ...invitation,
-          guests,
-          rsvp: {
-            ...recalculateRsvp(guests, invitation.rsvp, action.now),
-            submittedBy: invitation.rsvp.submittedBy ?? guests[0]?.guestId ?? null
-          },
-          whatsappFlowStatus: "attendance_confirmed_whatsapp",
-          whatsappFlowUpdatedAt: action.now
-        };
-      });
-    }
-
-    case "set-guest-status": {
-      const invitation = invitationOfGuest(state, action.guestId);
-      if (!invitation) return state;
-      return mapInvitation(state, invitation.invitationCode, (current) => {
-        const guests = current.guests.map((guest) =>
-          guest.guestId === action.guestId ? { ...guest, rsvpStatus: action.status } : guest
-        );
-        return {
-          ...current,
-          guests,
-          rsvp: recalculateRsvp(guests, current.rsvp, action.now),
-          whatsappFlowUpdatedAt: action.now
-        };
-      });
-    }
-
-    case "set-guest-child": {
-      const invitation = invitationOfGuest(state, action.guestId);
-      if (!invitation) return state;
-      return mapInvitation(state, invitation.invitationCode, (current) => {
-        const guests = current.guests.map((guest) =>
-          guest.guestId === action.guestId
-            ? {
-                ...guest,
-                isChild: action.isChild,
-                // Clearing the seed retires the age question, so any ≤6 answer it produced
-                // goes with it — otherwise a phantom courtesy would outlive the flag. Setting
-                // it leaves an existing answer alone; only the guest can give a new one.
-                isChildSixOrYounger: action.isChild ? guest.isChildSixOrYounger : undefined
-              }
-            : guest
-        );
-        return {
-          ...current,
-          guests,
-          rsvp: recalculateRsvp(guests, current.rsvp, action.now)
-        };
-      });
-    }
-
-    case "remove-guest": {
-      const invitation = invitationOfGuest(state, action.guestId);
-      // The primary guest answers for the invitation, so removing them means deleting
-      // the whole invitation — the UI routes that to the delete confirmation instead.
-      if (!invitation || invitation.guests[0]?.guestId === action.guestId) return state;
-      return mapInvitation(state, invitation.invitationCode, (current) => {
-        const guests = current.guests.filter((guest) => guest.guestId !== action.guestId);
-        return {
-          ...current,
-          guests,
-          rsvp: recalculateRsvp(guests, current.rsvp, action.now),
-          whatsappFlowUpdatedAt: action.now
-        };
-      });
+    case "apply-invitation-rsvp": {
+      const { response } = action;
+      return mapInvitation(state, response.invitationCode, (invitation) => ({
+        ...invitation,
+        guests: response.guests.map((guest) => ({
+          ...guest,
+          // The contract leaves the seed flag optional; the panel keeps it a boolean.
+          isChild: guest.isChild ?? false
+        })),
+        rsvp: { ...response.rsvp }
+      }));
     }
 
     case "delete-invitation": {
@@ -285,73 +210,8 @@ export function adminDashboardReducer(
       return { ...state, invitations, threads, threadLoads };
     }
 
-    case "create-invitation": {
-      const invitationCode = action.invitationCode.trim().toUpperCase();
-      const guests: AdminGuest[] = action.guests.map((row, index) => ({
-        guestId: `${invitationCode}--guest-${pad2(index + 1)}`,
-        guestName: row.name.trim(),
-        // `isChildSixOrYounger` is left unset on purpose: nobody has answered the RSVP yet,
-        // and the ≤6 answer that grants the courtesy is the guest's to give.
-        isChild: row.isChild,
-        allowedPlusOnes: 0,
-        rsvpStatus: "pending"
-      }));
-      const invitation: AdminInvitation = {
-        invitationCode,
-        householdName: action.householdName.trim(),
-        phoneNumber: action.phoneNumber.replace(/\D/g, ""),
-        phoneNumberSource: "operator",
-        phoneNumberUpdatedAt: action.now,
-        whatsappFlowStatus: "idle",
-        whatsappFlowStage: "pending",
-        whatsappFlowUpdatedAt: action.now,
-        whatsappFlowCompletedAt: null,
-        whatsappFallbackSentAt: null,
-        whatsappLastInboundMessageId: null,
-        whatsappLastOutboundMessageId: null,
-        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
-        // A brand-new invitation has never received a reply, so free text is not yet deliverable.
-        whatsappFreeTextWindow: { open: false },
-        reconciliationStatus: "none",
-        rsvp: {
-          status: "pending",
-          updatedAt: action.now,
-          submittedBy: null,
-          attending: 0,
-          paid: 0,
-          childrenSixOrYounger: 0
-        },
-        guests,
-        commands: [],
-        // Nothing has been sent yet, so the invitation owns no message and stays out of the
-        // WhatsApp tab until a real conversation exists.
-        whatsappConversation: null
-      };
-      return { ...state, invitations: [invitation, ...state.invitations] };
-    }
-
-    case "add-guests": {
-      if (action.rows.length === 0) return state;
-      return mapInvitation(state, action.invitationCode, (invitation) => {
-        const base = invitation.guests.length;
-        const added: AdminGuest[] = action.rows.map((row, index) => ({
-          guestId: `${invitation.invitationCode}--guest-${pad2(base + index + 1)}`,
-          guestName: row.name.trim(),
-          // As in "create-invitation": a new guest carries the criança seed and no age answer.
-          isChild: row.isChild,
-          allowedPlusOnes: 0,
-          rsvpStatus: "pending"
-        }));
-        const guests = [...invitation.guests, ...added];
-        return {
-          // Recalculated rather than left alone: a new pending guest can move a fully
-          // declined invitation back to pending, and the roll-up has to reflect that.
-          ...invitation,
-          guests,
-          rsvp: recalculateRsvp(guests, invitation.rsvp, action.now)
-        };
-      });
-    }
+    case "create-invitation":
+      return { ...state, invitations: [action.invitation, ...state.invitations] };
 
     case "update-phone": {
       const digits = action.phoneNumber.replace(/\D/g, "");
@@ -386,13 +246,11 @@ export function adminDashboardReducer(
       });
     }
 
-    case "toggle-message-hidden": {
+    case "remove-message": {
       return {
         ...state,
-        guestMessages: state.guestMessages.map((message) =>
-          message.messageId === action.messageId
-            ? { ...message, hidden: !message.hidden }
-            : message
+        guestMessages: state.guestMessages.filter(
+          (message) => message.messageId !== action.messageId
         )
       };
     }

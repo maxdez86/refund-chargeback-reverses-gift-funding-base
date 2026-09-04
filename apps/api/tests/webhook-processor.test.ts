@@ -12,6 +12,9 @@ vi.mock("../src/lib/xray", async (importOriginal) => ({
 
 import { WebhookProcessor } from "../src/domain/webhook-processor";
 
+process.env.CONTACT_EMAIL = "casamento@brimax.life";
+process.env.WEDDING_TABLE_NAME = "test-wedding-table";
+
 describe("WebhookProcessor", () => {
   it("normalizes settlement dates and enriches the payer profile after confirmation", async () => {
     const repository = {
@@ -61,6 +64,7 @@ describe("WebhookProcessor", () => {
           amountCents: 500,
           payerEmail: "maria@example.com",
           payerFirstName: "Maria",
+          payerName: "Maria Clara",
           customerProfileStatus: "READY",
           gift: { id: "g-batedeira", name: "Batedeira", quantity: 1 }
       }),
@@ -117,6 +121,20 @@ describe("WebhookProcessor", () => {
       expect.objectContaining({
         to: "maria@example.com",
         subject: "Confirmacao do seu presente para Brida & Max"
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "casamento@brimax.life",
+        subject: "Novo presente recebido no site do casamento 🤍",
+        text: expect.stringContaining("Pagamento: payment-1"),
+        html: expect.stringContaining("Enviado automaticamente por brimax.life.")
+      })
+    );
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "casamento@brimax.life",
+        text: expect.stringContaining("Enviado por: Maria Clara")
       })
     );
     expect(emailService.sendEmail).toHaveBeenCalledWith(
@@ -800,14 +818,24 @@ describe("WebhookProcessor", () => {
       })
     };
     const emailService = {
-      sendEmail: vi.fn().mockRejectedValue(new Error("sandbox rejection"))
+      sendEmail: vi.fn().mockImplementation(({ to }: { to: string }) => {
+        if (to === "casamento@brimax.life") {
+          return Promise.reject(new Error("sandbox rejection"));
+        }
+
+        return Promise.resolve({ ok: true, messageId: "payer-message" });
+      })
     };
 
     const processor = new WebhookProcessor(repository as never, asaasClient as never, emailService as never);
 
     await expect(processor.processEvent("event-4")).rejects.toThrow("sandbox rejection");
-    expect(repository.releaseNotificationSend).toHaveBeenCalledWith("payment-4", "PAYER_CONFIRMATION");
-    expect(repository.markNotificationSent).not.toHaveBeenCalled();
+    expect(repository.releaseNotificationSend).toHaveBeenCalledWith("payment-4", "COUPLE_GIFT_CONFIRMATION");
+    expect(repository.markNotificationSent).toHaveBeenCalledWith({
+      paymentId: "payment-4",
+      type: "PAYER_CONFIRMATION",
+      payload: { payerEmail: "buyer@example.com" }
+    });
   });
 
   it("does not increment gift funding again when a confirmed payment later becomes received", async () => {

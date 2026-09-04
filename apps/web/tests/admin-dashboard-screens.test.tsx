@@ -5,6 +5,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
 import { fixtureDashboardSource } from "@/lib/admin-dashboard-source";
 import { AdminApiError } from "@/lib/admin-api";
+import { INVITATION_CODE_REGEX } from "@brimax/contracts";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
 import type {
   AdminWhatsappConversationSummary,
@@ -111,6 +112,9 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(snapshot);
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load,
       loadWhatsappInvitation: vi.fn()
     };
@@ -152,7 +156,7 @@ describe("dashboard screens", () => {
           threadPage(invitationCode, [message("m1", "2026-08-20T12:00:00Z", "Recarregada")])
         )
     );
-    await renderShell({ demo: false, load, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     expect(await screen.findByRole("heading", { name: "Eugênia Ribeiro" })).toBeInTheDocument();
@@ -239,7 +243,7 @@ describe("dashboard screens", () => {
     ).toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText("CÓDIGO DO CONVITE *"), {
-      target: { value: "brx-014" }
+      target: { value: "kp3456" }
     });
     fireEvent.change(within(dialog).getByLabelText("TELEFONE (WHATSAPP) *"), {
       target: { value: "+55 11 91234-5678" }
@@ -254,7 +258,66 @@ describe("dashboard screens", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("Mostrando 9 de 9 convites")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Abrir convite BRX-014/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Abrir convite KP3456/ })).toBeInTheDocument();
+  });
+
+  it("keeps the new-invitation modal open and shows the reason when the code is taken", async () => {
+    // The fixture source refuses a code the snapshot already uses, which is the 409 the API
+    // returns for the same reason. The modal must survive it rather than closing on a failure.
+    // Several fixture codes predate the contract's alphabet, so pick one the form accepts.
+    const taken = createFixtureDashboardSnapshot().invitations.find((invitation) =>
+      INVITATION_CODE_REGEX.test(invitation.invitationCode)
+    )!.invitationCode;
+    await renderShell();
+    await goTo(/Convites/);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo convite" }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("CÓDIGO DO CONVITE *"), {
+      target: { value: taken }
+    });
+    fireEvent.change(within(dialog).getByLabelText("TELEFONE (WHATSAPP) *"), {
+      target: { value: "+55 11 91234-5678" }
+    });
+    fireEvent.change(within(dialog).getByLabelText("NOME DO CONVITE *"), {
+      target: { value: "Família Moretti" }
+    });
+    fireEvent.change(within(dialog).getByLabelText("Convidado principal *"), {
+      target: { value: "Ana Moretti" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Criar convite" }));
+
+    expect(
+      await within(dialog).findByText(/Já existe um convite com este código/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("refuses a code that is not two letters and four digits from 2 to 9", async () => {
+    await renderShell();
+    await goTo(/Convites/);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo convite" }));
+
+    const dialog = await screen.findByRole("dialog");
+    // Zero and one are excluded from the alphabet precisely because they read as O and I.
+    fireEvent.change(within(dialog).getByLabelText("CÓDIGO DO CONVITE *"), {
+      target: { value: "KP3401" }
+    });
+    fireEvent.change(within(dialog).getByLabelText("TELEFONE (WHATSAPP) *"), {
+      target: { value: "+55 11 91234-5678" }
+    });
+    fireEvent.change(within(dialog).getByLabelText("NOME DO CONVITE *"), {
+      target: { value: "Família Moretti" }
+    });
+    fireEvent.change(within(dialog).getByLabelText("Convidado principal *"), {
+      target: { value: "Ana Moretti" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Criar convite" }));
+
+    // The click still lands even though the form is invalid — that is what reveals the note.
+    // The hint carries the same phrase, so assert on the error note's own opening words.
+    expect(within(dialog).getByText(/Preencha código/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("creates a guest flagged as a child from the new-invitation form", async () => {
@@ -264,7 +327,7 @@ describe("dashboard screens", () => {
 
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("CÓDIGO DO CONVITE *"), {
-      target: { value: "BRX-015" }
+      target: { value: "KP3457" }
     });
     fireEvent.change(within(dialog).getByLabelText("TELEFONE (WHATSAPP) *"), {
       target: { value: "+55 11 91234-5678" }
@@ -288,7 +351,7 @@ describe("dashboard screens", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Criar convite" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
-    fireEvent.click(await screen.findByRole("button", { name: /Abrir convite BRX-015/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Abrir convite KP3457/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Abrir Caio Moretti/ }));
 
     // The seed reaches the guest record; the cortesia stays open for the guest to answer.
@@ -313,6 +376,23 @@ describe("dashboard screens", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Salvar telefone" }));
 
     expect(within(dialog).getByText(/Informe um número válido com DDI e DDD/)).toBeInTheDocument();
+  });
+
+  it("keeps the phone modal open and shows the API error when saving fails", async () => {
+    const updateInvitationPhone = vi.fn().mockRejectedValue(new AdminApiError("Serviço indisponível.", "unavailable"));
+    await renderShell({ ...fixtureDashboardSource, demo: false, updateInvitationPhone });
+    openHash("#convites/SW2748");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Trocar telefone do convite/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("NOVO TELEFONE (WHATSAPP) *"), {
+      target: { value: "+55 11 91234-5678" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar telefone" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Serviço indisponível.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(updateInvitationPhone).toHaveBeenCalledWith("SW2748", "+55 11 91234-5678", expect.any(AbortSignal));
   });
 
   it("blocks a WhatsApp resend when the flow is neither failed nor undecided", async () => {
@@ -623,18 +703,78 @@ describe("dashboard screens", () => {
     expect(await screen.findByText("Mostrando 7 de 7 convites")).toBeInTheDocument();
   });
 
-  it("hides a guest message from the mural and puts it back", async () => {
-    await renderShell();
+  it("deletes a guest message after the operator confirms", async () => {
+    const deleteGuestMessage = vi.fn(async (messageId: string) => ({
+      ok: true as const,
+      messageId,
+      deletedAt: "2026-08-27T12:00:00.000Z"
+    }));
+    await renderShell({ ...fixtureDashboardSource, demo: false, deleteGuestMessage });
+    await goTo(/Recados/);
+
+    expect(await screen.findByText("Mostrando 6 de 6 recados")).toBeInTheDocument();
+    const article = (await screen.findByText(/Que alegria imensa/)).closest("article")!;
+    fireEvent.click(within(article).getByRole("button", { name: /Excluir recado/ }));
+
+    const confirm = await screen.findByRole("dialog");
+    expect(within(confirm).getByRole("heading", { name: "Excluir este recado?" })).toBeInTheDocument();
+    expect(within(confirm).getByText("Amanda Moura")).toBeInTheDocument();
+    expect(within(confirm).getByText("Esta ação não pode ser desfeita.")).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Excluir recado" }));
+
+    expect(await screen.findByText("Mostrando 5 de 5 recados")).toBeInTheDocument();
+    expect(screen.queryByText(/Que alegria imensa/)).not.toBeInTheDocument();
+    expect(deleteGuestMessage).toHaveBeenCalledWith(
+      "7c30a1e2-9b44-4d21-8f0a-15c7ab993410",
+      expect.anything()
+    );
+  });
+
+  it("keeps the recado and shows why when the delete is refused", async () => {
+    const deleteGuestMessage = vi.fn(async () => {
+      throw new AdminApiError("O serviço administrativo está indisponível.", "unavailable", 503);
+    });
+    await renderShell({ ...fixtureDashboardSource, demo: false, deleteGuestMessage });
     await goTo(/Recados/);
 
     const article = (await screen.findByText(/Que alegria imensa/)).closest("article")!;
-    fireEvent.click(within(article).getByRole("button", { name: /Esconder do site/ }));
+    fireEvent.click(within(article).getByRole("button", { name: /Excluir recado/ }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Excluir recado" })
+    );
 
-    expect(await screen.findByText("PUBLICADOS")).toBeInTheDocument();
-    expect(screen.getAllByText("ESCONDIDO DO SITE")).toHaveLength(2);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("O serviço administrativo está indisponível.");
+    // Still open, and still listed: the row leaves only once the API confirms.
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Mostrando 6 de 6 recados")).toBeInTheDocument();
+  });
 
-    fireEvent.click(within(article).getByRole("button", { name: /Mostrar no site/ }));
-    expect(screen.getAllByText("ESCONDIDO DO SITE")).toHaveLength(1);
+  it("drops a recado that the API says is already gone", async () => {
+    const deleteGuestMessage = vi.fn(async () => {
+      throw new AdminApiError("Este recado não existe mais.", "rejected", 404);
+    });
+    await renderShell({ ...fixtureDashboardSource, demo: false, deleteGuestMessage });
+    await goTo(/Recados/);
+
+    const article = (await screen.findByText(/Que alegria imensa/)).closest("article")!;
+    fireEvent.click(within(article).getByRole("button", { name: /Excluir recado/ }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Excluir recado" })
+    );
+
+    expect(await screen.findByText("Mostrando 5 de 5 recados")).toBeInTheDocument();
+  });
+
+  it("shows only the two truthful recado stats and no moderation filter tabs", async () => {
+    await renderShell();
+    await goTo(/Recados/);
+
+    expect(await screen.findByText("RECADOS RECEBIDOS")).toBeInTheDocument();
+    expect(screen.getByText("ÚLTIMO RECEBIDO")).toBeInTheDocument();
+    expect(screen.queryByText("PUBLICADOS")).not.toBeInTheDocument();
+    expect(screen.queryByText("ESCONDIDOS")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filtrar recados" })).not.toBeInTheDocument();
   });
 
   it("lists every music suggestion, newest first, without the site prefix", async () => {
@@ -793,7 +933,7 @@ describe("dashboard screens", () => {
       ...invitation,
       whatsappConversation: null
     }));
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
     await goTo(/WhatsApp/);
 
     expect(await screen.findByText("Nenhum convite trocou mensagens no WhatsApp ainda.")).toBeInTheDocument();
@@ -810,7 +950,7 @@ describe("dashboard screens", () => {
         { messageId: "rq-new", direction: "inbound", sentAt: "2026-09-01T09:00:00Z", text: "Mudei de ideia!" }
       ]
     };
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation: vi.fn() });
     await goTo(/WhatsApp/);
 
     const list = await screen.findByRole("list", { name: "Conversas" });
@@ -847,7 +987,7 @@ describe("dashboard screens", () => {
         : invitation
     );
     const loadWhatsappInvitation = vi.fn();
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
 
     const row = await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" });
@@ -890,6 +1030,9 @@ describe("dashboard screens", () => {
     let resolveSend!: () => void;
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: async (invitationCode) =>
         threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: true, lastInboundAt: "2026-08-20T12:00:00.000Z", expiresAt: "2126-08-21T12:00:00.000Z" } }),
@@ -924,6 +1067,9 @@ describe("dashboard screens", () => {
     snapshot.threads = {};
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: async (invitationCode) =>
         threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: true, lastInboundAt: "2026-08-20T12:00:00.000Z", expiresAt: "2126-08-21T12:00:00.000Z" } }),
@@ -950,6 +1096,9 @@ describe("dashboard screens", () => {
     const sendWhatsappText = vi.fn();
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: async (invitationCode) =>
         threadPage(invitationCode, [], null, { whatsappFreeTextWindow: { open: false } }),
@@ -1008,6 +1157,9 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(threadPage("SW2748", []));
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation
     };
@@ -1034,7 +1186,7 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(
         threadPage("SW2748", [message("old", "2026-08-19T12:00:00Z", "Antiga")], null)
       );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     const loadMore = await screen.findByRole("button", { name: "Carregar mensagens anteriores" });
@@ -1064,7 +1216,7 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(
         threadPage("SW2748", [message("old", "2026-08-19T12:00:00Z", "Antiga")], null)
       );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     expect((await screen.findAllByText("Nova")).length).toBeGreaterThan(0);
@@ -1107,7 +1259,7 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(
         threadPage("SW2748", [message("m1", "2026-08-18T12:00:00Z", "Mensagem 1")], null)
       );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
     const historyContainer = await screen.findByLabelText("Histórico da conversa");
@@ -1173,7 +1325,7 @@ describe("dashboard screens", () => {
         "spurious-next-cursor"
       )
     );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
 
@@ -1201,7 +1353,7 @@ describe("dashboard screens", () => {
       .mockResolvedValueOnce(
         threadPage("QP8814", [message("qp-old", "2026-08-19T12:00:00Z", "QP Antiga")], "cursor-extra")
       );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Helena Prado Ribeiro" }));
 
@@ -1243,7 +1395,7 @@ describe("dashboard screens", () => {
           null
         )
       );
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
 
@@ -1275,7 +1427,7 @@ describe("dashboard screens", () => {
     const loadWhatsappInvitation = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
-    await renderShell({ demo: false, load: async () => snapshot, loadWhatsappInvitation });
+    await renderShell({ demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation });
     await goTo(/WhatsApp/);
     fireEvent.click(await screen.findByRole("button", { name: "Conversa com Eugênia Ribeiro" }));
 
@@ -1314,6 +1466,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn(() => pendingLoad)
     };
@@ -1342,6 +1497,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation
     };
@@ -1364,6 +1522,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
     };
@@ -1404,6 +1565,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn().mockResolvedValue(invitationPageData)
     };
@@ -1431,6 +1595,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
     snapshot.threads = {};
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
     };
@@ -1456,6 +1623,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
     snapshot.threads = {};
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn().mockResolvedValue(threadPage("SW2748", []))
     };
@@ -1488,6 +1658,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn().mockResolvedValue(invitationPageData)
     };
@@ -1530,6 +1703,9 @@ describe("invite-detail WhatsApp flow panel states", () => {
 
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load,
       loadWhatsappInvitation
     };

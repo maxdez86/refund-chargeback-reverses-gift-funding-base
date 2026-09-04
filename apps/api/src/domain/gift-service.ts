@@ -1,4 +1,4 @@
-import { GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
+import { AdminGiftSchema, GetGiftsResponseSchema, type Gift } from "@brimax/contracts";
 import { PAYMENT_GIFTS } from "@brimax/config";
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 
@@ -75,5 +75,22 @@ export class GiftService {
       ok: true,
       gifts
     });
+  }
+
+  async getAdminGifts() {
+    const response = await this.getGifts();
+    const payerNamesByGiftId = await this.repository.listConfirmedPayerNamesByGiftIds(
+      response.gifts.map((gift) => gift.id)
+    );
+
+    return {
+      ok: true as const,
+      gifts: response.gifts.map((gift) =>
+        AdminGiftSchema.parse({
+          ...gift,
+          payerNames: payerNamesByGiftId[gift.id] ?? []
+        })
+      )
+    };
   }
 }

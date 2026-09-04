@@ -23,7 +23,6 @@ export function OverviewScreen({
   const attendingInvitations = state.invitations.filter(
     (invitation) => invitation.rsvp.status === "attending"
   ).length;
-  const publishedMessages = state.guestMessages.filter((message) => !message.hidden).length;
   const musicSuggestions = toMusicSuggestionRows(state.invitations);
   const suggestionPercent = state.invitations.length
     ? Math.round((musicSuggestions.length / state.invitations.length) * 100)
@@ -64,7 +63,7 @@ export function OverviewScreen({
       label: "RECADOS",
       icon: Mail,
       value: String(state.guestMessages.length),
-      hint: `${publishedMessages} publicados no site`
+      hint: "publicados no mural do site"
     },
     {
       section: "musicas" as const,

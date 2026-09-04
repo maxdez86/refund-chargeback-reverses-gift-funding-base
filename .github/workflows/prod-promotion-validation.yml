@@ -81,7 +81,7 @@ jobs:
         env:
           API_DOMAIN: ${{ vars.API_DOMAIN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
-          PROD_PROMOTION_GIFT_ID: g-batedeira
+          PROD_PROMOTION_GIFT_ID: g-cama
           PROD_PROMOTION_INVITATION_CODE: AB2345
           STAGE: dev
         run: |
@@ -213,4 +213,60 @@ jobs:
         with:
           name: prod-promotion-validation-${{ github.run_id }}
           path: ${{ needs.discover-context.outputs.artifact_dir }}
+          if-no-files-found: warn
+
+  run-dev-whatsapp-integration-suite:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs:
+      - discover-context
+      - prepare-dev-test-data
+    environment: dev
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Configure dev validation AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_DEV }}
+
+      - name: Confirm dev validation caller identity
+        run: |
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          {
+            echo "## Dev validation AWS caller"
+            echo ""
+            echo "- caller_arn: ${caller_arn}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run WhatsApp webhook integration suite
+        env:
+          API_BASE_URL: ${{ needs.discover-context.outputs.api_base_url }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROD_PROMOTION_WHATSAPP_ARTIFACT_DIR: .tmp/prod-promotion-validation/${{ github.run_id }}/whatsapp
+          PROD_PROMOTION_WHATSAPP_RUN_MARKER: gha-${{ github.run_id }}
+          STAGE: dev
+          WEDDING_TABLE_NAME: ${{ needs.discover-context.outputs.wedding_table_name }}
+          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
+        run: pnpm test:integration:whatsapp-prod-promotion
+
+      - name: Upload WhatsApp integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-promotion-validation-whatsapp-${{ github.run_id }}
+          path: .tmp/prod-promotion-validation/${{ github.run_id }}/whatsapp
           if-no-files-found: warn

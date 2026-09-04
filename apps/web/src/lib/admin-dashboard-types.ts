@@ -196,11 +196,15 @@ export type AdminWhatsappThreadLoadState =
   | { status: "loaded"; nextCursor: string | null }
   | { status: "error"; hasLoaded: boolean; nextCursor: string | null };
 
-/** A guest message plus the moderation flag that only the panel sees. */
-export type AdminGuestMessage = GuestMessage & { hidden: boolean };
+/**
+ * A guest message as the panel sees it. Identical to the public record today: the panel's only
+ * action on a recado is a hard delete, so there is no panel-only moderation state to carry.
+ */
+export type AdminGuestMessage = GuestMessage;
 
 /** Mirrors `Gift` plus the catalog controls that live behind the admin panel. */
 export type AdminGift = Gift & {
+  payerNames: string[];
   paused: boolean;
   /** Optimistic-concurrency version of the catalog row. */
   version: number;

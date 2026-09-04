@@ -47,6 +47,17 @@ export const AdminSessionResponseSchema = z
 
 export type AdminSessionResponse = z.infer<typeof AdminSessionResponseSchema>;
 
+export const AdminNextInvitationCodeResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    invitationCode: InvitationCodeSchema
+  })
+  .strict();
+
+export type AdminNextInvitationCodeResponse = z.infer<
+  typeof AdminNextInvitationCodeResponseSchema
+>;
+
 export const AdminDashboardGuestSchema = GuestSummarySchema.strict();
 
 export const AdminDashboardRsvpSummarySchema = z
@@ -119,11 +130,15 @@ export const AdminDashboardInvitationSchema = z
   })
   .strict();
 
+export const AdminGiftSchema = GiftSchema.extend({
+  payerNames: z.array(z.string().min(1).max(120))
+}).strict();
+
 export const AdminDashboardResponseSchema = z
   .object({
     ok: z.literal(true),
     invitations: z.array(AdminDashboardInvitationSchema),
-    gifts: z.array(GiftSchema.strict()),
+    gifts: z.array(AdminGiftSchema),
     guestMessages: z.array(GuestMessageSchema.strict())
   })
   .strict();
@@ -134,4 +149,158 @@ export type AdminDashboardWhatsappConversation = z.infer<
   typeof AdminDashboardWhatsappConversationSchema
 >;
 export type AdminDashboardInvitation = z.infer<typeof AdminDashboardInvitationSchema>;
+export type AdminGift = z.infer<typeof AdminGiftSchema>;
 export type AdminDashboardResponse = z.infer<typeof AdminDashboardResponseSchema>;
+
+/**
+ * Body of `PATCH /admin/invitations/{invitationCode}/guests/{guestId}`.
+ *
+ * Every field is an absolute value rather than a toggle, which is what makes the route naturally
+ * idempotent and lets it skip the `Idempotency-Key` the WhatsApp sends carry. The two child fields
+ * `rsvpStatus` cannot be set back to `pending`: a stored `pending` answer falls back to the guest
+ * item's seed status, which this route does not edit, so "un-answering" a guest would leave the
+ * response describing a state the dashboard would not recompute. The admin path corrects an
+ * answer; it does not erase one.
+ *
+ * The two child fields
+ * live in different places on the way down: `isChild` is the seed attribute on the guest item,
+ * while `isChildSixOrYounger` is a per-response answer inside the invitation's `guestResponses`.
+ * They are separate inputs because an operator may need to correct either one alone.
+ */
+export const AdminGuestUpdateRequestSchema = z
+  .object({
+    rsvpStatus: RsvpStatusSchema.exclude(["pending"]).optional(),
+    isChild: z.boolean().optional(),
+    isChildSixOrYounger: z.boolean().optional()
+  })
+  .strict()
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+    message: "At least one guest field must be provided."
+  });
+
+/**
+ * Body of `POST /admin/invitations/{invitationCode}/confirm-all`.
+ *
+ * Only the listed guests are set to `attending`; every other guest on the invitation keeps the
+ * status it already had, which is exactly what the confirmation modal promises the operator.
+ */
+export const AdminConfirmGuestsRequestSchema = z
+  .object({
+    guestIds: z.array(z.string().min(1)).min(1)
+  })
+  .strict();
+
+/**
+ * Shared answer for both admin guest writes.
+ *
+ * It carries the invitation's full guest list and its recomputed RSVP aggregate so the dashboard
+ * can reconcile from the response alone — a refetch would replace the whole snapshot and undo
+ * anything else the operator had open.
+ */
+export const AdminInvitationRsvpWriteResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    invitationCode: InvitationCodeSchema,
+    guests: z.array(AdminDashboardGuestSchema).min(1),
+    rsvp: AdminDashboardRsvpSummarySchema,
+    updatedAt: z.string().datetime()
+  })
+  .strict();
+
+export type AdminGuestUpdateRequest = z.infer<typeof AdminGuestUpdateRequestSchema>;
+export type AdminConfirmGuestsRequest = z.infer<typeof AdminConfirmGuestsRequestSchema>;
+export type AdminInvitationRsvpWriteResponse = z.infer<
+  typeof AdminInvitationRsvpWriteResponseSchema
+>;
+
+/**
+ * One guest as the operator supplies them when creating an invitation or adding to one.
+ *
+ * Deliberately carries neither `slot` nor `guestId`: the server derives both — `max(sortOrder) + 1`,
+ * never reusing the gap a removed guest left — because `buildGuestId` derives the id from the slot,
+ * and a reused slot would resurrect a removed guest's id. `.strict()` makes a client-sent slot a 400
+ * rather than a field that is silently ignored.
+ */
+export const AdminInvitationGuestInputSchema = z
+  .object({
+    guestName: z.string().trim().min(1).max(120),
+    isChild: z.boolean().optional()
+  })
+  .strict();
+
+/**
+ * Body of `POST /admin/invitations`.
+ *
+ * The operator supplies the code rather than the server minting one, so invitation codes stay
+ * meaningful and match what the offline import writes. Format is validated here and uniqueness is
+ * enforced by the conditional write, which is why this route carries no `Idempotency-Key`: a replay
+ * lands on the same 409.
+ */
+export const AdminCreateInvitationRequestSchema = z
+  .object({
+    invitationCode: InvitationCodeSchema,
+    householdName: z.string().trim().min(1).max(200),
+    phoneNumber: z
+      .string()
+      .regex(/^[1-9]\d{7,14}$/)
+      .optional(),
+    guests: z.array(AdminInvitationGuestInputSchema).min(1).max(20)
+  })
+  .strict();
+
+/**
+ * Answer for `POST /admin/invitations`.
+ *
+ * Not the shared RSVP write response: that one carries no `householdName`, no `phoneNumber` and no
+ * WhatsApp availability, and the dashboard cannot insert a new row without them.
+ */
+export const AdminCreateInvitationResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    invitation: AdminDashboardInvitationSchema,
+    createdAt: z.string().datetime()
+  })
+  .strict();
+
+/**
+ * Body of `POST /admin/invitations/{invitationCode}/guests`.
+ *
+ * `DELETE /admin/invitations/{invitationCode}/guests/{guestId}` has no body at all — the guest is
+ * fully identified by the path — and both routes answer with `AdminInvitationRsvpWriteResponse`,
+ * since a guest joining or leaving changes exactly the guest list and the aggregate that envelope
+ * already carries.
+ */
+export const AdminAddGuestsRequestSchema = z
+  .object({
+    guests: z.array(AdminInvitationGuestInputSchema).min(1).max(10)
+  })
+  .strict();
+
+/**
+ * Answer for `DELETE /admin/invitations/{invitationCode}`.
+ *
+ * The delete is a hard cascade, so there is no guest list left to reconcile against — the counts
+ * report what was removed instead, which is the only evidence the operator has that the WhatsApp
+ * history went with the invitation.
+ */
+export const AdminDeleteInvitationResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    invitationCode: InvitationCodeSchema,
+    deletedAt: z.string().datetime(),
+    deleted: z
+      .object({
+        guests: z.number().int().nonnegative(),
+        rsvp: z.number().int().min(0).max(1),
+        whatsappItems: z.number().int().nonnegative(),
+        phoneLookups: z.number().int().min(0).max(1)
+      })
+      .strict()
+  })
+  .strict();
+
+export type AdminInvitationGuestInput = z.infer<typeof AdminInvitationGuestInputSchema>;
+export type AdminCreateInvitationRequest = z.infer<typeof AdminCreateInvitationRequestSchema>;
+export type AdminCreateInvitationResponse = z.infer<typeof AdminCreateInvitationResponseSchema>;
+export type AdminAddGuestsRequest = z.infer<typeof AdminAddGuestsRequestSchema>;
+export type AdminDeleteInvitationResponse = z.infer<typeof AdminDeleteInvitationResponseSchema>;

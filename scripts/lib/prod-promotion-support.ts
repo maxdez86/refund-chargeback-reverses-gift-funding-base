@@ -6,7 +6,7 @@ import { PRODUCTION_INVITATIONS } from "../seed-dev.ts";
 
 export const PROD_PROMOTION_TURNSTILE_DUMMY_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 export const PROD_PROMOTION_INVITATION_CODE = "AB2345";
-export const PROD_PROMOTION_GIFT_ID = "g-batedeira";
+export const PROD_PROMOTION_GIFT_ID = "g-cama";
 export const PROD_PROMOTION_GIFT_QUANTITY = 1;
 export const PROD_PROMOTION_PAYMENT_METHOD = "PIX";
 
@@ -87,6 +87,14 @@ export function createDocumentClient() {
 
 export function resolveIntegrationInvitationCode() {
   return process.env.PROD_PROMOTION_INVITATION_CODE?.trim() || PROD_PROMOTION_INVITATION_CODE;
+}
+
+export function resolveWhatsappIntegrationInvitationCode() {
+  const explicit = process.env.PROD_PROMOTION_WHATSAPP_INVITATION_CODE?.trim();
+  if (explicit) return explicit;
+  const source = (process.env.GITHUB_RUN_ID?.trim() || String(Date.now())).replace(/\D/g, "").slice(-4).padStart(4, "2");
+  const digits = Array.from(source, (digit) => String((Number(digit) % 8) + 2)).join("");
+  return `ZX${digits}`;
 }
 
 export function resolveIntegrationInvitation() {

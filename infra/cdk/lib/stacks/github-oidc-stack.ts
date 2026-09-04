@@ -186,6 +186,7 @@ export class GithubOidcStack extends cdk.Stack {
             "dynamodb:GetItem",
             "dynamodb:PutItem",
             "dynamodb:DeleteItem",
+            "dynamodb:UpdateItem",
             "dynamodb:Query",
             "dynamodb:Scan"
           ],

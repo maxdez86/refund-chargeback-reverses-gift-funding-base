@@ -22,7 +22,14 @@ import {
   ModalNote,
   TextInput
 } from "@/components/dashboard/AdminPrimitives";
+import { ResponsivePhoto } from "@/components/ResponsivePhoto";
+import {
+  buildSharedWidthImageFallbackSrc,
+  buildSharedWidthImageSources
+} from "@/lib/media";
 import { cn } from "@/lib/utils";
+
+const GIFT_TILE_IMAGE_SIZES = "(max-width: 640px) 90vw, 280px";
 
 /** Keeps one object URL alive at a time, revoking the previous preview when it is replaced. */
 function usePhotoPicker(initial: string | null) {
@@ -53,6 +60,31 @@ function usePhotoPicker(initial: string | null) {
   };
 
   return { photoUrl, photoName, pick, keep };
+}
+
+/** Local pick wins; otherwise the tile shows the same catalog image the public Presentes page uses. */
+function GiftTileImage({ gift, photoUrl }: { gift: AdminGift; photoUrl: string | null }) {
+  if (photoUrl) {
+    return (
+      <span
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url("${photoUrl}")` }}
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <ResponsivePhoto
+      section="presentes"
+      sources={buildSharedWidthImageSources("presentes", gift.image, GIFT_TILE_IMAGE_SIZES)}
+      fallbackSrc={buildSharedWidthImageFallbackSrc("presentes", gift.image)}
+      alt={gift.name}
+      loading="lazy"
+      pictureClassName="absolute inset-0 flex h-full w-full items-center justify-center"
+      className="h-full w-full object-contain object-center p-3"
+    />
+  );
 }
 
 function Toggle({
@@ -205,22 +237,7 @@ export function GiftEditorModal({
             giftTileClasses(gift.id)
           )}
         >
-          {photoUrl ? (
-            <span
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url("${photoUrl}")` }}
-              aria-hidden="true"
-            />
-          ) : (
-            <span className="flex flex-col items-center gap-2.5">
-              <span className="font-admin-serif text-[72px] leading-none">
-                {gift.name.trim().charAt(0).toUpperCase()}
-              </span>
-              <span className="admin-mono text-[11px] tracking-[0.14em] opacity-70">
-                IMAGE · {gift.image}
-              </span>
-            </span>
-          )}
+          <GiftTileImage gift={gift} photoUrl={photoUrl} />
           <span
             className={`absolute left-4 top-4 rounded-full px-3 py-[5px] text-[11.5px] font-medium tracking-[0.04em] ${TONE_CLASSES[badge.tone]}`}
           >
@@ -273,6 +290,23 @@ export function GiftEditorModal({
               </div>
             ))}
           </dl>
+
+          <div className="mt-6 border-t border-admin-line pt-5">
+            <dt className="text-[10.5px] font-medium tracking-[0.13em] text-admin-fainter">
+              PAGANTES
+            </dt>
+            <dd className="mt-2 text-[14.5px] text-admin-ink">
+              {gift.payerNames.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {gift.payerNames.map((payerName) => (
+                    <li key={payerName}>{payerName}</li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-admin-faint">Nenhum pagante identificado</span>
+              )}
+            </dd>
+          </div>
         </div>
       </div>
 

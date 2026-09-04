@@ -12,7 +12,7 @@ describe("AdminDashboardService", () => {
       listAdminDashboardInvitations: vi.fn(() => new Promise<[]>(resolve => { resolveInvitations = resolve; }))
     };
     const giftService = {
-      getGifts: vi.fn(() => new Promise<typeof emptyGiftResponse>(resolve => { resolveGifts = resolve; }))
+      getAdminGifts: vi.fn(() => new Promise<typeof emptyGiftResponse>(resolve => { resolveGifts = resolve; }))
     };
     const guestMessageService = {
       list: vi.fn(() => new Promise<{ ok: true; messages: []; nextCursor: null }>(resolve => { resolveMessages = resolve; }))
@@ -25,7 +25,7 @@ describe("AdminDashboardService", () => {
 
     const pending = service.getDashboard();
     expect(repository.listAdminDashboardInvitations).toHaveBeenCalledTimes(1);
-    expect(giftService.getGifts).toHaveBeenCalledTimes(1);
+    expect(giftService.getAdminGifts).toHaveBeenCalledTimes(1);
     expect(guestMessageService.list).toHaveBeenCalledWith(null);
 
     resolveInvitations([]);
@@ -59,7 +59,7 @@ describe("AdminDashboardService", () => {
     };
     const service = new AdminDashboardService(
       { listAdminDashboardInvitations: vi.fn().mockResolvedValue([]) } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       guestMessageService as never
     );
 
@@ -75,7 +75,7 @@ describe("AdminDashboardService", () => {
     };
     const service = new AdminDashboardService(
       { listAdminDashboardInvitations: vi.fn().mockResolvedValue([]) } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       guestMessageService as never
     );
 
@@ -126,7 +126,7 @@ describe("AdminDashboardService", () => {
           .fn()
           .mockResolvedValue([withConversation, withoutConversation])
       } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
     );
 
@@ -169,7 +169,7 @@ describe("AdminDashboardService", () => {
           }
         }])
       } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
     );
 
@@ -179,7 +179,7 @@ describe("AdminDashboardService", () => {
   it("rejects invalid assembled output and dependency failures", async () => {
     const invalidService = new AdminDashboardService(
       { listAdminDashboardInvitations: vi.fn().mockResolvedValue([{ invitationCode: "bad" }]) } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
     );
     await expect(invalidService.getDashboard()).rejects.toThrow();
@@ -187,7 +187,7 @@ describe("AdminDashboardService", () => {
     const failure = new Error("DynamoDB unavailable");
     const failingService = new AdminDashboardService(
       { listAdminDashboardInvitations: vi.fn().mockRejectedValue(failure) } as never,
-      { getGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
+      { getAdminGifts: vi.fn().mockResolvedValue(emptyGiftResponse) } as never,
       { list: vi.fn().mockResolvedValue({ ok: true, messages: [], nextCursor: null }) } as never
     );
     await expect(failingService.getDashboard()).rejects.toBe(failure);

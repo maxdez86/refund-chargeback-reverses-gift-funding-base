@@ -697,7 +697,6 @@ const guestMessages: AdminGuestMessage[] = [
     messageId: "b2f91fa5-41dc-4444-b466-9ca5f974cabc",
     authorName: "Eugênia Ribeiro",
     createdAt: "2026-07-19T15:58:34Z",
-    hidden: false,
     message:
       "Não acredito em destino, mas vendo a história de vocês acredito fielmente que estavam destinados a se encontrar. Tenho certeza que serão muito felizes."
   },
@@ -705,35 +704,30 @@ const guestMessages: AdminGuestMessage[] = [
     messageId: "7c30a1e2-9b44-4d21-8f0a-15c7ab993410",
     authorName: "Amanda Moura",
     createdAt: "2026-08-02T09:12:07Z",
-    hidden: false,
     message: "Que alegria imensa poder celebrar esse dia com vocês. Já estamos contando os dias!"
   },
   {
     messageId: "e51b7740-2c88-49aa-b0d6-4f2ac1d6b7e9",
     authorName: "Marcos Vinícius Alves",
     createdAt: "2026-08-09T11:31:52Z",
-    hidden: false,
     message: "Contem comigo para o que precisarem antes do grande dia. Vai ser inesquecível."
   },
   {
     messageId: "a0d4c9b1-77ef-4b1e-9c33-882be0a51d67",
     authorName: "Anônimo",
     createdAt: "2026-08-12T23:47:19Z",
-    hidden: true,
     message: "Mensagem com conteúdo ofensivo reportada pela moderação do site."
   },
   {
     messageId: "2f8ee6c5-0a54-4c9e-bb17-6d3f7c204a55",
     authorName: "Sofia Mendes Tavares",
     createdAt: "2026-08-14T18:39:41Z",
-    hidden: false,
     message: "Vamos todos! Já organizamos a viagem em família e as crianças estão animadíssimas."
   },
   {
     messageId: "9b1c33da-5e02-42f7-a8d1-cf4477e21b83",
     authorName: "Rafael Queiroz",
     createdAt: "2026-08-10T20:11:03Z",
-    hidden: false,
     message: "Infelizmente estarei fora do país na data. Desejo toda felicidade do mundo aos dois!"
   }
 ];
@@ -765,7 +759,9 @@ const giftSeed: GiftSeed[] = [
   { id: "g-toalhas", name: "Enxoval de toalhas", image: "toalhas", fractional: false, totalValueCents: 28_000, partsFunded: 0, partsReserved: 0, paused: false, updatedAt: "2026-06-30T14:26:05.318Z", version: 1 }
 ];
 
-const gifts: AdminGift[] = giftSeed.map((gift) => deriveGift({ ...gift, photoUrl: null }));
+const gifts: AdminGift[] = giftSeed.map((gift) =>
+  deriveGift({ ...gift, payerNames: [], photoUrl: null })
+);
 
 /**
  * The per-invitation summary the backend would have computed for this thread, derived rather

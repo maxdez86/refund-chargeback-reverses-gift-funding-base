@@ -1,4 +1,5 @@
 import type { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
+import type { AppStage } from "@brimax/config";
 import { CHECKOUT_EXPIRY_GRACE_MS, isStalePendingCheckout } from "./payment-state";
 
 type CheckoutExpiryRepository = Pick<
@@ -52,7 +53,7 @@ export async function expirePaymentIfStale(
 export async function sweepStaleCheckouts(
   repository: CheckoutExpiryRepository,
   nowMs: number,
-  options: { limit?: number; concurrency?: number } = {}
+  options: { limit?: number; concurrency?: number; stage?: AppStage } = {}
 ): Promise<SweepSummary> {
   const limit = options.limit ?? DEFAULT_SWEEP_LIMIT;
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_SWEEP_CONCURRENCY);
@@ -82,7 +83,7 @@ export async function sweepStaleCheckouts(
   for (let offset = 0; offset < staleReservations.length; offset += concurrency) {
     const wave = staleReservations.slice(offset, offset + concurrency);
     const outcomes = await Promise.all(
-      wave.map((reservation) => processStaleReservation(repository, reservation, summary))
+      wave.map((reservation) => processStaleReservation(repository, reservation, summary, options.stage))
     );
 
     for (const outcome of outcomes) {
@@ -114,7 +115,8 @@ type SweepOutcome = "released" | "race-lost" | "protected" | "missing-context" |
 async function processStaleReservation(
   repository: CheckoutExpiryRepository,
   reservation: { paymentId: string },
-  summary: SweepSummary
+  summary: SweepSummary,
+  stage: AppStage = "prod"
 ): Promise<SweepOutcome> {
   try {
     const payment = await repository.getPayment(reservation.paymentId);
@@ -143,6 +145,7 @@ async function processStaleReservation(
     console.error(
       JSON.stringify({
         metric: "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED",
+        stage,
         paymentId: reservation.paymentId,
         errorMessage: error instanceof Error ? error.message : String(error)
       })

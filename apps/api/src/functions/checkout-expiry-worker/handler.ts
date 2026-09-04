@@ -1,4 +1,5 @@
 import type { SQSEvent } from "aws-lambda";
+import { resolveRuntimeStage } from "../../lib/env";
 import { sweepStaleCheckouts } from "../../domain/checkout-expiry";
 import { wrapLambdaHandler } from "../../lib/sentry";
 import { PaymentRepository } from "../../services/dynamodb/repositories/payment-repository";
@@ -26,6 +27,8 @@ function parseTrigger(body: string): ExpiryTriggerMessage {
 }
 
 async function onCheckoutExpiry(event: SQSEvent) {
+  const stage = resolveRuntimeStage();
+
   for (const record of event.Records) {
     const message = parseTrigger(record.body);
     const source = message.source ?? "schedule";
@@ -39,7 +42,8 @@ async function onCheckoutExpiry(event: SQSEvent) {
       async () =>
         sweepStaleCheckouts(repository, Date.now(), {
           limit: SWEEP_LIMIT,
-          concurrency: SWEEP_CONCURRENCY
+          concurrency: SWEEP_CONCURRENCY,
+          stage
         })
     );
 
@@ -53,6 +57,7 @@ async function onCheckoutExpiry(event: SQSEvent) {
     console.info(
       JSON.stringify({
         metric: "CHECKOUT_EXPIRY_SWEEP_COMPLETED",
+        stage,
         source,
         scanned: summary.scanned,
         released: summary.released,
@@ -70,6 +75,7 @@ async function onCheckoutExpiry(event: SQSEvent) {
       console.warn(
         JSON.stringify({
           metric: "CHECKOUT_EXPIRY_PROTECTED_STALE",
+          stage,
           source,
           count: summary.protected
         })
@@ -80,6 +86,7 @@ async function onCheckoutExpiry(event: SQSEvent) {
       console.warn(
         JSON.stringify({
           metric: "CHECKOUT_EXPIRY_SWEEP_CAP_HIT",
+          stage,
           source,
           scanned: summary.scanned
         })
@@ -92,6 +99,7 @@ async function onCheckoutExpiry(event: SQSEvent) {
       console.error(
         JSON.stringify({
           metric: "CHECKOUT_EXPIRY_SWEEP_FAILED",
+          stage,
           source,
           failedCount: summary.failedIds.length
         })

@@ -69,7 +69,7 @@ const spySource = (
 ) => {
   const load = vi.fn(async () => snapshot);
   const loadWhatsappInvitation = vi.fn(invitationFn);
-  const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
+  const source: AdminDashboardSource = { demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load, loadWhatsappInvitation };
   return { source, load, loadWhatsappInvitation };
 };
 
@@ -151,6 +151,9 @@ describe("useAdminDashboard", () => {
   it("reports an error when the source cannot load", async () => {
     const failing: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: () => Promise.reject(new Error("offline")),
       loadWhatsappInvitation: vi.fn()
     };
@@ -163,6 +166,9 @@ describe("useAdminDashboard", () => {
     const snapshot = createFixtureDashboardSnapshot();
     const single: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => ({ ...snapshot, invitations: snapshot.invitations.slice(0, 1) }),
       loadWhatsappInvitation: vi.fn()
     };
@@ -186,7 +192,7 @@ describe("useAdminDashboard", () => {
     });
     const load = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(pendingRefresh);
     const loadWhatsappInvitation = vi.fn();
-    const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
+    const source: AdminDashboardSource = { demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load, loadWhatsappInvitation };
     const timestamps = ["2026-08-20T10:00:00Z", "2026-08-20T11:00:00Z"];
     const { result } = renderHook(() =>
       useAdminDashboard({ source, now: () => timestamps.shift()! })
@@ -222,6 +228,9 @@ describe("useAdminDashboard", () => {
     const load = vi.fn().mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new Error("offline"));
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load,
       loadWhatsappInvitation: vi.fn().mockResolvedValue({
         flow: defaultFlow("SW2748"),
@@ -284,12 +293,12 @@ describe("useAdminDashboard", () => {
       pendingHistorySignal = signal;
       return new Promise<never>(() => undefined);
     });
-    const source: AdminDashboardSource = { demo: false, load, loadWhatsappInvitation };
+    const source: AdminDashboardSource = { demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
     await act(() => result.current.refreshWhatsappInvitation("SW2748"));
     act(() => {
-      result.current.dispatch({ type: "toggle-message-hidden", messageId: initial.guestMessages[0].messageId });
+      result.current.dispatch({ type: "remove-message", messageId: initial.guestMessages[0].messageId });
       void result.current.refreshWhatsappInvitation("TX6935");
     });
 
@@ -299,7 +308,7 @@ describe("useAdminDashboard", () => {
     expect(result.current.state.threads).toEqual({});
     expect(result.current.state.invitations.every((invitation) => invitation.commands.length === 0)).toBe(true);
     expect(Object.values(result.current.state.threadLoads).every((loadState) => loadState.status === "unloaded")).toBe(true);
-    expect(result.current.state.guestMessages[0].hidden).toBe(false);
+    expect(result.current.state.guestMessages).toHaveLength(initial.guestMessages.length);
   });
 
   it("aborts and ignores a stale refresh when the source is replaced", async () => {
@@ -309,6 +318,9 @@ describe("useAdminDashboard", () => {
     let refreshSignal: AbortSignal | undefined;
     const first: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: vi.fn()
         .mockResolvedValueOnce(initial)
         .mockImplementationOnce((signal?: AbortSignal) => {
@@ -321,6 +333,9 @@ describe("useAdminDashboard", () => {
     replacementSnapshot.invitations = replacementSnapshot.invitations.slice(0, 2);
     const replacement: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => replacementSnapshot,
       loadWhatsappInvitation: vi.fn()
     };
@@ -350,6 +365,9 @@ describe("useAdminDashboard", () => {
     let firstSignal: AbortSignal | undefined;
     const first: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: (signal) => {
         firstSignal = signal;
         return firstLoad;
@@ -360,6 +378,9 @@ describe("useAdminDashboard", () => {
     replacementSnapshot.invitations = replacementSnapshot.invitations.slice(0, 2);
     const replacement: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => replacementSnapshot,
       loadWhatsappInvitation: vi.fn()
     };
@@ -382,11 +403,17 @@ describe("useAdminDashboard", () => {
     const fixture = createFixtureDashboardSnapshot();
     const loaded: AdminDashboardSource = {
       demo: true,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => fixture,
       loadWhatsappInvitation: vi.fn()
     };
     const failing: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => Promise.reject(new Error("offline")),
       loadWhatsappInvitation: vi.fn()
     };
@@ -413,7 +440,7 @@ describe("useAdminDashboard", () => {
       resolvePage = resolve;
     });
     const loadWhatsappInvitation = vi.fn(() => pending);
-    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappInvitation };
+    const source: AdminDashboardSource = { demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
@@ -441,6 +468,9 @@ describe("useAdminDashboard", () => {
     const resolvers = new Map<string, (page: InvitationPage) => void>();
     const source: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn((invitationCode) =>
         new Promise<InvitationPage>((resolve) =>
@@ -491,6 +521,9 @@ describe("useAdminDashboard", () => {
     let resolveStale!: (page: InvitationPage) => void;
     const staleSource: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: vi.fn(() =>
         new Promise<InvitationPage>((resolve) => {
@@ -506,6 +539,9 @@ describe("useAdminDashboard", () => {
       });
     const replacement: AdminDashboardSource = {
       demo: false,
+      deleteGuestMessage: vi.fn(),
+      updateGuest: vi.fn(),
+      confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
       load: async () => snapshot,
       loadWhatsappInvitation: replacementLoad
     };
@@ -556,7 +592,7 @@ describe("useAdminDashboard", () => {
           commands: [], nextCursor: null
         }
       });
-    const source: AdminDashboardSource = { demo: false, load: async () => snapshot, loadWhatsappInvitation };
+    const source: AdminDashboardSource = { demo: false, deleteGuestMessage: vi.fn(), updateGuest: vi.fn(), confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(), load: async () => snapshot, loadWhatsappInvitation };
     const { result } = renderHook(() => useAdminDashboard({ source }));
     await waitFor(() => expect(result.current.status).toBe("ready"));
     await act(() => result.current.refreshWhatsappInvitation("SW2748"));
@@ -1147,5 +1183,557 @@ describe("useDashboardFonts", () => {
     expect(links[0].getAttribute("href")).toMatch(/EB\+Garamond/);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+});
+
+describe("useAdminDashboard invitation phone updates", () => {
+  const sourceFor = (updateInvitationPhone: AdminDashboardSource["updateInvitationPhone"]): AdminDashboardSource => ({
+    demo: false,
+    load: async () => createFixtureDashboardSnapshot(),
+    loadWhatsappInvitation: vi.fn(),
+    deleteGuestMessage: vi.fn(),
+    updateGuest: vi.fn(),
+    confirmGuests: vi.fn(),
+    createInvitation: vi.fn(),
+    deleteInvitation: vi.fn(),
+    addGuests: vi.fn(),
+    removeGuest: vi.fn(),
+    updateInvitationPhone
+  });
+
+  it("applies only the normalized phone and server timestamp after success", async () => {
+    const updateInvitationPhone = vi.fn().mockResolvedValue({
+      invitationCode: "SW2748",
+      phoneNumber: "5511912345678",
+      updatedAt: "2026-08-28T12:00:00.000Z"
+    });
+    const source = sourceFor(updateInvitationPhone);
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    await act(async () => {
+      await result.current.updateInvitationPhone("SW2748", "+55 (11) 91234-5678");
+    });
+    expect(updateInvitationPhone).toHaveBeenCalledTimes(1);
+    expect(result.current.state.invitations.find((item) => item.invitationCode === "SW2748")).toMatchObject({
+      phoneNumber: "5511912345678",
+      phoneNumberUpdatedAt: "2026-08-28T12:00:00.000Z",
+      phoneNumberSource: "operator"
+    });
+  });
+
+  it("deduplicates an in-flight update and exposes failures", async () => {
+    let reject!: (error: Error) => void;
+    const updateInvitationPhone = vi.fn(() => new Promise<never>((_, nextReject) => { reject = nextReject; }));
+    const source = sourceFor(updateInvitationPhone);
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.updateInvitationPhone("SW2748", "5511912345678");
+      second = result.current.updateInvitationPhone("SW2748", "5511912345678");
+    });
+    expect(first).toBe(second);
+    expect(updateInvitationPhone).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      reject(new Error("offline"));
+      await first.catch(() => undefined);
+    });
+    await expect(first).rejects.toThrow("offline");
+    await waitFor(() => expect(result.current.phoneWriteStates.SW2748).toEqual({ status: "error", message: "offline" }));
+  });
+});
+
+describe("useAdminDashboard guest message deletion", () => {
+  const snapshotWithMessages = () => createFixtureDashboardSnapshot();
+
+  const sourceFor = (
+    deleteGuestMessage: AdminDashboardSource["deleteGuestMessage"]
+  ): AdminDashboardSource => ({
+    demo: false,
+    load: async () => snapshotWithMessages(),
+    loadWhatsappInvitation: vi.fn(),
+    deleteGuestMessage,
+    updateGuest: vi.fn(),
+    confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn()
+  });
+
+  const ready = async (source: AdminDashboardSource) => {
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    return result;
+  };
+
+  it("removes the recado only after the source confirms", async () => {
+    let settle: (() => void) | undefined;
+    const deleteGuestMessage = vi.fn(
+      (messageId: string) =>
+        new Promise<{ ok: true; messageId: string; deletedAt: string }>((resolve) => {
+          settle = () => resolve({ ok: true, messageId, deletedAt: "2026-08-27T12:00:00.000Z" });
+        })
+    );
+    const result = await ready(sourceFor(deleteGuestMessage));
+    const id = result.current.state.guestMessages[0].messageId;
+    const before = result.current.state.guestMessages.length;
+
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = result.current.deleteGuestMessage(id);
+    });
+    // Still listed while the request is in flight — nothing optimistic.
+    expect(result.current.state.guestMessages).toHaveLength(before);
+    expect(result.current.messageDeleteStates[id]).toEqual({ status: "loading" });
+
+    await act(async () => {
+      settle?.();
+      await pending;
+    });
+
+    expect(result.current.state.guestMessages).toHaveLength(before - 1);
+    expect(result.current.state.guestMessages.some((m) => m.messageId === id)).toBe(false);
+    expect(result.current.messageDeleteStates[id]).toEqual({ status: "idle" });
+  });
+
+  it("shares one in-flight request per message and runs different ids independently", async () => {
+    const deleteGuestMessage = vi.fn(async (messageId: string) => ({
+      ok: true as const,
+      messageId,
+      deletedAt: "2026-08-27T12:00:00.000Z"
+    }));
+    const result = await ready(sourceFor(deleteGuestMessage));
+    const [first, second] = result.current.state.guestMessages;
+
+    await act(async () => {
+      const a = result.current.deleteGuestMessage(first.messageId);
+      const b = result.current.deleteGuestMessage(first.messageId);
+      expect(a).toBe(b);
+      await Promise.all([a, b, result.current.deleteGuestMessage(second.messageId)]);
+    });
+
+    expect(deleteGuestMessage).toHaveBeenCalledTimes(2);
+    expect(
+      result.current.state.guestMessages.some(
+        (m) => m.messageId === first.messageId || m.messageId === second.messageId
+      )
+    ).toBe(false);
+  });
+
+  it("keeps the recado, records the reason and rethrows when the delete fails", async () => {
+    const deleteGuestMessage = vi.fn(async () => {
+      throw new AdminApiError("O serviço administrativo está indisponível.", "unavailable", 503);
+    });
+    const result = await ready(sourceFor(deleteGuestMessage));
+    const id = result.current.state.guestMessages[0].messageId;
+    const before = result.current.state.guestMessages.length;
+
+    await act(async () => {
+      await expect(result.current.deleteGuestMessage(id)).rejects.toMatchObject({ status: 503 });
+    });
+
+    expect(result.current.state.guestMessages).toHaveLength(before);
+    expect(result.current.messageDeleteStates[id]).toEqual({
+      status: "error",
+      message: "O serviço administrativo está indisponível."
+    });
+  });
+
+  it("treats a 404 as success — the recado is already gone", async () => {
+    const deleteGuestMessage = vi.fn(async () => {
+      throw new AdminApiError("Este recado não existe mais.", "rejected", 404);
+    });
+    const result = await ready(sourceFor(deleteGuestMessage));
+    const id = result.current.state.guestMessages[0].messageId;
+    const before = result.current.state.guestMessages.length;
+
+    await act(async () => {
+      await expect(result.current.deleteGuestMessage(id)).resolves.toBeUndefined();
+    });
+
+    expect(result.current.state.guestMessages).toHaveLength(before - 1);
+    expect(result.current.messageDeleteStates[id]).toEqual({ status: "idle" });
+  });
+
+  it("clears delete state when the source is replaced", async () => {
+    const failing = sourceFor(async () => {
+      throw new AdminApiError("O serviço administrativo está indisponível.", "unavailable", 503);
+    });
+    const replacement = sourceFor(async (messageId: string) => ({
+      ok: true as const,
+      messageId,
+      deletedAt: "2026-08-27T12:00:00.000Z"
+    }));
+
+    const { result, rerender } = renderHook(
+      ({ source }: { source: AdminDashboardSource }) => useAdminDashboard({ source }),
+      { initialProps: { source: failing } }
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    const id = result.current.state.guestMessages[0].messageId;
+    await act(async () => {
+      await expect(result.current.deleteGuestMessage(id)).rejects.toBeInstanceOf(AdminApiError);
+    });
+    expect(result.current.messageDeleteStates[id]?.status).toBe("error");
+
+    rerender({ source: replacement });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.messageDeleteStates).toEqual({});
+  });
+});
+
+describe("useAdminDashboard guest RSVP writes", () => {
+  const snapshot = () => createFixtureDashboardSnapshot();
+  const target = () => {
+    const invitation = snapshot().invitations.find((item) => item.guests.length > 1)!;
+    return { invitation, guest: invitation.guests[0]! };
+  };
+
+  const writeResponse = (
+    invitationCode: string,
+    guests: { guestId: string; guestName: string; allowedPlusOnes: number }[],
+    attending: string[]
+  ) => ({
+    ok: true as const,
+    invitationCode,
+    guests: guests.map((guest) => ({
+      guestId: guest.guestId,
+      guestName: guest.guestName,
+      allowedPlusOnes: guest.allowedPlusOnes,
+      rsvpStatus: attending.includes(guest.guestId) ? ("attending" as const) : ("pending" as const)
+    })),
+    rsvp: {
+      status: "attending" as const,
+      updatedAt: "2026-08-27T12:00:00.000Z",
+      submittedBy: guests[0]!.guestId,
+      attending: attending.length,
+      paid: attending.length,
+      childrenSixOrYounger: 0
+    },
+    updatedAt: "2026-08-27T12:00:00.000Z"
+  });
+
+  const sourceFor = (
+    overrides: Partial<
+      Pick<
+        AdminDashboardSource,
+        | "updateGuest"
+        | "confirmGuests"
+        | "addGuests"
+        | "removeGuest"
+        | "createInvitation"
+        | "deleteInvitation"
+      >
+    >
+  ): AdminDashboardSource => ({
+    demo: false,
+    load: async () => snapshot(),
+    loadWhatsappInvitation: vi.fn(),
+    deleteGuestMessage: vi.fn(),
+    updateGuest: vi.fn(),
+    confirmGuests: vi.fn(), createInvitation: vi.fn(), deleteInvitation: vi.fn(), addGuests: vi.fn(), removeGuest: vi.fn(),
+    ...overrides
+  });
+
+  const ready = async (source: AdminDashboardSource) => {
+    const { result } = renderHook(() => useAdminDashboard({ source }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    return result;
+  };
+
+  it("applies the API's guests and aggregate only after the request resolves", async () => {
+    const { invitation, guest } = target();
+    let settle: (() => void) | undefined;
+    const updateGuest = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof writeResponse>>((resolve) => {
+          settle = () =>
+            resolve(writeResponse(invitation.invitationCode, invitation.guests, [guest.guestId]));
+        })
+    );
+    const result = await ready(sourceFor({ updateGuest }));
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.updateGuest(invitation.invitationCode, guest.guestId, {
+        rsvpStatus: "attending"
+      });
+    });
+
+    // No optimistic write: the row is untouched while the request is in flight.
+    expect(result.current.guestWriteStates[guest.guestId]).toEqual({ status: "loading" });
+    expect(
+      result.current.state.invitations.find(
+        (item) => item.invitationCode === invitation.invitationCode
+      )!.guests[0]!.rsvpStatus
+    ).toBe(guest.rsvpStatus);
+
+    await act(async () => {
+      settle?.();
+      await pending;
+    });
+
+    const updated = result.current.state.invitations.find(
+      (item) => item.invitationCode === invitation.invitationCode
+    )!;
+    expect(updated.guests[0]!.rsvpStatus).toBe("attending");
+    expect(updated.rsvp.attending).toBe(1);
+    expect(result.current.guestWriteStates[guest.guestId]).toEqual({ status: "idle" });
+  });
+
+  it("dedupes by guest and by invitation while a write is in flight", async () => {
+    const { invitation, guest } = target();
+    const other = invitation.guests[1]!;
+    const updateGuest = vi.fn(async (invitationCode: string, guestId: string) =>
+      writeResponse(invitationCode, invitation.guests, [guestId])
+    );
+    const confirmGuests = vi.fn(async (invitationCode: string, guestIds: string[]) =>
+      writeResponse(invitationCode, invitation.guests, guestIds)
+    );
+    const result = await ready(sourceFor({ updateGuest, confirmGuests }));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.updateGuest(invitation.invitationCode, guest.guestId, { isChild: true }),
+        result.current.updateGuest(invitation.invitationCode, guest.guestId, { isChild: true }),
+        result.current.updateGuest(invitation.invitationCode, other.guestId, { isChild: true }),
+        result.current.confirmGuests(invitation.invitationCode, [guest.guestId]),
+        result.current.confirmGuests(invitation.invitationCode, [guest.guestId])
+      ]);
+    });
+
+    expect(updateGuest).toHaveBeenCalledTimes(2);
+    expect(confirmGuests).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a localized failure and rethrows so the modal stays open", async () => {
+    const { invitation, guest } = target();
+    const updateGuest = vi.fn(async () => {
+      throw new AdminApiError("Este convidado não está mais disponível. Atualize os dados do painel.", "rejected", 404);
+    });
+    const result = await ready(sourceFor({ updateGuest }));
+
+    await act(async () => {
+      await expect(
+        result.current.updateGuest(invitation.invitationCode, guest.guestId, {
+          rsvpStatus: "declined"
+        })
+      ).rejects.toBeInstanceOf(AdminApiError);
+    });
+
+    expect(result.current.guestWriteStates[guest.guestId]).toEqual({
+      status: "error",
+      message: "Este convidado não está mais disponível. Atualize os dados do painel."
+    });
+    // The failed write changed nothing.
+    expect(
+      result.current.state.invitations.find(
+        (item) => item.invitationCode === invitation.invitationCode
+      )!.guests[0]!.rsvpStatus
+    ).toBe(guest.rsvpStatus);
+  });
+
+  it("keeps confirm-all failures on their own invitation key", async () => {
+    const { invitation } = target();
+    const confirmGuests = vi.fn(async () => {
+      throw new AdminApiError("Os dados do convite mudaram. Atualize o painel e tente novamente.", "rejected", 409);
+    });
+    const result = await ready(sourceFor({ confirmGuests }));
+
+    await act(async () => {
+      await result.current
+        .confirmGuests(invitation.invitationCode, [invitation.guests[0]!.guestId])
+        .catch(() => undefined);
+    });
+
+    expect(result.current.confirmGuestsStates[invitation.invitationCode]).toMatchObject({
+      status: "error"
+    });
+    expect(result.current.guestWriteStates).toEqual({});
+  });
+
+  it("reconciles an added guest from the response and never optimistically", async () => {
+    const { invitation } = target();
+    const added = [
+      ...invitation.guests,
+      { guestId: "X--guest-09", guestName: "Duda", allowedPlusOnes: 0, rsvpStatus: "pending" as const }
+    ];
+    let settle: (() => void) | undefined;
+    const addGuests = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof writeResponse>>((resolve) => {
+          settle = () => resolve(writeResponse(invitation.invitationCode, added, []));
+        })
+    );
+    const result = await ready(sourceFor({ addGuests }));
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.addGuests(invitation.invitationCode, [{ guestName: "Duda" }]);
+    });
+
+    expect(result.current.addGuestsStates[invitation.invitationCode]).toEqual({ status: "loading" });
+    const before = result.current.state.invitations.find(
+      (item) => item.invitationCode === invitation.invitationCode
+    )!;
+    expect(before.guests).toHaveLength(invitation.guests.length);
+
+    await act(async () => {
+      settle?.();
+      await pending;
+    });
+
+    const after = result.current.state.invitations.find(
+      (item) => item.invitationCode === invitation.invitationCode
+    )!;
+    expect(after.guests.map((guest) => guest.guestId)).toContain("X--guest-09");
+    expect(result.current.addGuestsStates[invitation.invitationCode]).toEqual({ status: "idle" });
+  });
+
+  it("dedupes a removal by guest id, in the same map an edit uses", async () => {
+    const { invitation, guest } = target();
+    const other = invitation.guests[1]!;
+    const remaining = invitation.guests.filter((row) => row.guestId !== guest.guestId);
+    const removeGuest = vi.fn(
+      async () => writeResponse(invitation.invitationCode, remaining, [])
+    );
+    const result = await ready(sourceFor({ removeGuest }));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.removeGuest(invitation.invitationCode, guest.guestId),
+        result.current.removeGuest(invitation.invitationCode, guest.guestId),
+        result.current.removeGuest(invitation.invitationCode, other.guestId)
+      ]);
+    });
+
+    // Two calls for the same guest collapse to one request; a different guest gets its own.
+    expect(removeGuest).toHaveBeenCalledTimes(2);
+    expect(
+      result.current.state.invitations.find(
+        (item) => item.invitationCode === invitation.invitationCode
+      )!.guests.map((row) => row.guestId)
+    ).not.toContain(guest.guestId);
+  });
+
+  it("records a removal failure per guest and rethrows so the modal stays open", async () => {
+    const { invitation, guest } = target();
+    const removeGuest = vi.fn().mockRejectedValue(
+      new AdminApiError(
+        "Este é o último convidado do convite. Exclua o convite em vez de remover o convidado.",
+        "rejected",
+        409
+      )
+    );
+    const result = await ready(sourceFor({ removeGuest }));
+
+    await act(async () => {
+      await expect(
+        result.current.removeGuest(invitation.invitationCode, guest.guestId)
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    expect(result.current.guestWriteStates[guest.guestId]).toEqual({
+      message: "Este é o último convidado do convite. Exclua o convite em vez de remover o convidado.",
+      status: "error"
+    });
+  });
+
+  it("inserts the created invitation and dedupes concurrent submissions", async () => {
+    const created = {
+      ok: true as const,
+      invitation: {
+        invitationCode: "KP3456",
+        householdName: "Família Moretti",
+        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+        whatsappFreeTextWindow: { open: false },
+        guests: [
+          {
+            guestId: "KP3456--guest-01",
+            guestName: "Ana Moretti",
+            allowedPlusOnes: 0,
+            rsvpStatus: "pending" as const
+          }
+        ],
+        rsvp: {
+          status: "pending" as const,
+          updatedAt: null,
+          submittedBy: null,
+          attending: 0,
+          paid: 0,
+          childrenSixOrYounger: 0
+        }
+      },
+      createdAt: "2026-08-27T12:00:00.000Z"
+    };
+    const createInvitation = vi.fn(async () => created);
+    const result = await ready(sourceFor({ createInvitation }));
+    const draft = {
+      invitationCode: "KP3456",
+      householdName: "Família Moretti",
+      guests: [{ guestName: "Ana Moretti" }]
+    };
+
+    await act(async () => {
+      await Promise.all([
+        result.current.createInvitation(draft),
+        result.current.createInvitation(draft)
+      ]);
+    });
+
+    // A double submit cannot race itself into a 409 from its own first request.
+    expect(createInvitation).toHaveBeenCalledTimes(1);
+    expect(result.current.state.invitations[0]!.invitationCode).toBe("KP3456");
+    // Mapped by the same rules a snapshot goes through: no phone becomes "", not undefined.
+    expect(result.current.state.invitations[0]!.phoneNumber).toBe("");
+    expect(result.current.state.invitations[0]!.commands).toEqual([]);
+  });
+
+  it("drops the invitation row only after the delete resolves", async () => {
+    const { invitation } = target();
+    let settle: (() => void) | undefined;
+    const deleteInvitation = vi.fn(
+      () =>
+        new Promise<{
+          ok: true;
+          invitationCode: string;
+          deletedAt: string;
+          deleted: { guests: number; rsvp: 0 | 1; whatsappItems: number; phoneLookups: 0 | 1 };
+        }>((resolve) => {
+          settle = () =>
+            resolve({
+              ok: true,
+              invitationCode: invitation.invitationCode,
+              deletedAt: "2026-08-27T12:00:00.000Z",
+              deleted: { guests: 2, rsvp: 1, whatsappItems: 0, phoneLookups: 1 }
+            });
+        })
+    );
+    const result = await ready(sourceFor({ deleteInvitation }));
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.deleteInvitation(invitation.invitationCode);
+    });
+
+    expect(result.current.invitationWriteStates[invitation.invitationCode]).toEqual({
+      status: "loading"
+    });
+    expect(
+      result.current.state.invitations.some(
+        (item) => item.invitationCode === invitation.invitationCode
+      )
+    ).toBe(true);
+
+    await act(async () => {
+      settle?.();
+      await pending;
+    });
+
+    expect(
+      result.current.state.invitations.some(
+        (item) => item.invitationCode === invitation.invitationCode
+      )
+    ).toBe(false);
   });
 });

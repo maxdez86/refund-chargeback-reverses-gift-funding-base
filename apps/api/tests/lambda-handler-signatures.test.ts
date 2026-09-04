@@ -18,6 +18,13 @@ vi.mock("@sentry/aws-serverless", () => ({
 
 vi.mock("../src/domain/checkout-expiry", () => ({ sweepStaleCheckouts: vi.fn() }));
 vi.mock("../src/domain/admin-dashboard-service", () => ({ AdminDashboardService: class {} }));
+vi.mock("../src/domain/admin-guest-rsvp-service", () => ({ AdminGuestRsvpService: class {} }));
+vi.mock("../src/domain/admin-invitation-provisioning-service", () => ({
+  AdminInvitationProvisioningService: class {}
+}));
+vi.mock("../src/domain/admin-invitation-code-service", () => ({
+  AdminInvitationCodeService: class {}
+}));
 vi.mock("../src/domain/gift-service", () => ({ GiftService: class {} }));
 vi.mock("../src/domain/guest-message-service", () => ({ GuestMessageService: class {} }));
 vi.mock("../src/domain/invitation-service", () => ({ InvitationService: class {} }));
@@ -33,7 +40,14 @@ vi.mock("../src/services/email/client", () => ({ EmailService: class {} }));
 
 const handlerModules = [
   ["AdminAuthorizerFunction", () => import("../src/functions/admin-authorizer/handler")],
+  ["AdminAddGuestsFunction", () => import("../src/functions/admin-invitation-guests-add/handler")],
+  ["AdminConfirmGuestsFunction", () => import("../src/functions/admin-invitation-confirm-guests/handler")],
+  ["AdminCreateInvitationFunction", () => import("../src/functions/admin-invitation-create/handler")],
+  ["AdminInvitationNextCodeFunction", () => import("../src/functions/admin-invitation-next-code/handler")],
+  ["AdminDeleteInvitationFunction", () => import("../src/functions/admin-invitation-delete/handler")],
   ["AdminDashboardFunction", () => import("../src/functions/admin-dashboard/handler")],
+  ["AdminGuestUpdateFunction", () => import("../src/functions/admin-guest-update/handler")],
+  ["AdminRemoveGuestFunction", () => import("../src/functions/admin-invitation-guest-remove/handler")],
   ["AdminSessionFunction", () => import("../src/functions/admin-session/handler")],
   ["AsaasWebhookFunction", () => import("../src/functions/asaas-webhook/handler")],
   ["AsaasWebhookProcessorFunction", () => import("../src/functions/asaas-webhook-processor/handler")],

@@ -178,4 +178,32 @@ describe("GiftService", () => {
       expect.stringContaining("\"metric\":\"GIFT_METADATA_MISSING\"")
     );
   });
+
+  it("enriches only the admin gift response with payer names", async () => {
+    const repository = repositoryWith(
+      [{
+        id: "g-armario",
+        name: "Armário de Cozinha",
+        image: "armario-cozinha",
+        totalValueCents: 174_900,
+        fractional: true,
+        partValueCents: 5_000,
+        totalParts: 35,
+        finalPartValueCents: null,
+        fundingModelVersion: "LEGACY_FIXED_50"
+      }],
+      []
+    ) as Record<string, unknown> & { listConfirmedPayerNamesByGiftIds: ReturnType<typeof vi.fn> };
+    repository.listConfirmedPayerNamesByGiftIds = vi.fn().mockResolvedValue({
+      "g-armario": ["Maria Clara", "João Pedro"]
+    });
+
+    const service = new GiftService(repository as never);
+    const adminResponse = await service.getAdminGifts();
+    const publicResponse = await service.getGifts();
+
+    expect(adminResponse.gifts[0]?.payerNames).toEqual(["Maria Clara", "João Pedro"]);
+    expect(publicResponse.gifts[0]).not.toHaveProperty("payerNames");
+    expect(repository.listConfirmedPayerNamesByGiftIds).toHaveBeenCalledWith(["g-armario"]);
+  });
 });

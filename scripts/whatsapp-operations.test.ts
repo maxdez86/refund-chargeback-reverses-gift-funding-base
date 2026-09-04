@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WhatsappApiError } from "../apps/api/src/services/whatsapp/client.ts";
+import { parseWhatsappWebhook } from "../apps/api/src/services/whatsapp/webhook-parser.ts";
 import { filterWhatsappRsvpHistory, parseWhatsappRsvpArgs, redactWhatsappPhone } from "./lib/whatsapp-rsvp-operations.ts";
 import { parseWhatsappRsvpResetArgs, resetWhatsappRsvpFlow } from "./lib/whatsapp-rsvp-reset.ts";
 import { autoSendWhatsappRsvp, parseWhatsappRsvpAutoSendArgs } from "./lib/whatsapp-rsvp-auto-send.ts";
 import {
   buildWhatsappWebhookPayload,
+  buildWhatsappStatusWebhookPayload,
+  buildWhatsappTextWebhookPayload,
   parseWhatsappSimulatorArgs,
   serializeWhatsappWebhookPayload,
   simulateWhatsappWebhook,
@@ -489,6 +492,28 @@ test("simulator duplicate reuses the message id and parser reports the duplicate
   assert.equal(result.parsed.events.length, 2);
   assert.equal(result.parsed.events[0].eventId, result.parsed.events[1].eventId);
   assert.equal(result.parsed.duplicateEventIds.length, 1);
+});
+
+test("simulator produces parser-valid status webhook payloads", () => {
+  const result = simulateWhatsappWebhook("fallback", "SW0000", "fixed-fake-secret");
+  const payload = buildWhatsappStatusWebhookPayload("delivered", "wamid.status-1");
+  const body = serializeWhatsappWebhookPayload(payload);
+  assert.equal(whatsappWebhookSignature(body, "fixed-fake-secret").startsWith("sha256="), true);
+  assert.equal(result.parsed.outcome, "accepted");
+  const parsed = parseWhatsappWebhook(payload);
+  assert.equal(parsed.outcome, "accepted");
+  assert.equal(parsed.events[0]?.type, "status_delivered");
+});
+
+test("simulator produces an uncorrelated text payload with optional duplicate delivery", () => {
+  const payload = buildWhatsappTextWebhookPayload("wamid.text-1", "5511999997777", true);
+  const parsed = parseWhatsappWebhook(payload);
+  assert.equal(parsed.outcome, "accepted");
+  if (parsed.outcome !== "accepted") throw new Error("Expected accepted payload.");
+  assert.equal(parsed.events.length, 2);
+  assert.equal(parsed.events[0]?.type, "text");
+  assert.equal(parsed.events[0]?.replyContextMessageId, undefined);
+  assert.equal(parsed.duplicateEventIds.length, 1);
 });
 
 test("simulator rejects A2 and keeps button ids in the manifest", () => {

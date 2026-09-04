@@ -218,6 +218,7 @@ export class AppStack extends cdk.Stack {
           apigwv2.CorsHttpMethod.GET,
           apigwv2.CorsHttpMethod.POST,
           apigwv2.CorsHttpMethod.PUT,
+          apigwv2.CorsHttpMethod.PATCH,
           apigwv2.CorsHttpMethod.DELETE,
           apigwv2.CorsHttpMethod.OPTIONS
         ],
@@ -454,6 +455,75 @@ export class AppStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(10)
     });
+    const adminGuestUpdateFn = this.createTaggedNodejsFunction("AdminGuestUpdateFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-guest-update/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminConfirmGuestsFn = this.createTaggedNodejsFunction("AdminConfirmGuestsFunction", {
+      entry: path.resolve(
+        projectRoot,
+        "apps/api/src/functions/admin-invitation-confirm-guests/handler.ts"
+      ),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminCreateInvitationFn = this.createTaggedNodejsFunction("AdminCreateInvitationFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-invitation-create/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminInvitationNextCodeFn = this.createTaggedNodejsFunction("AdminInvitationNextCodeFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-invitation-next-code/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    // Larger and longer than its siblings on purpose: the cascade pages a global secondary index
+    // and then issues an unbounded number of batched deletes, so a ten-second budget would time
+    // out on an invitation with a long WhatsApp conversation.
+    const adminDeleteInvitationFn = this.createTaggedNodejsFunction("AdminDeleteInvitationFunction", {
+      entry: path.resolve(projectRoot, "apps/api/src/functions/admin-invitation-delete/handler.ts"),
+      environment: commonEnvironment,
+      handler: "handler",
+      memorySize: 512,
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(30)
+    });
+    const adminAddGuestsFn = this.createTaggedNodejsFunction("AdminAddGuestsFunction", {
+      entry: path.resolve(
+        projectRoot,
+        "apps/api/src/functions/admin-invitation-guests-add/handler.ts"
+      ),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
+    const adminRemoveGuestFn = this.createTaggedNodejsFunction("AdminRemoveGuestFunction", {
+      entry: path.resolve(
+        projectRoot,
+        "apps/api/src/functions/admin-invitation-guest-remove/handler.ts"
+      ),
+      environment: commonEnvironment,
+      handler: "handler",
+      projectRoot,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      timeout: cdk.Duration.seconds(10)
+    });
     const paymentMessageFn = this.createTaggedNodejsFunction("PaymentMessageFunction", {
       entry: path.resolve(projectRoot, "apps/api/src/functions/payments-message/handler.ts"),
       environment: commonEnvironment,
@@ -674,6 +744,13 @@ export class AppStack extends cdk.Stack {
     props.table.grantReadData(adminDashboardFn);
     props.table.grantReadWriteData(createGuestMessagesFn);
     props.table.grantReadWriteData(deleteGuestMessageFn);
+    props.table.grantReadWriteData(adminGuestUpdateFn);
+    props.table.grantReadWriteData(adminConfirmGuestsFn);
+    props.table.grantReadWriteData(adminCreateInvitationFn);
+    props.table.grantReadData(adminInvitationNextCodeFn);
+    props.table.grantReadWriteData(adminDeleteInvitationFn);
+    props.table.grantReadWriteData(adminAddGuestsFn);
+    props.table.grantReadWriteData(adminRemoveGuestFn);
     props.table.grantReadWriteData(paymentMessageFn);
     props.table.grantReadWriteData(asaasWebhookFn);
     props.table.grantReadWriteData(webhookProcessorFn);
@@ -807,6 +884,71 @@ export class AppStack extends cdk.Stack {
         deleteGuestMessageFn
       )
     );
+    const adminGuestUpdateRoutes = addAdminRoutes(
+      "AdminGuestUpdateRoute",
+      "/admin/invitations/{invitationCode}/guests/{guestId}",
+      [apigwv2.HttpMethod.PATCH],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminGuestUpdateIntegration",
+        adminGuestUpdateFn
+      )
+    );
+    const adminConfirmGuestsRoutes = addAdminRoutes(
+      "AdminConfirmGuestsRoute",
+      "/admin/invitations/{invitationCode}/confirm-all",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminConfirmGuestsIntegration",
+        adminConfirmGuestsFn
+      )
+    );
+    const adminCreateInvitationRoutes = addAdminRoutes(
+      "AdminCreateInvitationRoute",
+      "/admin/invitations",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminCreateInvitationIntegration",
+        adminCreateInvitationFn
+      )
+    );
+    const adminInvitationNextCodeRoutes = addAdminRoutes(
+      "AdminInvitationNextCodeRoute",
+      "/admin/invitations/next-code",
+      [apigwv2.HttpMethod.GET],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminInvitationNextCodeIntegration",
+        adminInvitationNextCodeFn
+      )
+    );
+    const adminDeleteInvitationRoutes = addAdminRoutes(
+      "AdminDeleteInvitationRoute",
+      "/admin/invitations/{invitationCode}",
+      [apigwv2.HttpMethod.DELETE],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminDeleteInvitationIntegration",
+        adminDeleteInvitationFn
+      )
+    );
+    const adminAddGuestsRoutes = addAdminRoutes(
+      "AdminAddGuestsRoute",
+      "/admin/invitations/{invitationCode}/guests",
+      [apigwv2.HttpMethod.POST],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminAddGuestsIntegration",
+        adminAddGuestsFn
+      )
+    );
+    // A distinct RouteKey from the PATCH on the same path: API Gateway keys routes by method and
+    // path together, so the two coexist without touching the guest-update route.
+    const adminRemoveGuestRoutes = addAdminRoutes(
+      "AdminRemoveGuestRoute",
+      "/admin/invitations/{invitationCode}/guests/{guestId}",
+      [apigwv2.HttpMethod.DELETE],
+      new apigwv2Integrations.HttpLambdaIntegration(
+        "AdminRemoveGuestIntegration",
+        adminRemoveGuestFn
+      )
+    );
     const paymentMessageRoutes = this.httpApi.addRoutes({
       path: "/payments/{paymentId}/message",
       methods: [apigwv2.HttpMethod.POST],
@@ -891,6 +1033,13 @@ export class AppStack extends cdk.Stack {
       addStageRouteDependency(defaultStage, adminSessionRoutes);
       addStageRouteDependency(defaultStage, adminDashboardRoutes);
       addStageRouteDependency(defaultStage, deleteGuestMessageRoutes);
+      addStageRouteDependency(defaultStage, adminGuestUpdateRoutes);
+      addStageRouteDependency(defaultStage, adminConfirmGuestsRoutes);
+      addStageRouteDependency(defaultStage, adminCreateInvitationRoutes);
+      addStageRouteDependency(defaultStage, adminInvitationNextCodeRoutes);
+      addStageRouteDependency(defaultStage, adminDeleteInvitationRoutes);
+      addStageRouteDependency(defaultStage, adminAddGuestsRoutes);
+      addStageRouteDependency(defaultStage, adminRemoveGuestRoutes);
       addStageRouteDependency(defaultStage, whatsappSendRoutes);
       addStageRouteDependency(defaultStage, whatsappAutoSendRoutes);
       addStageRouteDependency(defaultStage, whatsappOperatorTextRoutes);
@@ -905,7 +1054,8 @@ export class AppStack extends cdk.Stack {
       props.stage
     );
     this.addCheckoutExpiryWorkerMetricFilters(
-      this.getFunctionLogGroup("CheckoutExpiryWorkerFunction")
+      this.getFunctionLogGroup("CheckoutExpiryWorkerFunction"),
+      props.stage
     );
     this.addCheckoutExpiryTriggerMetricFilter(this.getFunctionLogGroup("GetGiftsFunction"));
     this.addMetricFilters(
@@ -1183,15 +1333,15 @@ export class AppStack extends cdk.Stack {
     });
   }
 
-  private addCheckoutExpiryWorkerMetricFilters(logGroup: logs.ILogGroup) {
+  private addCheckoutExpiryWorkerMetricFilters(logGroup: logs.ILogGroup, stage: AppStage) {
     new logs.MetricFilter(this, "CheckoutExpiryWorkerSweepFailuresMetric", {
       logGroup,
       metricNamespace: "Brimax/Payments",
       metricName: "checkout-expiry-worker-sweep-failed",
-      filterPattern: logs.FilterPattern.anyTerm(
-        "CHECKOUT_EXPIRY_SWEEP_FAILED",
-        "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"
+      filterPattern: logs.FilterPattern.literal(
+        `{ $.stage = "${stage}" && ($.metric = "CHECKOUT_EXPIRY_SWEEP_FAILED" || $.metric = "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED") }`
       ),
+      dimensions: { Stage: "$.stage" },
       metricValue: "1"
     });
     new logs.MetricFilter(this, "CheckoutExpiryProtectedStaleMetric", {

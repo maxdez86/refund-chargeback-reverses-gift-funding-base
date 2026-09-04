@@ -5,6 +5,7 @@ import {
   findOrCreateAsaasCustomer,
   resolveAsaasApiKey
 } from "./lib/prod-promotion-support.ts";
+import { resolveWhatsappIntegrationInvitationCode } from "./lib/prod-promotion-support.ts";
 
 const originalAsaasApiKey = process.env.ASAAS_API_KEY;
 
@@ -27,6 +28,14 @@ test("resolveAsaasApiKey throws when ASAAS_API_KEY is missing", () => {
   delete process.env.ASAAS_API_KEY;
 
   assert.throws(() => resolveAsaasApiKey(), /Missing required environment variable ASAAS_API_KEY\./);
+});
+
+test("resolveWhatsappIntegrationInvitationCode is deterministic and valid for a GitHub run", () => {
+  const original = process.env.GITHUB_RUN_ID;
+  process.env.GITHUB_RUN_ID = "1234567890";
+  assert.equal(resolveWhatsappIntegrationInvitationCode(), "ZX9232");
+  if (original === undefined) delete process.env.GITHUB_RUN_ID;
+  else process.env.GITHUB_RUN_ID = original;
 });
 
 test("findOrCreateAsaasCustomer reuses an existing customer matched by cpf", async () => {

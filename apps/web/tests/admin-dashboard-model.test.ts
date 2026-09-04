@@ -408,9 +408,13 @@ describe("gift derivation", () => {
     const gifts = snapshot.gifts as AdminGift[];
     expect(filterGifts(gifts, "Pausados", "").map((gift) => gift.id)).toEqual(["g-adega"]);
     expect(filterGifts(gifts, "Completos", "").every((gift) => gift.fullyFunded)).toBe(true);
-    expect(
-      filterGifts(gifts, "Em andamento", "").every((gift) => !gift.paused && !gift.fullyFunded)
-    ).toBe(true);
+    expect(filterGifts(gifts, "Em andamento", "").map((gift) => gift.id)).toEqual([
+      "g-jogo-jantar",
+      "g-lua-de-mel",
+      "g-cama-box",
+      "g-panelas",
+      "g-robo"
+    ]);
     expect(filterGifts(gifts, "Todos", "noronha").map((gift) => gift.id)).toEqual(["g-lua-de-mel"]);
   });
 });

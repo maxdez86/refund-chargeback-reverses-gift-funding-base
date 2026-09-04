@@ -1,6 +1,6 @@
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaymentRepository } from "../src/services/dynamodb/repositories/payment-repository";
 
 const giftItem = {
@@ -46,9 +46,18 @@ function canceledTransaction(codes: string[]) {
   });
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("PaymentRepository checkout expiry", () => {
   it("indexes new reservations under RESERVATION#OPEN with the checkout expiry", async () => {
-    const send = vi.fn().mockResolvedValueOnce({ Item: giftStateItem }).mockResolvedValueOnce({});
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: { ...giftStateItem, partsReserved: 0, reservedAmountCents: 0 }
+      })
+      .mockResolvedValueOnce({});
     const repository = new PaymentRepository({ send } as never, "table-test");
 
     await repository.reserveGiftSelection({
@@ -205,18 +214,48 @@ describe("PaymentRepository checkout expiry", () => {
       warnSpy.mockRestore();
     });
 
-    it("rethrows a cancellation that includes a transaction conflict", async () => {
+    it.each([
+      ["gift state", ["None", "ConditionalCheckFailed", "None"]],
+      ["shell", ["None", "None", "None", "ConditionalCheckFailed"]]
+    ])("rethrows an invariant failure on the %s item", async (_case, codes) => {
       const send = vi
         .fn()
         .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
         .mockResolvedValueOnce({ Item: giftItem })
         .mockResolvedValueOnce({ Item: giftStateItem })
-        .mockResolvedValueOnce({ Item: undefined })
-        .mockRejectedValueOnce(canceledTransaction(["None", "None", "TransactionConflict"]));
+        .mockResolvedValueOnce({ Item: { paymentId: "payment-1", shellStatus: "CHECKOUT_READY" } })
+        .mockRejectedValueOnce(canceledTransaction(codes));
       const repository = new PaymentRepository({ send } as never, "table-test");
 
       await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).rejects.toThrow(
         TransactionCanceledException
+      );
+    });
+
+    it("retries a transaction conflict with fresh reads and then releases the reservation", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const send = vi.fn();
+      for (const outcome of [
+        canceledTransaction(["None", "TransactionConflict", "None"]),
+        null
+      ]) {
+        send
+          .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
+          .mockResolvedValueOnce({ Item: giftItem })
+          .mockResolvedValueOnce({ Item: giftStateItem })
+          .mockResolvedValueOnce({ Item: undefined });
+        if (outcome) send.mockRejectedValueOnce(outcome);
+        else send.mockResolvedValueOnce({});
+      }
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(repository.releaseReservationAfterCheckoutFailure("payment-1")).resolves.toBe(
+        "released"
+      );
+      expect(send).toHaveBeenCalledTimes(10);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"metric":"CHECKOUT_EXPIRY_TRANSACTION_CONFLICT_RETRY"')
       );
     });
   });
@@ -397,13 +436,28 @@ describe("PaymentRepository checkout expiry", () => {
   });
 
   describe("tryExpireStalePayment", () => {
-    it("returns false when the transaction cancels only on condition checks", async () => {
+    function queueAttempt(
+      send: ReturnType<typeof vi.fn>,
+      outcome: object | Error
+    ) {
+      send
+        .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({ Item: giftStateItem });
+      if (outcome instanceof Error) send.mockRejectedValueOnce(outcome);
+      else send.mockResolvedValueOnce(outcome);
+    }
+
+    it.each([
+      ["payment", ["ConditionalCheckFailed", "None", "None", "None"]],
+      ["reservation", ["None", "ConditionalCheckFailed", "None", "None"]]
+    ])("returns false when the %s condition loses a race", async (_case, codes) => {
       const send = vi
         .fn()
         .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
         .mockResolvedValueOnce({ Item: giftItem })
         .mockResolvedValueOnce({ Item: giftStateItem })
-        .mockRejectedValueOnce(canceledTransaction(["ConditionalCheckFailed", "None", "None"]));
+        .mockRejectedValueOnce(canceledTransaction(codes));
       const repository = new PaymentRepository({ send } as never, "table-test");
 
       await expect(
@@ -414,13 +468,12 @@ describe("PaymentRepository checkout expiry", () => {
       ).resolves.toBe(false);
     });
 
-    it("rethrows when the transaction cancels for another reason", async () => {
-      const send = vi
-        .fn()
-        .mockResolvedValueOnce({ Item: reservationItem("ACTIVE") })
-        .mockResolvedValueOnce({ Item: giftItem })
-        .mockResolvedValueOnce({ Item: giftStateItem })
-        .mockRejectedValueOnce(canceledTransaction(["TransactionConflict", "None", "None"]));
+    it.each([
+      ["gift state", ["None", "None", "ConditionalCheckFailed", "None"]],
+      ["shell", ["None", "None", "None", "ConditionalCheckFailed"]]
+    ])("rethrows an invariant failure on the %s item", async (_case, codes) => {
+      const send = vi.fn();
+      queueAttempt(send, canceledTransaction(codes));
       const repository = new PaymentRepository({ send } as never, "table-test");
 
       await expect(
@@ -429,6 +482,77 @@ describe("PaymentRepository checkout expiry", () => {
           expectedCurrentStatus: "AWAITING_PAYMENT"
         })
       ).rejects.toThrow(TransactionCanceledException);
+    });
+
+    it("retries a conflict with fresh reads and then expires the payment", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const send = vi.fn();
+      queueAttempt(send, canceledTransaction(["TransactionConflict", "None", "None", "None"]));
+      queueAttempt(send, {});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.tryExpireStalePayment({
+          paymentId: "payment-1",
+          expectedCurrentStatus: "AWAITING_PAYMENT"
+        })
+      ).resolves.toBe(true);
+      expect(send).toHaveBeenCalledTimes(8);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"operation":"expire_payment"')
+      );
+    });
+
+    it("returns race-lost when a conflict retry observes another winner", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const send = vi.fn();
+      queueAttempt(send, canceledTransaction(["TransactionConflict", "None", "None", "None"]));
+      queueAttempt(send, canceledTransaction(["ConditionalCheckFailed", "None", "None", "None"]));
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.tryExpireStalePayment({
+          paymentId: "payment-1",
+          expectedCurrentStatus: "AWAITING_PAYMENT"
+        })
+      ).resolves.toBe(false);
+      expect(send).toHaveBeenCalledTimes(8);
+    });
+
+    it("propagates the fourth consecutive transaction conflict", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const send = vi.fn();
+      const conflicts = Array.from({ length: 4 }, () =>
+        canceledTransaction(["TransactionConflict", "None", "None", "None"])
+      );
+      conflicts.forEach((conflict) => queueAttempt(send, conflict));
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.tryExpireStalePayment({
+          paymentId: "payment-1",
+          expectedCurrentStatus: "AWAITING_PAYMENT"
+        })
+      ).rejects.toBe(conflicts[3]);
+      expect(send).toHaveBeenCalledTimes(16);
+    });
+
+    it("does not retry a non-conflict failure", async () => {
+      const failure = new Error("Dynamo unavailable");
+      const send = vi.fn();
+      queueAttempt(send, failure);
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.tryExpireStalePayment({
+          paymentId: "payment-1",
+          expectedCurrentStatus: "AWAITING_PAYMENT"
+        })
+      ).rejects.toBe(failure);
+      expect(send).toHaveBeenCalledTimes(4);
     });
   });
 

@@ -58,7 +58,7 @@ export class PaymentMessageService {
       body: parsed.body,
       submittedAt: new Date().toISOString(),
       payerEmail: payment.payerEmail,
-      payerName: toDisplayNameCase(payment.payerFirstName),
+      payerName: toDisplayNameCase(payment.payerName ?? payment.payerFirstName),
       giftName: payment.gift.name
     };
 

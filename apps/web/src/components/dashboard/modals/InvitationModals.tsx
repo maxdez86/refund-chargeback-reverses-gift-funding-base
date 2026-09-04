@@ -15,6 +15,10 @@ import {
   templateLabel,
   templateForSend
 } from "@/lib/admin-dashboard-model";
+import {
+  INVITATION_CODE_REGEX,
+  type AdminCreateInvitationRequest
+} from "@brimax/contracts";
 import type { AdminInvitation } from "@/lib/admin-dashboard-types";
 import type { AdminWhatsappSendState } from "@/hooks/use-admin-dashboard";
 import {
@@ -94,10 +98,16 @@ const EMPTY_DRAFT: NewInvitationDraft = {
   guests: [EMPTY_GUEST_ROW, EMPTY_GUEST_ROW]
 };
 
-/** Which required fields of the new-invitation form are still missing. */
+/**
+ * Which required fields of the new-invitation form are still missing.
+ *
+ * The code is checked against `INVITATION_CODE_REGEX` — the same expression the contract enforces
+ * server-side — rather than merely for non-blankness. Checking only for text here would let the
+ * operator fill in a well-formed-looking code, submit, and be told no by the API.
+ */
 export function newInvitationErrors(draft: NewInvitationDraft) {
   return {
-    invitationCode: !draft.invitationCode.trim(),
+    invitationCode: !INVITATION_CODE_REGEX.test(draft.invitationCode.trim().toUpperCase()),
     phoneNumber: digitsOf(draft.phoneNumber).length < MIN_PHONE_DIGITS,
     householdName: !draft.householdName.trim(),
     guest: !(draft.guests[0]?.name ?? "").trim()
@@ -105,19 +115,30 @@ export function newInvitationErrors(draft: NewInvitationDraft) {
 }
 
 export function NewInvitationModal({
+  submitting = false,
+  error,
+  suggestedInvitationCode,
+  suggestionLoading = false,
   onCancel,
   onCreate
 }: {
+  submitting?: boolean;
+  error?: string;
+  suggestedInvitationCode?: string;
+  suggestionLoading?: boolean;
   onCancel: () => void;
-  onCreate: (draft: {
-    invitationCode: string;
-    phoneNumber: string;
-    householdName: string;
-    guests: GuestRowDraft[];
-  }) => void;
+  /** Already normalized to what the API accepts, since this form owns the normalization rules. */
+  onCreate: (request: AdminCreateInvitationRequest) => void;
 }) {
   const [draft, setDraft] = useState<NewInvitationDraft>(EMPTY_DRAFT);
   const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (suggestedInvitationCode) {
+      setDraft((current) =>
+        current.invitationCode ? current : { ...current, invitationCode: suggestedInvitationCode }
+      );
+    }
+  }, [suggestedInvitationCode]);
   const errors = newInvitationErrors(draft);
   const valid = !Object.values(errors).some(Boolean);
   const filled = trimRows(draft.guests);
@@ -138,17 +159,17 @@ export function NewInvitationModal({
       return;
     }
     onCreate({
-      invitationCode: draft.invitationCode,
-      phoneNumber: draft.phoneNumber,
-      householdName: draft.householdName,
-      guests: filled
+      invitationCode: draft.invitationCode.trim().toUpperCase(),
+      phoneNumber: digitsOf(draft.phoneNumber),
+      householdName: draft.householdName.trim(),
+      guests: filled.map((row) => ({ guestName: row.name.trim(), isChild: row.isChild }))
     });
   };
 
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       alignTop
       closeButton
       widthClassName="max-w-[640px]"
@@ -157,22 +178,36 @@ export function NewInvitationModal({
       description="Um convite reúne os convidados de uma mesma casa sob um código e um telefone de WhatsApp."
       footer={
         <>
-          <ModalNote tone={showError(!valid) ? "error" : "info"}>
-            {showError(!valid)
-              ? "Preencha código, telefone, nome do convite e o convidado principal."
-              : "O convite é criado com RSVP pendente. O fluxo de WhatsApp começa depois do envio."}
+          <ModalNote tone={showError(!valid) || error ? "error" : "info"}>
+            {error
+              ? error
+              : showError(!valid)
+                ? "Preencha código, telefone, nome do convite e o convidado principal. O código tem duas letras e quatro dígitos de 2 a 9, como SW2748."
+                : "O convite é criado com RSVP pendente. O fluxo de WhatsApp começa depois do envio."}
           </ModalNote>
           <ModalActions>
-            <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+            <button
+              type="button"
+              className={ADMIN_BUTTON.neutral}
+              disabled={submitting}
+              onClick={onCancel}
+            >
               Cancelar
             </button>
+            {/*
+              `aria-disabled` while the form is incomplete, real `disabled` only while submitting:
+              an invalid form still has to accept the click, because that click is what reveals the
+              note explaining what is missing.
+            */}
             <button
               type="button"
               className={ADMIN_BUTTON.primary}
               aria-disabled={!valid}
+              aria-busy={submitting}
+              disabled={submitting}
               onClick={submit}
             >
-              Criar convite
+              {submitting ? "Criando…" : "Criar convite"}
             </button>
           </ModalActions>
         </>
@@ -181,11 +216,13 @@ export function NewInvitationModal({
       <div className="mt-6 grid gap-[18px] sm:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
         <TextInput
           label="CÓDIGO DO CONVITE *"
-          placeholder="BRX-014"
+          placeholder="SW2748"
           value={draft.invitationCode}
           invalid={showError(errors.invitationCode)}
           onChange={(event) => setDraft({ ...draft, invitationCode: event.target.value })}
-          hint="Usado pelo convidado para abrir o convite no site."
+          hint={suggestionLoading
+            ? "Buscando um código disponível…"
+            : "Código sugerido automaticamente. Você pode editá-lo; use duas letras e quatro dígitos de 2 a 9."}
           className="tracking-[0.06em]"
         />
         <TextInput
@@ -274,10 +311,14 @@ export function NewInvitationModal({
 
 export function DeleteInvitationModal({
   invitation,
+  submitting = false,
+  error,
   onCancel,
   onConfirm
 }: {
   invitation: AdminInvitation;
+  submitting?: boolean;
+  error?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -285,7 +326,7 @@ export function DeleteInvitationModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       widthClassName="max-w-[470px]"
       title="Excluir este convite?"
       icon={
@@ -298,14 +339,28 @@ export function DeleteInvitationModal({
       }
       description={`O convite e ${count === 1 ? "o convidado vinculado" : `os ${count} convidados vinculados`} serão removidos da lista, junto com o histórico de RSVP e do fluxo de WhatsApp.`}
       footer={
-        <ModalActions>
-          <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
-            Cancelar
-          </button>
-          <button type="button" className={ADMIN_BUTTON.destructive} onClick={onConfirm}>
-            Excluir convite
-          </button>
-        </ModalActions>
+        <>
+          {error ? <ModalNote tone="error">{error}</ModalNote> : null}
+          <ModalActions>
+            <button
+              type="button"
+              className={ADMIN_BUTTON.neutral}
+              disabled={submitting}
+              onClick={onCancel}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={ADMIN_BUTTON.destructive}
+              aria-busy={submitting}
+              disabled={submitting}
+              onClick={onConfirm}
+            >
+              {submitting ? "Excluindo…" : "Excluir convite"}
+            </button>
+          </ModalActions>
+        </>
       }
     >
       <div className="mt-[18px] rounded-[11px] border border-admin-line bg-admin-surface px-4 py-3.5">
@@ -318,7 +373,7 @@ export function DeleteInvitationModal({
         </p>
       </div>
       <p className="mt-4 text-[13px] leading-[1.5] text-admin-danger">
-        Esta ação não pode ser desfeita.
+        Esta ação não pode ser desfeita. O histórico de conversas no WhatsApp também será apagado.
       </p>
     </AdminModal>
   );
@@ -329,11 +384,15 @@ export function DeleteInvitationModal({
 export function PhoneModal({
   invitation,
   onCancel,
-  onSave
+  onSave,
+  submitting = false,
+  error
 }: {
   invitation: AdminInvitation;
   onCancel: () => void;
   onSave: (phoneNumber: string) => void;
+  submitting?: boolean;
+  error?: string;
 }) {
   const [value, setValue] = useState(() => formatPhone(invitation.phoneNumber));
   const [touched, setTouched] = useState(false);
@@ -342,27 +401,33 @@ export function PhoneModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       widthClassName="max-w-[500px]"
       eyebrow={`CONVITE ${invitation.invitationCode}`}
       title="Trocar telefone do convite"
       description="O novo número passa a receber todo o fluxo de WhatsApp deste convite. Mensagens já enviadas continuam no histórico."
       footer={
         <ModalActions>
-          <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+          <button type="button" className={ADMIN_BUTTON.neutral} disabled={submitting} onClick={onCancel}>
             Cancelar
           </button>
           <button
             type="button"
             className={ADMIN_BUTTON.primary}
             aria-disabled={invalid}
+            disabled={submitting}
             onClick={() => (invalid ? setTouched(true) : onSave(value))}
           >
-            Salvar telefone
+            {submitting ? "Salvando…" : "Salvar telefone"}
           </button>
         </ModalActions>
       }
     >
+      {error && (
+        <p role="alert" className="mt-4 rounded-[10px] border border-admin-danger-edge bg-admin-danger-soft px-3.5 py-3 text-sm text-admin-danger-ink">
+          {error}
+        </p>
+      )}
       <div className="mt-5 rounded-[11px] border border-admin-line bg-admin-surface px-4 py-3.5">
         <p className="text-[11.5px] font-medium tracking-[0.13em] text-admin-muted">NÚMERO ATUAL</p>
         <p className="mt-1.5 text-[15.5px] tabular-nums">{formatPhone(invitation.phoneNumber)}</p>
@@ -392,10 +457,14 @@ export function PhoneModal({
 
 export function ConfirmAllModal({
   invitation,
+  submitting = false,
+  error,
   onCancel,
   onSave
 }: {
   invitation: AdminInvitation;
+  submitting?: boolean;
+  error?: string;
   onCancel: () => void;
   onSave: (guestIds: string[]) => void;
 }) {
@@ -406,23 +475,33 @@ export function ConfirmAllModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       widthClassName="max-w-[520px]"
       eyebrow={`CONVITE ${invitation.invitationCode}`}
       title="Confirmar presença"
       description={`Marque quem será confirmado no RSVP de ${invitation.householdName}. Nomes desmarcados continuam com o status atual.`}
       footer={
         <ModalActions>
-          <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+          <button
+            type="button"
+            className={ADMIN_BUTTON.neutral}
+            onClick={onCancel}
+            disabled={submitting}
+          >
             Cancelar
           </button>
           <button
             type="button"
             className={ADMIN_BUTTON.confirm}
-            disabled={selected.length === 0}
+            disabled={selected.length === 0 || submitting}
+            aria-busy={submitting}
             onClick={() => onSave(selected)}
           >
-            {selected.length > 1 ? `Confirmar ${selected.length} nomes` : "Confirmar presença"}
+            {submitting
+              ? "Confirmando…"
+              : selected.length > 1
+                ? `Confirmar ${selected.length} nomes`
+                : "Confirmar presença"}
           </button>
         </ModalActions>
       }
@@ -493,6 +572,12 @@ export function ConfirmAllModal({
             : `${selected.length} de ${allIds.length} ${allIds.length === 1 ? "convidado" : "convidados"} serão confirmados`}
         </p>
       </div>
+
+      {error && (
+        <p role="alert" className="mt-4 text-sm leading-relaxed text-admin-danger">
+          {error}
+        </p>
+      )}
     </AdminModal>
   );
 }
@@ -501,10 +586,14 @@ export function ConfirmAllModal({
 
 export function AddGuestsModal({
   invitation,
+  submitting = false,
+  error,
   onCancel,
   onSave
 }: {
   invitation: AdminInvitation;
+  submitting?: boolean;
+  error?: string;
   onCancel: () => void;
   onSave: (rows: GuestRowDraft[]) => void;
 }) {
@@ -520,7 +609,7 @@ export function AddGuestsModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       alignTop
       widthClassName="max-w-[560px]"
       eyebrow={`CONVITE ${invitation.invitationCode}`}
@@ -528,22 +617,39 @@ export function AddGuestsModal({
       description={`Os nomes entram no convite de ${invitation.householdName} com RSVP pendente. Marque “Criança” para quem tem de 0 a 11 anos.`}
       footer={
         <>
-          <ModalNote tone={touched && filled.length === 0 ? "error" : "info"}>
-            {touched && filled.length === 0
-              ? "Informe pelo menos um nome."
-              : "A marcação de criança faz o RSVP pedir a faixa etária. A cortesia de até 6 anos é definida pelo próprio convidado ao confirmar."}
+          <ModalNote tone={(touched && filled.length === 0) || error ? "error" : "info"}>
+            {error
+              ? error
+              : touched && filled.length === 0
+                ? "Informe pelo menos um nome."
+                : "A marcação de criança faz o RSVP pedir a faixa etária. A cortesia de até 6 anos é definida pelo próprio convidado ao confirmar."}
           </ModalNote>
           <ModalActions>
-            <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+            <button
+              type="button"
+              className={ADMIN_BUTTON.neutral}
+              disabled={submitting}
+              onClick={onCancel}
+            >
               Cancelar
             </button>
+            {/*
+              As in `NewInvitationModal`: `aria-disabled` for the empty form so the click can still
+              reveal the note, real `disabled` only while the write is in flight.
+            */}
             <button
               type="button"
               className={ADMIN_BUTTON.primary}
               aria-disabled={filled.length === 0}
+              aria-busy={submitting}
+              disabled={submitting}
               onClick={() => (filled.length === 0 ? setTouched(true) : onSave(filled))}
             >
-              {filled.length > 1 ? `Adicionar ${filled.length} convidados` : "Adicionar convidado"}
+              {submitting
+                ? "Adicionando…"
+                : filled.length > 1
+                  ? `Adicionar ${filled.length} convidados`
+                  : "Adicionar convidado"}
             </button>
           </ModalActions>
         </>

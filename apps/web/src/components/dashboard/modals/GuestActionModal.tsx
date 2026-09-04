@@ -118,14 +118,25 @@ export function guestActionCopy(guest: AdminGuestRow, kind: GuestActionKind): Co
   };
 }
 
+/**
+ * Confirms one guest action.
+ *
+ * The RSVP actions persist, so the modal stays open and undismissable while the request is in
+ * flight and renders the failure in place — the operator retries against the same guest rather
+ * than hunting for a toast that has gone.
+ */
 export function GuestActionModal({
   guest,
   kind,
+  submitting = false,
+  error,
   onCancel,
   onConfirm
 }: {
   guest: AdminGuestRow;
   kind: GuestActionKind;
+  submitting?: boolean;
+  error?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -140,7 +151,7 @@ export function GuestActionModal({
   return (
     <AdminModal
       open
-      onOpenChange={(next) => !next && onCancel()}
+      onOpenChange={(next) => !next && !submitting && onCancel()}
       widthClassName="max-w-[490px]"
       eyebrow={`CONVITE ${guest.invitationCode}`}
       title={copy.title}
@@ -158,11 +169,22 @@ export function GuestActionModal({
       }
       footer={
         <ModalActions>
-          <button type="button" className={ADMIN_BUTTON.neutral} onClick={onCancel}>
+          <button
+            type="button"
+            className={ADMIN_BUTTON.neutral}
+            onClick={onCancel}
+            disabled={submitting}
+          >
             {copy.cancelLabel}
           </button>
-          <button type="button" className={copy.confirmClassName} onClick={onConfirm}>
-            {copy.confirmLabel}
+          <button
+            type="button"
+            className={copy.confirmClassName}
+            onClick={onConfirm}
+            disabled={submitting}
+            aria-busy={submitting}
+          >
+            {submitting ? "Salvando…" : copy.confirmLabel}
           </button>
         </ModalActions>
       }
@@ -195,6 +217,12 @@ export function GuestActionModal({
       {copy.note && (
         <p className={cn("mt-4 text-[13px] leading-[1.5] [text-wrap:pretty]", copy.noteClassName)}>
           {copy.note}
+        </p>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-4 text-sm leading-relaxed text-admin-danger">
+          {error}
         </p>
       )}
     </AdminModal>

@@ -30,7 +30,7 @@ export function corsHeaders(requestOrigin: string | undefined): Record<string, s
     "access-control-allow-origin": requestOrigin,
     "access-control-allow-headers":
       "authorization,content-type,idempotency-key,x-turnstile-token,x-rsvp-lookup-proof",
-    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     vary: "Origin"
   };
 }

@@ -148,7 +148,7 @@ describe("sweepStaleCheckouts", () => {
         .mockResolvedValueOnce({ paymentId: "payment-2", status: "CREATED" })
     });
 
-    const summary = await sweepStaleCheckouts(repository as never, NOW_MS);
+    const summary = await sweepStaleCheckouts(repository as never, NOW_MS, { stage: "dev" });
 
     expect(repository.tryExpireStalePayment).toHaveBeenCalledWith({
       paymentId: "payment-2",
@@ -157,7 +157,9 @@ describe("sweepStaleCheckouts", () => {
     expect(summary.failedIds).toEqual(["payment-broken"]);
     expect(summary.released).toBe(1);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("\"metric\":\"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED\"")
+      expect.stringContaining(
+        '"metric":"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED","stage":"dev"'
+      )
     );
     errorSpy.mockRestore();
   });

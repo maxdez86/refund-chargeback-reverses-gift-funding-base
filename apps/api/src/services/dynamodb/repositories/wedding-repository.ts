@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import {
+  BatchWriteCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
@@ -7,7 +8,8 @@ import {
   ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
-  type DynamoDBDocumentClient
+  type DynamoDBDocumentClient,
+  type TransactWriteCommandInput
 } from "@aws-sdk/lib-dynamodb";
 import type {
   CreateGuestMessageRequest,
@@ -16,6 +18,7 @@ import type {
   AdminGuestExportRow,
   GuestProfile,
   HouseholdInvitation,
+  RsvpGuestAnswer,
   RsvpSubmissionRequest,
   RsvpStatus,
   WhatsappFlowStage,
@@ -23,8 +26,14 @@ import type {
   WhatsappMessageStatus,
   WhatsappTimestampSource
 } from "@brimax/contracts";
+import {
+  buildInvitationGuestRecord,
+  buildInvitationRecord,
+  nextGuestSlot
+} from "../../../domain/invitation-provisioning";
 import { dynamoDbDocumentClient } from "../client";
 import {
+  guestKeys,
   guestMessageFeedKey,
   guestMessageLookupKey,
   invitationKeys,
@@ -53,6 +62,7 @@ import {
   type WhatsappMessageItem
 } from "../whatsapp-items";
 import { RsvpResponseItemSchema, type RsvpResponseItem } from "../rsvp-items";
+import { isConditionalTransactionCancellation } from "../transaction-errors";
 import { GSI1_NAME, TABLE_PRIMARY_KEY, TABLE_SORT_KEY, TTL_ATTRIBUTE } from "../table";
 import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
@@ -124,6 +134,62 @@ type RsvpReservationInput = {
   expectedLegacyRsvp?: boolean;
 };
 
+/**
+ * One admin correction to an invitation's RSVP.
+ *
+ * The caller has already merged the change into the full `guestResponses` array and recomputed the
+ * aggregates, because both are derived from the whole invitation rather than from the edited guest
+ * alone. `fallbackSubmittedBy` is used only when no `RSVP#CURRENT` item exists yet — an admin edit
+ * never overwrites an answer a guest already gave.
+ */
+export type AdminGuestEditInput = {
+  invitationCode: string;
+  guestResponses: RsvpGuestAnswer[];
+  status: RsvpStatus;
+  counts: {
+    attendingGuestCount: number;
+    paidAttendingGuestCount: number;
+    childSixOrYoungerAttendingCount: number;
+  };
+  updatedAt: string;
+  fallbackSubmittedBy: string;
+  /** Present only when the edit also toggles the seed child flag on the guest item. */
+  guestFlags?: { guestId: string; isChild: boolean };
+};
+
+/** One new invitation, with every guest's slot already assigned by the caller. */
+export type CreateInvitationRecordInput = {
+  invitationCode: string;
+  householdName: string;
+  guests: readonly { guestName: string; slot: number; isChild?: boolean }[];
+  phoneNumber?: string;
+  phoneNumberUpdatedAt?: string;
+};
+
+/** What a cascade actually removed, reported back so the operator sees the blast radius. */
+export type InvitationCascadeDeletion = {
+  guests: number;
+  rsvp: 0 | 1;
+  whatsappItems: number;
+  phoneLookups: 0 | 1;
+};
+
+/** Guests joining an invitation that already exists. Slots are derived here, never sent by a client. */
+export type AddInvitationGuestsInput = {
+  invitationCode: string;
+  guests: readonly { guestName: string; isChild?: boolean }[];
+};
+
+/**
+ * One guest leaving an invitation.
+ *
+ * Mirrors `AdminGuestEditInput` because the caller owns the same merge: `guestResponses` arrives
+ * already pruned of the removed guest and the counts already recomputed from what remains.
+ */
+export type RemoveInvitationGuestInput = Omit<AdminGuestEditInput, "guestFlags"> & {
+  guestId: string;
+};
+
 type WhatsappBranchReservationInput = {
   invitationCode: string;
   expectedStatus: WhatsappFlowStatus;
@@ -147,6 +213,16 @@ export type UpdateCondition = {
   names?: Record<string, string>;
   values?: Record<string, unknown>;
 };
+
+/**
+ * `BatchWriteItem` accepts at most 25 requests per call, and reports throttled writes as
+ * `UnprocessedItems` rather than as an error — hence the bounded retry with backoff.
+ */
+const BATCH_WRITE_MAX_ITEMS = 25;
+const BATCH_WRITE_MAX_ATTEMPTS = 5;
+const BATCH_WRITE_RETRY_BASE_MS = 50;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export const WHATSAPP_WORKER_MAX_ATTEMPTS = 5;
 export const WHATSAPP_QUEUE_VISIBILITY_TIMEOUT_MS = 120_000;
@@ -280,6 +356,34 @@ export class WeddingRepository {
       guests: items.filter((item) => item.entityType === "InvitationGuest") as ItemRecord[],
       rsvp: items.find((item) => item.entityType === "RsvpResponse")
     });
+  }
+
+  /** Lists only invitation codes for the advisory next-code suggestion. */
+  async listInvitationCodes(): Promise<string[]> {
+    const codes: string[] = [];
+    let exclusiveStartKey: ItemRecord | undefined;
+
+    do {
+      const result = await this.documentClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          ConsistentRead: true,
+          FilterExpression: "entityType = :invitationType",
+          ExpressionAttributeValues: { ":invitationType": "Invitation" },
+          ProjectionExpression: "entityType, invitationCode",
+          ExclusiveStartKey: exclusiveStartKey
+        })
+      );
+
+      for (const item of (result.Items ?? []) as ItemRecord[]) {
+        if (item.entityType === "Invitation" && typeof item.invitationCode === "string") {
+          codes.push(item.invitationCode);
+        }
+      }
+      exclusiveStartKey = result.LastEvaluatedKey as ItemRecord | undefined;
+    } while (exclusiveStartKey);
+
+    return codes;
   }
 
   async listAdminDashboardInvitations(): Promise<AdminDashboardInvitation[]> {
@@ -505,6 +609,386 @@ export class WeddingRepository {
       ...rsvpOperationCondition(input)
     }));
     return input.updatedAt;
+  }
+
+  /**
+   * The `RSVP#CURRENT` update every admin write shares.
+   *
+   * Shared rather than duplicated because an admin correction and a guest removal must recompute
+   * the same aggregate the same way — two copies of this expression are exactly how the two paths
+   * would drift. See `applyAdminGuestEdit` for why it is an `Update` and not a `Put`.
+   */
+  private buildRsvpAggregateUpdate(input: Omit<AdminGuestEditInput, "guestFlags">) {
+    return {
+      TableName: this.tableName,
+      Key: rsvpKeys(input.invitationCode),
+      UpdateExpression:
+        "SET entityType = :entityType, invitationCode = :invitationCode, " +
+        "submittedBy = if_not_exists(submittedBy, :fallbackSubmittedBy), " +
+        "guestResponses = :guestResponses, attendingGuestCount = :attending, " +
+        "paidAttendingGuestCount = :paid, childSixOrYoungerAttendingCount = :children, " +
+        "#status = :status, updatedAt = :updatedAt",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":entityType": "RsvpResponse",
+        ":invitationCode": input.invitationCode,
+        ":fallbackSubmittedBy": input.fallbackSubmittedBy,
+        ":guestResponses": input.guestResponses,
+        ":attending": input.counts.attendingGuestCount,
+        ":paid": input.counts.paidAttendingGuestCount,
+        ":children": input.counts.childSixOrYoungerAttendingCount,
+        ":status": input.status,
+        ":updatedAt": input.updatedAt
+      }
+    };
+  }
+
+  /**
+   * Applies one admin RSVP correction to `RSVP#CURRENT`, and to the guest item when the edit also
+   * moves the seed child flag.
+   *
+   * Deliberately an `Update` rather than the full-item `Put` of `upsertRsvp()`: it sets only the
+   * attributes it recomputed, so `note` and the website idempotency fields
+   * (`websiteOperationId` / `websitePayloadDigest` / `websiteIdempotencyKeyDigest`) survive
+   * untouched. An admin correction is not a submission and must neither claim nor destroy a
+   * guest's submission identity. `submittedBy` is written through `if_not_exists`, so it is only
+   * ever seeded on an invitation that has never answered.
+   *
+   * The two writes go out as one transaction when both are present, so the child flag and the
+   * counts derived from it can never land apart.
+   */
+  async applyAdminGuestEdit(input: AdminGuestEditInput) {
+    const rsvpUpdate = this.buildRsvpAggregateUpdate(input);
+
+    if (!input.guestFlags) {
+      // No condition: the RSVP item is created by this same expression when the invitation has
+      // never answered, which is the common case for an admin correction.
+      await this.documentClient.send(new UpdateCommand(rsvpUpdate));
+      return input.updatedAt;
+    }
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({
+        TransactItems: [
+          { Update: rsvpUpdate },
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: guestKeys(input.invitationCode, input.guestFlags.guestId),
+              UpdateExpression: "SET isChild = :isChild",
+              ExpressionAttributeValues: { ":isChild": input.guestFlags.isChild },
+              // The only condition in the transaction, so a cancellation means exactly this:
+              // the guest item is gone. Without it an unknown guestId would create a ghost item.
+              ConditionExpression: "attribute_exists(PK)"
+            }
+          }
+        ]
+      }));
+    } catch (error) {
+      if (isConditionalTransactionCancellation(error) || error instanceof ConditionalCheckFailedException) {
+        throw new AppError("Guest not found.", 404);
+      }
+      throw error;
+    }
+
+    return input.updatedAt;
+  }
+
+  /**
+   * Creates one invitation, its guests, and — when a number is known — the WhatsApp phone lookup,
+   * atomically.
+   *
+   * The invitation `Put` carries the only guard that matters: `attribute_not_exists(PK)` is what
+   * makes the operator-supplied code unique, which is why this path needs no `Idempotency-Key`. The
+   * phone lookup is written unconditionally, matching `putWhatsappInvitationPhoneLookup`, which
+   * already treats that item as an idempotent overwrite — a re-used number is normal and must not
+   * fail the whole creation.
+   */
+  async createInvitation(input: CreateInvitationRecordInput) {
+    const invitation = buildInvitationRecord({
+      invitationCode: input.invitationCode,
+      householdName: input.householdName,
+      ...(input.phoneNumber
+        ? {
+            phoneNumber: input.phoneNumber,
+            phoneNumberSource: "operator" as const,
+            ...(input.phoneNumberUpdatedAt
+              ? { phoneNumberUpdatedAt: input.phoneNumberUpdatedAt }
+              : {})
+          }
+        : {})
+    });
+    const guests = input.guests.map((guest) =>
+      buildInvitationGuestRecord(input.invitationCode, guest)
+    );
+
+    const transactItems: NonNullable<TransactWriteCommandInput["TransactItems"]> = [
+      {
+        Put: {
+          TableName: this.tableName,
+          Item: invitation,
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      },
+      ...guests.map((guest) => ({
+        Put: {
+          TableName: this.tableName,
+          Item: guest,
+          // Defends against a half-deleted partition leaving a stale guest behind under a code
+          // that is being reused.
+          ConditionExpression: "attribute_not_exists(PK)"
+        }
+      }))
+    ];
+
+    if (input.phoneNumber) {
+      transactItems.push({
+        Put: {
+          TableName: this.tableName,
+          Item: {
+            ...whatsappInvitationPhoneLookupKeys(input.phoneNumber, input.invitationCode),
+            entityType: "WhatsappInvitationPhoneLookup",
+            phoneNumber: input.phoneNumber,
+            invitationCode: input.invitationCode
+          }
+        }
+      });
+    }
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
+    } catch (error) {
+      if (isConditionalTransactionCancellation(error) || error instanceof ConditionalCheckFailedException) {
+        throw new AppError("Invitation code already in use.", 409);
+      }
+      throw error;
+    }
+
+    return { invitation, guests };
+  }
+
+  /**
+   * Hard-deletes everything one invitation code owns: the invitation, its guests, `RSVP#CURRENT`,
+   * every WhatsApp message and command on its conversation index, and the phone lookup.
+   *
+   * The order is the design. The `Invitation` item is the anchor the whole cascade is discovered
+   * from, so it is deleted **last**: while it exists a retried `DELETE` re-inventories and finishes
+   * the job, whereas removing it first would turn every remaining row into an orphan the dashboard
+   * scan silently drops. Every step is key-targeted and therefore idempotent, which is what earns
+   * the right to use non-atomic batched deletes for an item count that has no upper bound. The
+   * phone lookup goes early so an inbound webhook cannot attach a fresh message to a partition
+   * that is already being torn down.
+   */
+  async deleteInvitationCascade(invitationCode: string): Promise<InvitationCascadeDeletion> {
+    const partition = await this.queryInvitationPartition(invitationCode);
+    const invitation = partition.find((item) => item.entityType === "Invitation");
+    if (!invitation) throw new AppError("Invitation not found.", 404);
+
+    const guestKeysToDelete = partition
+      .filter((item) => item.entityType === "InvitationGuest")
+      .map((item) => ({ PK: String(item.PK), SK: String(item.SK) }));
+    const rsvpKey = rsvpKeys(invitationCode);
+    const hasRsvp = partition.some((item) => item.SK === rsvpKey.SK);
+    const phoneNumber = typeof invitation.phoneNumber === "string" ? invitation.phoneNumber : undefined;
+
+    const conversationKeys = await this.queryConversationKeys(invitationCode);
+    await this.deleteKeysInBatches(conversationKeys);
+
+    if (phoneNumber) {
+      await this.documentClient.send(new DeleteCommand({
+        TableName: this.tableName,
+        Key: whatsappInvitationPhoneLookupKeys(phoneNumber, invitationCode)
+      }));
+    }
+
+    if (hasRsvp) {
+      await this.documentClient.send(new DeleteCommand({
+        TableName: this.tableName,
+        Key: rsvpKey
+      }));
+    }
+
+    await this.deleteKeysInBatches(guestKeysToDelete);
+
+    await this.documentClient.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: invitationKeys(invitationCode),
+      ConditionExpression: "attribute_exists(PK)"
+    }));
+
+    return {
+      guests: guestKeysToDelete.length,
+      rsvp: hasRsvp ? 1 : 0,
+      whatsappItems: conversationKeys.length,
+      phoneLookups: phoneNumber ? 1 : 0
+    };
+  }
+
+  /**
+   * Appends guests to an existing invitation.
+   *
+   * Slots come from `nextGuestSlot` over the stored `sortOrder` values, so a gap left by a removed
+   * guest is never reused. The raw items are read rather than `getInvitationByCode()`, because
+   * `GuestSummary` carries no `sortOrder` and so cannot answer `max(sortOrder)`.
+   */
+  async addInvitationGuests(input: AddInvitationGuestsInput) {
+    const partition = await this.queryInvitationPartition(input.invitationCode);
+    if (!partition.some((item) => item.entityType === "Invitation")) {
+      throw new AppError("Invitation not found.", 404);
+    }
+
+    const sortOrders = partition
+      .filter((item) => item.entityType === "InvitationGuest")
+      .map((item) => (typeof item.sortOrder === "number" ? item.sortOrder : undefined));
+    const base = nextGuestSlot(sortOrders);
+    const guests = input.guests.map((guest, index) =>
+      buildInvitationGuestRecord(input.invitationCode, { ...guest, slot: base + index })
+    );
+
+    try {
+      await this.documentClient.send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            // Without this the guests could land on an invitation a concurrent cascade just
+            // removed, leaving rows no API can ever reach again.
+            ConditionCheck: {
+              TableName: this.tableName,
+              Key: invitationKeys(input.invitationCode),
+              ConditionExpression: "attribute_exists(PK)"
+            }
+          },
+          ...guests.map((guest) => ({
+            Put: {
+              TableName: this.tableName,
+              Item: guest,
+              // Two concurrent adds that computed the same base slot resolve to one winner
+              // instead of silently overwriting each other.
+              ConditionExpression: "attribute_not_exists(PK)"
+            }
+          }))
+        ]
+      }));
+    } catch (error) {
+      if (isConditionalTransactionCancellation(error) || error instanceof ConditionalCheckFailedException) {
+        throw new AppError("Invitation changed while guests were being added. Try again.", 409);
+      }
+      throw error;
+    }
+
+    return guests;
+  }
+
+  /**
+   * Removes one guest and the answer they left, atomically.
+   *
+   * The RSVP update is always written, even when no answers remain: the aggregate must describe
+   * the guests who are left, and a `RSVP#CURRENT` at zero is a real state — an invitation whose
+   * only respondent was removed. It reuses the shared aggregate update, so `note` and the website
+   * idempotency fields survive exactly as they do for an admin correction.
+   */
+  async removeInvitationGuest(input: RemoveInvitationGuestInput) {
+    try {
+      await this.documentClient.send(new TransactWriteCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: this.tableName,
+              Key: guestKeys(input.invitationCode, input.guestId),
+              // The only condition in the transaction, so a cancellation means exactly this:
+              // the guest item is already gone.
+              ConditionExpression: "attribute_exists(PK)"
+            }
+          },
+          { Update: this.buildRsvpAggregateUpdate(input) }
+        ]
+      }));
+    } catch (error) {
+      if (isConditionalTransactionCancellation(error) || error instanceof ConditionalCheckFailedException) {
+        throw new AppError("Guest not found.", 404);
+      }
+      throw error;
+    }
+
+    return input.updatedAt;
+  }
+
+  /** Every item stored under one invitation's partition, paged and consistently read. */
+  private async queryInvitationPartition(invitationCode: string): Promise<ItemRecord[]> {
+    const items: ItemRecord[] = [];
+    let exclusiveStartKey: ItemRecord | undefined;
+
+    do {
+      const result = await this.documentClient.send(new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: `${TABLE_PRIMARY_KEY} = :pk`,
+        ExpressionAttributeValues: { ":pk": invitationKeys(invitationCode).PK },
+        ProjectionExpression: "PK, SK, entityType, sortOrder, phoneNumber",
+        ConsistentRead: true,
+        ExclusiveStartKey: exclusiveStartKey
+      }));
+      items.push(...((result.Items ?? []) as ItemRecord[]));
+      exclusiveStartKey = result.LastEvaluatedKey as ItemRecord | undefined;
+    } while (exclusiveStartKey);
+
+    return items;
+  }
+
+  /**
+   * Base-table keys of every WhatsApp row on one invitation's conversation index.
+   *
+   * The projection returns `PK`/`SK` directly, so messages and commands need no branching and no
+   * key rebuilding. Unlike `listWhatsappConversation()` this keeps unmatched rows too — a cascade
+   * that skipped them would leave exactly the orphans it exists to prevent.
+   */
+  private async queryConversationKeys(invitationCode: string): Promise<{ PK: string; SK: string }[]> {
+    const index = whatsappConversationIndexPrefix(invitationCode);
+    const keys: { PK: string; SK: string }[] = [];
+    let exclusiveStartKey: ItemRecord | undefined;
+
+    do {
+      const result = await this.documentClient.send(new QueryCommand({
+        TableName: this.tableName,
+        IndexName: GSI1_NAME,
+        KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+        ExpressionAttributeValues: { ":pk": index.GSI1PK, ":prefix": index.GSI1SK },
+        ProjectionExpression: "PK, SK",
+        ExclusiveStartKey: exclusiveStartKey
+      }));
+      keys.push(...((result.Items ?? []) as { PK: string; SK: string }[]));
+      exclusiveStartKey = result.LastEvaluatedKey as ItemRecord | undefined;
+    } while (exclusiveStartKey);
+
+    return keys;
+  }
+
+  /**
+   * Deletes keys in `BatchWriteItem`-sized chunks, retrying what DynamoDB declines to process.
+   *
+   * `BatchWriteItem` partially succeeds by design: throttled writes come back in `UnprocessedItems`
+   * rather than as an error, so not retrying them would silently leave rows behind. Giving up after
+   * the attempt budget throws, which surfaces a 500 the operator can retry — the cascade is
+   * idempotent, so a retry is always safe.
+   */
+  private async deleteKeysInBatches(keys: readonly { PK: string; SK: string }[]): Promise<void> {
+    for (let offset = 0; offset < keys.length; offset += BATCH_WRITE_MAX_ITEMS) {
+      let pending = keys
+        .slice(offset, offset + BATCH_WRITE_MAX_ITEMS)
+        .map((Key) => ({ DeleteRequest: { Key } }));
+
+      for (let attempt = 0; pending.length > 0; attempt += 1) {
+        if (attempt >= BATCH_WRITE_MAX_ATTEMPTS) {
+          throw new Error(
+            `Unable to delete ${pending.length} item(s) after ${BATCH_WRITE_MAX_ATTEMPTS} batch attempts.`
+          );
+        }
+        if (attempt > 0) await delay(BATCH_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1));
+
+        const result = await this.documentClient.send(new BatchWriteCommand({
+          RequestItems: { [this.tableName]: pending }
+        }));
+        pending = (result.UnprocessedItems?.[this.tableName] ?? []) as typeof pending;
+      }
+    }
   }
 
   async updateInvitationWhatsappPhone(invitationCode: string, phoneNumber: string) {

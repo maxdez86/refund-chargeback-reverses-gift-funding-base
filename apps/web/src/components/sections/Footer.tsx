@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "wouter";
 import { FaEnvelope, FaInstagram, FaYoutube } from "react-icons/fa";
 import { ResponsivePhoto } from "@/components/ResponsivePhoto";
 import { CONTACT_EMAIL, CONTACT_EMAIL_MAILTO } from "@/lib/contact";
@@ -58,10 +59,16 @@ export function Footer() {
           </a>
         </div>
 
-        <p className="mt-4 text-center text-xs text-[#fbf7f0]/50">
-          Plataforma de RSVP desenvolvida e operada por MAXUEL GUIMARAES REIS
-          CONSULTORIA EM TECNOLOGIA DA INFORMACAO - CNPJ 42.781.389/0001-08
-        </p>
+        <div className="mt-8 border-t border-[#fbf7f0]/10 pt-6 text-xs text-[#fbf7f0]/50 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+          <span>&copy; 2026 Brida &amp; Max</span>
+          <span className="hidden sm:inline">&bull;</span>
+          <Link
+            href="/privacidade"
+            className="transition-colors hover:text-[#d6ae64] underline underline-offset-4"
+          >
+            Política de Privacidade
+          </Link>
+        </div>
       </div>
     </footer>
   );

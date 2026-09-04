@@ -3,8 +3,6 @@ import path from "node:path";
 import { GetGiftsResponseSchema } from "../packages/contracts/src/gifts.ts";
 import { type GuestSummary } from "../packages/contracts/src/guest.ts";
 import {
-  CreateGuestMessageResponseSchema,
-  DeleteGuestMessageResponseSchema,
   ListGuestMessagesResponseSchema
 } from "../packages/contracts/src/messages.ts";
 import {
@@ -74,7 +72,6 @@ type Context = {
 };
 
 type RuntimeState = {
-  createdGuestMessageId?: string;
   createdPaymentId?: string;
   initialGiftPartsFunded?: number;
   lookupProof?: string;
@@ -449,82 +446,6 @@ async function main() {
     return {
       invitationCode: parsed.invitationCode,
       status: parsed.status
-    };
-  });
-
-  await runPhase("guest-message-create-list", results, async () => {
-    const messageBody = `prod-promotion integration ${context.runMarker}`;
-    const { body, response } = await requestJson(
-      context,
-      "guest-message-create-list",
-      `${context.apiBaseUrl}/guest-messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-turnstile-token": context.turnstileToken
-        },
-        body: JSON.stringify({
-          authorName: "CI Prod Promotion",
-          message: messageBody
-        })
-      }
-    );
-    assertStatus(response.status, 200, "guest-message-create-list create", body);
-    const created = parseWithSchema(
-      "guest-message-create-list create",
-      CreateGuestMessageResponseSchema,
-      body
-    );
-    state.createdGuestMessageId = created.message.messageId;
-
-    const listResult = await requestJson(
-      context,
-      "guest-message-create-list",
-      `${context.apiBaseUrl}/guest-messages`
-    );
-    assertStatus(listResult.response.status, 200, "guest-message-create-list list", listResult.body);
-    const list = parseWithSchema(
-      "guest-message-create-list list",
-      ListGuestMessagesResponseSchema,
-      listResult.body
-    );
-    const matching = list.messages.find((message) => message.messageId === created.message.messageId);
-    assert(matching, "Created guest message was not returned by GET /guest-messages.");
-    assert(matching.authorName === "CI Prod Promotion", "Guest message author mismatch.");
-
-    return {
-      messageId: created.message.messageId
-    };
-  });
-
-  await runPhase("guest-message-delete", results, async () => {
-    assert(state.createdGuestMessageId, "Guest message ID is required before delete.");
-    const { body, response } = await requestJson(
-      context,
-      "guest-message-delete",
-      `${context.apiBaseUrl}/admin/guest-messages/${encodeURIComponent(state.createdGuestMessageId)}`,
-      {
-        method: "DELETE"
-      }
-    );
-    assertStatus(response.status, 200, "guest-message-delete", body);
-    const deleted = parseWithSchema("guest-message-delete", DeleteGuestMessageResponseSchema, body);
-
-    const listResult = await requestJson(
-      context,
-      "guest-message-delete",
-      `${context.apiBaseUrl}/guest-messages`
-    );
-    assertStatus(listResult.response.status, 200, "guest-message-delete list", listResult.body);
-    const list = parseWithSchema("guest-message-delete list", ListGuestMessagesResponseSchema, listResult.body);
-    assert(
-      !list.messages.some((message) => message.messageId === deleted.messageId),
-      "Deleted guest message still appears in list."
-    );
-
-    return {
-      messageId: deleted.messageId
     };
   });
 

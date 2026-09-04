@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { AdminInvitationRsvpWriteResponse } from "@brimax/contracts";
 import { AdminApiError } from "@/lib/admin-api";
-import type { WhatsappRsvpSendMode, WhatsappRsvpSendResponse } from "@brimax/contracts";
+import type {
+  AdminAddGuestsRequest,
+  AdminCreateInvitationRequest,
+  AdminGuestUpdateRequest,
+  WhatsappRsvpSendMode,
+  WhatsappRsvpSendResponse
+} from "@brimax/contracts";
 import { toGuestRows } from "@/lib/admin-dashboard-model";
-import { fixtureDashboardSource, type AdminDashboardSource } from "@/lib/admin-dashboard-source";
+import {
+  fixtureDashboardSource,
+  mapAdminDashboardInvitation,
+  type AdminDashboardSource
+} from "@/lib/admin-dashboard-source";
 import type { AdminDashboardSnapshot } from "@/lib/admin-dashboard-types";
 import {
   adminDashboardReducer,
@@ -12,6 +23,12 @@ import {
   type AdminDashboardIntent,
   type AdminDashboardState
 } from "@/lib/admin-dashboard-store";
+
+/**
+ * The single in-flight key for creating an invitation. Deletes key on their invitation code; a
+ * create has none yet when the form opens, and only one create form exists at a time.
+ */
+export const ADMIN_CREATE_INVITATION_KEY = "new-invitation";
 
 const EMPTY_SNAPSHOT = {
   invitations: [],
@@ -47,6 +64,27 @@ export type AdminWhatsappSendState =
   | { status: "loading" }
   | { status: "error"; message: string };
 
+/** Per-message state of a recado deletion, so the confirmation modal can show progress. */
+export type AdminMessageDeleteState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string };
+
+/**
+ * Per-subject state of an RSVP write — keyed by `guestId` for a guest edit and by
+ * `invitationCode` for confirm-all, so two modals can never read each other's progress.
+ */
+export type AdminGuestWriteState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string };
+
+export type AdminInvitationCodeSuggestionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; invitationCode: string }
+  | { status: "error"; message: string };
+
 /**
  * Loads one dashboard snapshot and exposes it alongside the mutations the panel performs.
  * The data itself comes from `AdminDashboardSource` — fixtures today, admin endpoints later.
@@ -79,6 +117,20 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
   const sendKeyRef = useRef(new Map<string, { mode: WhatsappRsvpSendMode; key: string }>());
   const textSendInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
   const [whatsappTextSendStates, setWhatsappTextSendStates] = useState<Record<string, AdminWhatsappSendState>>({});
+  const messageDeleteInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [messageDeleteStates, setMessageDeleteStates] = useState<Record<string, AdminMessageDeleteState>>({});
+  const guestWriteInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [guestWriteStates, setGuestWriteStates] = useState<Record<string, AdminGuestWriteState>>({});
+  const confirmGuestsInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [confirmGuestsStates, setConfirmGuestsStates] = useState<Record<string, AdminGuestWriteState>>({});
+  const addGuestsInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [addGuestsStates, setAddGuestsStates] = useState<Record<string, AdminGuestWriteState>>({});
+  const invitationWriteInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [invitationWriteStates, setInvitationWriteStates] = useState<Record<string, AdminGuestWriteState>>({});
+  const phoneWriteInFlightRef = useRef(new Map<string, { controller: AbortController; promise: Promise<void> }>());
+  const [phoneWriteStates, setPhoneWriteStates] = useState<Record<string, AdminGuestWriteState>>({});
+  const nextCodeInFlightRef = useRef<{ controller: AbortController; promise: Promise<string> } | null>(null);
+  const [nextCodeState, setNextCodeState] = useState<AdminInvitationCodeSuggestionState>({ status: "idle" });
 
   useEffect(() => {
     const sourceGeneration = ++sourceGenerationRef.current;
@@ -91,8 +143,28 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     sendKeyRef.current.clear();
     for (const request of textSendInFlightRef.current.values()) request.controller.abort();
     textSendInFlightRef.current.clear();
+    for (const request of messageDeleteInFlightRef.current.values()) request.controller.abort();
+    messageDeleteInFlightRef.current.clear();
+    for (const request of guestWriteInFlightRef.current.values()) request.controller.abort();
+    guestWriteInFlightRef.current.clear();
+    for (const request of confirmGuestsInFlightRef.current.values()) request.controller.abort();
+    confirmGuestsInFlightRef.current.clear();
+    for (const request of addGuestsInFlightRef.current.values()) request.controller.abort();
+    addGuestsInFlightRef.current.clear();
+    for (const request of invitationWriteInFlightRef.current.values()) request.controller.abort();
+    invitationWriteInFlightRef.current.clear();
+    for (const request of phoneWriteInFlightRef.current.values()) request.controller.abort();
+    phoneWriteInFlightRef.current.clear();
+    nextCodeInFlightRef.current?.controller.abort();
+    nextCodeInFlightRef.current = null;
     setWhatsappSendStates({});
     setWhatsappTextSendStates({});
+    setMessageDeleteStates({});
+    setGuestWriteStates({});
+    setConfirmGuestsStates({});
+    setAddGuestsStates({});
+    setInvitationWriteStates({});
+    setPhoneWriteStates({});
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
     rawDispatch({ type: "replace-snapshot", snapshot: EMPTY_SNAPSHOT });
@@ -135,6 +207,20 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
       for (const request of sendInFlightRef.current.values()) request.controller.abort();
       sendInFlightRef.current.clear();
       sendKeyRef.current.clear();
+      for (const request of messageDeleteInFlightRef.current.values()) request.controller.abort();
+      messageDeleteInFlightRef.current.clear();
+      for (const request of guestWriteInFlightRef.current.values()) request.controller.abort();
+      guestWriteInFlightRef.current.clear();
+      for (const request of confirmGuestsInFlightRef.current.values()) request.controller.abort();
+      confirmGuestsInFlightRef.current.clear();
+      for (const request of addGuestsInFlightRef.current.values()) request.controller.abort();
+      addGuestsInFlightRef.current.clear();
+      for (const request of invitationWriteInFlightRef.current.values()) request.controller.abort();
+      invitationWriteInFlightRef.current.clear();
+      for (const request of phoneWriteInFlightRef.current.values()) request.controller.abort();
+      phoneWriteInFlightRef.current.clear();
+      nextCodeInFlightRef.current?.controller.abort();
+      nextCodeInFlightRef.current = null;
     };
   }, [source]);
 
@@ -367,6 +453,288 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     return promise;
   }, [options.createIdempotencyKey, requestThread, source]);
 
+  /**
+   * Hard-deletes one recado, then drops it from the snapshot.
+   *
+   * The row leaves only once the API confirms — no optimistic removal, so the list never shows a
+   * state the server never reached. A 404 resolves as success: the recado is already gone, and
+   * reporting "não existe mais" while leaving a stale row on screen would be the worse outcome.
+   * Anything else rethrows so the confirmation modal stays open with the localized reason.
+   */
+  const deleteGuestMessage = useCallback((messageId: string) => {
+    const existing = messageDeleteInFlightRef.current.get(messageId);
+    if (existing) return existing.promise;
+
+    const controller = new AbortController();
+    const generation = generationRef.current;
+    setMessageDeleteStates((current) => ({ ...current, [messageId]: { status: "loading" } }));
+
+    const promise = source
+      .deleteGuestMessage(messageId, controller.signal)
+      .then(() => {
+        if (controller.signal.aborted || generation !== generationRef.current) return;
+        rawDispatch({ type: "remove-message", messageId });
+        setMessageDeleteStates((current) => ({ ...current, [messageId]: { status: "idle" } }));
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || generation !== generationRef.current) throw error;
+        if (error instanceof AdminApiError && error.status === 404) {
+          rawDispatch({ type: "remove-message", messageId });
+          setMessageDeleteStates((current) => ({ ...current, [messageId]: { status: "idle" } }));
+          return;
+        }
+        setMessageDeleteStates((current) => ({
+          ...current,
+          [messageId]: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Não foi possível excluir o recado."
+          }
+        }));
+        throw error;
+      })
+      .finally(() => {
+        if (messageDeleteInFlightRef.current.get(messageId)?.promise === promise) {
+          messageDeleteInFlightRef.current.delete(messageId);
+        }
+      });
+    messageDeleteInFlightRef.current.set(messageId, { controller, promise });
+    return promise;
+  }, [source]);
+
+  /**
+   * Runs one RSVP write and installs the invitation the API returns.
+   *
+   * There is no optimistic update: the reducer only ever sees the server's recomputed guests and
+   * aggregate, so the panel cannot show counts a refetch would contradict. Failures are recorded
+   * per subject and rethrown, which is what keeps the modal open on top of the error.
+   */
+  const runRsvpWrite = useCallback((
+    key: string,
+    inFlight: React.RefObject<Map<string, { controller: AbortController; promise: Promise<void> }>>,
+    setStates: React.Dispatch<React.SetStateAction<Record<string, AdminGuestWriteState>>>,
+    request: (signal: AbortSignal) => Promise<AdminInvitationRsvpWriteResponse>,
+    fallbackMessage: string
+  ) => {
+    const existing = inFlight.current.get(key);
+    if (existing) return existing.promise;
+
+    const controller = new AbortController();
+    const generation = generationRef.current;
+    setStates((current) => ({ ...current, [key]: { status: "loading" } }));
+
+    const promise = request(controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted || generation !== generationRef.current) return;
+        rawDispatch({ type: "apply-invitation-rsvp", response });
+        setStates((current) => ({ ...current, [key]: { status: "idle" } }));
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || generation !== generationRef.current) throw error;
+        setStates((current) => ({
+          ...current,
+          [key]: {
+            status: "error",
+            message: error instanceof Error ? error.message : fallbackMessage
+          }
+        }));
+        throw error;
+      })
+      .finally(() => {
+        if (inFlight.current.get(key)?.promise === promise) inFlight.current.delete(key);
+      });
+    inFlight.current.set(key, { controller, promise });
+    return promise;
+  }, []);
+
+  const updateGuest = useCallback(
+    (invitationCode: string, guestId: string, patch: AdminGuestUpdateRequest) =>
+      runRsvpWrite(
+        guestId,
+        guestWriteInFlightRef,
+        setGuestWriteStates,
+        (signal) => source.updateGuest(invitationCode, guestId, patch, signal),
+        "Não foi possível salvar a alteração."
+      ),
+    [runRsvpWrite, source]
+  );
+
+  const confirmGuests = useCallback(
+    (invitationCode: string, guestIds: string[]) =>
+      runRsvpWrite(
+        invitationCode,
+        confirmGuestsInFlightRef,
+        setConfirmGuestsStates,
+        (signal) => source.confirmGuests(invitationCode, guestIds, signal),
+        "Não foi possível confirmar a presença."
+      ),
+    [runRsvpWrite, source]
+  );
+
+  /** Adds guests to an invitation; the server assigns their slots and ids. */
+  const addGuests = useCallback(
+    (invitationCode: string, guests: AdminAddGuestsRequest["guests"]) =>
+      runRsvpWrite(
+        invitationCode,
+        addGuestsInFlightRef,
+        setAddGuestsStates,
+        (signal) => source.addGuests(invitationCode, guests, signal),
+        "Não foi possível adicionar o convidado."
+      ),
+    [runRsvpWrite, source]
+  );
+
+  /**
+   * Removes one guest from an invitation.
+   *
+   * Keyed by `guestId` in the same map `updateGuest` uses, so one guest can never have an edit and
+   * a removal in flight at the same time — the two would reconcile from contradicting guest lists.
+   */
+  const removeGuest = useCallback(
+    (invitationCode: string, guestId: string) =>
+      runRsvpWrite(
+        guestId,
+        guestWriteInFlightRef,
+        setGuestWriteStates,
+        (signal) => source.removeGuest(invitationCode, guestId, signal),
+        "Não foi possível remover o convidado."
+      ),
+    [runRsvpWrite, source]
+  );
+
+  /**
+   * Runs one structural invitation write and applies the reducer action it implies.
+   *
+   * Separate from `runRsvpWrite` because neither create nor delete answers with the RSVP
+   * reconciliation payload: one inserts a whole row, the other removes one.
+   */
+  const runInvitationWrite = useCallback(<T,>(
+    key: string,
+    request: (signal: AbortSignal) => Promise<T>,
+    apply: (response: T) => void,
+    fallbackMessage: string,
+    inFlight = invitationWriteInFlightRef,
+    setStates = setInvitationWriteStates
+  ) => {
+    const existing = inFlight.current.get(key);
+    if (existing) return existing.promise;
+
+    const controller = new AbortController();
+    const generation = generationRef.current;
+    setStates((current) => ({ ...current, [key]: { status: "loading" } }));
+
+    const promise = request(controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted || generation !== generationRef.current) return;
+        apply(response);
+        setStates((current) => ({ ...current, [key]: { status: "idle" } }));
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || generation !== generationRef.current) throw error;
+        setStates((current) => ({
+          ...current,
+          [key]: {
+            status: "error",
+            message: error instanceof Error ? error.message : fallbackMessage
+          }
+        }));
+        throw error;
+      })
+      .finally(() => {
+        if (inFlight.current.get(key)?.promise === promise) {
+          inFlight.current.delete(key);
+        }
+      });
+    inFlight.current.set(key, { controller, promise });
+    return promise;
+  }, []);
+
+  /**
+   * Creates one invitation and inserts the row the API returned.
+   *
+   * Keyed by a constant rather than by the code: only one new-invitation form is ever open, so this
+   * is the strictest possible dedupe, and it gives the form a state key it can read before it knows
+   * which code the operator will type.
+   */
+  const createInvitation = useCallback(
+    (draft: AdminCreateInvitationRequest) =>
+      runInvitationWrite(
+        ADMIN_CREATE_INVITATION_KEY,
+        (signal) => source.createInvitation(draft, signal),
+        (response) =>
+          rawDispatch({
+            type: "create-invitation",
+            invitation: mapAdminDashboardInvitation(response.invitation)
+          }),
+        "Não foi possível criar o convite."
+      ),
+    [runInvitationWrite, source]
+  );
+
+  const getNextInvitationCode = useCallback(() => {
+    if (!source.getNextInvitationCode) {
+      const error = new AdminApiError("A sugestão de código não está disponível.", "unavailable");
+      setNextCodeState({ status: "error", message: error.message });
+      return Promise.reject(error);
+    }
+    if (nextCodeInFlightRef.current) return nextCodeInFlightRef.current.promise;
+
+    const controller = new AbortController();
+    setNextCodeState({ status: "loading" });
+    const promise = source.getNextInvitationCode(controller.signal)
+      .then((invitationCode) => {
+        if (!controller.signal.aborted) setNextCodeState({ status: "ready", invitationCode });
+        return invitationCode;
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNextCodeState({
+            status: "error",
+            message: error instanceof Error ? error.message : "Não foi possível sugerir um código."
+          });
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (nextCodeInFlightRef.current?.promise === promise) nextCodeInFlightRef.current = null;
+      });
+    nextCodeInFlightRef.current = { controller, promise };
+    return promise;
+  }, [source]);
+
+  /** Hard-deletes one invitation and drops its row, thread and thread state. */
+  const deleteInvitation = useCallback(
+    (invitationCode: string) =>
+      runInvitationWrite(
+        invitationCode,
+        (signal) => source.deleteInvitation(invitationCode, signal),
+        () => rawDispatch({ type: "delete-invitation", invitationCode }),
+        "Não foi possível excluir o convite."
+      ),
+    [runInvitationWrite, source]
+  );
+
+  /** Updates an invitation phone and applies only the normalized server response. */
+  const updateInvitationPhone = useCallback(
+    (invitationCode: string, phoneNumber: string) =>
+      runInvitationWrite(
+        invitationCode,
+        (signal) => source.updateInvitationPhone
+          ? source.updateInvitationPhone(invitationCode, phoneNumber, signal)
+          : Promise.reject(new AdminApiError("A alteração de telefone não está disponível.", "unavailable")),
+        (response) =>
+          rawDispatch({
+            type: "update-phone",
+            invitationCode: response.invitationCode,
+            phoneNumber: response.phoneNumber,
+            now: response.updatedAt
+          }),
+        "Não foi possível salvar o telefone do convite.",
+        phoneWriteInFlightRef,
+        setPhoneWriteStates
+      ),
+    [runInvitationWrite, source]
+  );
+
   /** Stamps the timestamp so no call site has to thread a clock through the UI. */
   const dispatch = useCallback(
     (intent: AdminDashboardIntent) => {
@@ -404,8 +772,24 @@ export function useAdminDashboard(options: UseAdminDashboardOptions = {}) {
     retryWhatsappInvitation,
     sendWhatsappRsvp,
     sendWhatsappText,
+    deleteGuestMessage,
+    updateGuest,
+    confirmGuests,
+    addGuests,
+    removeGuest,
+    createInvitation,
+    getNextInvitationCode,
+    deleteInvitation,
+    updateInvitationPhone,
+    guestWriteStates,
+    confirmGuestsStates,
+    addGuestsStates,
+    invitationWriteStates,
+    phoneWriteStates,
+    nextCodeState,
     whatsappSendStates,
     whatsappTextSendStates,
+    messageDeleteStates,
     demo: source.demo
   };
 }

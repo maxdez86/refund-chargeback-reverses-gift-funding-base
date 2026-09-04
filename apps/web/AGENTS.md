@@ -13,8 +13,19 @@ Node runtime requirements are defined in root [AGENTS.md](../../AGENTS.md).
 - Use Tailwind utilities plus `cn()` from `@/lib/utils` for conditional classes, and prefer CSS variables in `index.css` over raw colors.
 - Forms use React Hook Form + Zod via `@hookform/resolvers/zod`.
 - Shared request and response types come from `@brimax/contracts`.
-- In dev, `/api/*` reads proxy to the deployed HTTP API and writes are blocked locally. Do not add local write-through behavior to deployed environments.
+- In dev, `/api/*` reads proxy to the deployed HTTP API and writes are blocked locally. Do not add local write-through behavior to deployed environments, and never unblock write methods against the production target.
 - Build output is `apps/web/dist/`.
+
+## Admin writes
+
+The dev proxy (`vite.config.ts`, `READ_ONLY_PROXY_METHODS`) forwards `GET`/`HEAD`/`OPTIONS` only and its default target is the **production** API. This is deliberate and stays that way, which has one consequence worth stating plainly: **admin mutations cannot be exercised through `pnpm dev`** — a write is answered with a dev-server 404 and never reaches the API. Correctness for admin writes is established by Vitest unit tests across all four layers; end-to-end verification happens against a deployed dev stage (`BRIMAX_ENV_FILE=.env.dev`).
+
+Every admin write follows the same four-layer path. `deleteAdminGuestMessage` (`src/lib/admin-api.ts`) and its consumers are the reference implementation:
+
+1. **Client** — one exported function per route in `src/lib/admin-api.ts`, throwing `AdminApiError` with a pt-BR message and a typed `kind`. Check `!response.ok` **before** reading the body, so a non-JSON gateway error stays `unavailable`. Routes that answer with the plain `{ message }` envelope get a message map keyed by **HTTP status**; the coded `SEND_ERROR_MESSAGES` map applies only to WhatsApp routes that ship `WhatsappRsvpErrorResponseSchema`. Validate the success payload with its `@brimax/contracts` schema and confirm the response identifies the same subject that was requested. Send an `Idempotency-Key` only where the route actually deduplicates — never on a naturally idempotent one.
+2. **Source** — a **required** method on `AdminDashboardSource`, implemented by both `createLiveDashboardSource` (which reports `unauthorized`/`forbidden` through `onAuthError`) and `fixtureDashboardSource` (which validates against the fixture snapshot and throws a realistic error, so the failure path stays demoable). The fixture source is a stateless singleton — never give it mutable module state.
+3. **Hook** — an action in `use-admin-dashboard.ts` that dedupes in flight by its subject id, exposes a per-subject `{ status, error? }` record, dispatches the reducer action **after** the request resolves (no optimistic writes), and rethrows on failure so the modal stays open. Abort and clear its in-flight map when the source changes.
+4. **UI** — destructive actions open a confirmation modal from `src/components/dashboard/modals/`, driven by `DashboardShell`'s single `ModalState` union, disabled and undismissable while submitting, with the failure rendered in place (`role="alert"`) and success confirmed by a `toast`.
 
 ## Tests
 

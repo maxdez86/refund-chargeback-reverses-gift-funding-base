@@ -13,7 +13,7 @@ export class AdminDashboardService {
   async getDashboard() {
     const [invitations, giftResponse, guestMessages] = await Promise.all([
       this.repository.listAdminDashboardInvitations(),
-      this.giftService.getGifts(),
+      this.giftService.getAdminGifts(),
       this.listAllGuestMessages()
     ]);
 

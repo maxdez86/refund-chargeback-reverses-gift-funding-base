@@ -20,6 +20,10 @@ import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import { createTracedAwsClient } from "../../../lib/xray";
 import {
+  isExpectedConditionalTransactionCancellation,
+  isTransactionConflictCancellation
+} from "../transaction-errors";
+import {
   giftStateKeys,
   giftMetadataKeys,
   asaasCheckoutLookupIndex,
@@ -107,6 +111,8 @@ type StoredPaymentMessage = {
 };
 
 const RAW_WEBHOOK_PAYLOAD_MAX_BYTES = 350 * 1024;
+const CHECKOUT_CLEANUP_MAX_ATTEMPTS = 4;
+const CHECKOUT_CLEANUP_RETRY_BASE_MS = 50;
 
 type StoredWebhookEvent = {
   eventId: string;
@@ -166,17 +172,22 @@ function sumQuotaValues(quotaValuesCents: number[]) {
 }
 
 function getAvailableParts(gift: PaymentGift, state: StoredGiftState) {
+  const partsFunded = state.partsFunded ?? 0;
+  const partsReserved = state.partsReserved ?? 0;
   if (gift.fractional) {
-    return Math.max(0, (gift.totalParts ?? 0) - state.partsFunded - state.partsReserved);
+    return Math.max(0, (gift.totalParts ?? 0) - partsFunded - partsReserved);
   }
 
-  return Math.max(0, 1 - state.partsFunded - state.partsReserved);
+  return Math.max(0, 1 - partsFunded - partsReserved);
 }
 
 function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity: number): ReservedQuotaSelection {
   if (!gift.fractional) {
     if (quantity !== 1) {
       throw new AppError("This gift does not allow fractional contributions.", 400);
+    }
+    if (getAvailableParts(gift, state) < 1) {
+      throw new AppError("Requested quantity exceeds the available gift parts.", 409);
     }
 
     return {
@@ -209,7 +220,7 @@ function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity
   }
 
   const regularPartsTotal = Math.max(0, gift.totalParts - 1);
-  const soldParts = state.partsFunded + state.partsReserved;
+  const soldParts = (state.partsFunded ?? 0) + (state.partsReserved ?? 0);
   const regularPartsRemaining = Math.max(0, regularPartsTotal - soldParts);
   const regularPartsToTake = Math.min(quantity, regularPartsRemaining);
   const finalPartsToTake = quantity - regularPartsToTake;
@@ -496,7 +507,10 @@ export class PaymentRepository {
         })
       );
     } catch (error) {
-      if (error instanceof ConditionalCheckFailedException) {
+      if (
+        error instanceof ConditionalCheckFailedException ||
+        isExpectedConditionalTransactionCancellation(error, [0, 1])
+      ) {
         throw new AppError("Requested quantity exceeds the available gift parts.", 409);
       }
 
@@ -693,6 +707,48 @@ export class PaymentRepository {
     }
 
     return { metadata, states };
+  }
+
+  async listConfirmedPayerNamesByGiftIds(giftIds: string[]): Promise<Record<string, string[]>> {
+    const namesByGiftId = new Map<string, Set<string>>(
+      giftIds.map((giftId) => [giftId, new Set<string>()])
+    );
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const response = await this.documentClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          ProjectionExpression: "gift, payerName",
+          FilterExpression:
+            "#entityType = :payment AND #status IN (:confirmed, :received) AND attribute_exists(payerName)",
+          ExpressionAttributeNames: {
+            "#entityType": "entityType",
+            "#status": "status"
+          },
+          ExpressionAttributeValues: {
+            ":payment": "Payment",
+            ":confirmed": "CONFIRMED",
+            ":received": "RECEIVED"
+          },
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {})
+        })
+      );
+
+      for (const item of response.Items ?? []) {
+        const giftId = (item.gift as { id?: unknown } | undefined)?.id;
+        const payerName = typeof item.payerName === "string" ? item.payerName.trim() : "";
+        if (typeof giftId === "string" && namesByGiftId.has(giftId) && payerName) {
+          namesByGiftId.get(giftId)?.add(payerName);
+        }
+      }
+
+      exclusiveStartKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (exclusiveStartKey);
+
+    return Object.fromEntries(
+      Array.from(namesByGiftId, ([giftId, names]) => [giftId, Array.from(names)])
+    );
   }
 
   async incrementGiftFunding(input: {
@@ -938,6 +994,14 @@ export class PaymentRepository {
   }
 
   async releaseReservationAfterCheckoutFailure(paymentId: string): Promise<ReservationReleaseOutcome> {
+    return this.retryCheckoutCleanup("release_orphan_reservation", paymentId, () =>
+      this.releaseReservationAfterCheckoutFailureOnce(paymentId)
+    );
+  }
+
+  private async releaseReservationAfterCheckoutFailureOnce(
+    paymentId: string
+  ): Promise<ReservationReleaseOutcome> {
     const reservation = await this.getPaymentReservation(paymentId);
     if (!reservation) {
       return "missing-context";
@@ -1031,12 +1095,15 @@ export class PaymentRepository {
       await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
       return "released";
     } catch (error) {
-      if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
+      if (isExpectedConditionalTransactionCancellation(error, [0, 2])) {
         console.warn(
           JSON.stringify({
             metric: "RESERVATION_RELEASE_RACE_LOST",
             paymentId,
-            cancellationReasons: error.CancellationReasons?.map((reason) => reason.Code)
+            cancellationReasons:
+              error instanceof TransactionCanceledException
+                ? error.CancellationReasons?.map((reason) => reason.Code)
+                : undefined
           })
         );
         return "race-lost";
@@ -1766,18 +1833,59 @@ export class PaymentRepository {
     paymentId: string;
     expectedCurrentStatus: PaymentStatus;
   }): Promise<boolean> {
-    try {
-      return await this.applyWebhookUpdate({
-        paymentId: input.paymentId,
-        expectedCurrentStatus: input.expectedCurrentStatus,
-        nextStatus: "EXPIRED"
-      });
-    } catch (error) {
-      if (error instanceof TransactionCanceledException && isConditionalCheckOnlyCancellation(error)) {
-        return false;
-      }
+    return this.retryCheckoutCleanup("expire_payment", input.paymentId, async () => {
+      try {
+        return await this.applyWebhookUpdate({
+          paymentId: input.paymentId,
+          expectedCurrentStatus: input.expectedCurrentStatus,
+          nextStatus: "EXPIRED"
+        });
+      } catch (error) {
+        if (isExpectedConditionalTransactionCancellation(error, [0, 1])) {
+          return false;
+        }
 
-      throw error;
+        throw error;
+      }
+    });
+  }
+
+  private async retryCheckoutCleanup<T>(
+    operation: "expire_payment" | "release_orphan_reservation",
+    paymentId: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= CHECKOUT_CLEANUP_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await action();
+      } catch (error) {
+        if (
+          !isTransactionConflictCancellation(error) ||
+          attempt === CHECKOUT_CLEANUP_MAX_ATTEMPTS
+        ) {
+          throw error;
+        }
+
+        const retryLimitMs = CHECKOUT_CLEANUP_RETRY_BASE_MS * 2 ** (attempt - 1);
+        const delayMs = Math.floor(Math.random() * retryLimitMs);
+        console.warn(
+          JSON.stringify({
+            metric: "CHECKOUT_EXPIRY_TRANSACTION_CONFLICT_RETRY",
+            operation,
+            paymentId,
+            attempt,
+            maxAttempts: CHECKOUT_CLEANUP_MAX_ATTEMPTS,
+            delayMs,
+            cancellationReasons:
+              error instanceof TransactionCanceledException
+                ? error.CancellationReasons?.map((reason) => reason.Code)
+                : undefined
+          })
+        );
+        await delay(delayMs);
+      }
     }
+
+    throw new Error("Checkout cleanup retry loop exited unexpectedly.");
   }
 }

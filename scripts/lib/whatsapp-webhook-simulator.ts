@@ -84,6 +84,62 @@ export function buildWhatsappWebhookPayload(branch: WhatsappSimulatorBranch, inv
   };
 }
 
+export function buildWhatsappStatusWebhookPayload(
+  status: "sent" | "delivered" | "read" | "failed",
+  messageId: string,
+  timestamp = "1790000000"
+) {
+  return {
+    object: "whatsapp_business_account",
+    entry: [{
+      id: "waba-synthetic",
+      changes: [{
+        field: "messages",
+        value: {
+          messaging_product: "whatsapp",
+          metadata: {
+            display_phone_number: "synthetic-display-number",
+            phone_number_id: "synthetic-phone-number-id"
+          },
+          statuses: [{ id: messageId, status, timestamp, recipient_id: "5511900000000" }]
+        }
+      }]
+    }]
+  };
+}
+
+export function buildWhatsappTextWebhookPayload(
+  messageId = "wamid.synthetic-text",
+  senderWaId = "5511999998888",
+  duplicate = false
+) {
+  const message = {
+    id: messageId,
+    from: senderWaId,
+    timestamp: "1790000000",
+    type: "text",
+    text: { body: "Synthetic unmatched input" }
+  };
+  return {
+    object: "whatsapp_business_account",
+    entry: [{
+      id: "waba-synthetic",
+      changes: [{
+        field: "messages",
+        value: {
+          messaging_product: "whatsapp",
+          metadata: {
+            display_phone_number: "synthetic-display-number",
+            phone_number_id: "synthetic-phone-number-id"
+          },
+          contacts: [{ wa_id: senderWaId }],
+          messages: duplicate ? [message, message] : [message]
+        }
+      }]
+    }]
+  };
+}
+
 export function serializeWhatsappWebhookPayload(payload: unknown) {
   return JSON.stringify(payload);
 }

@@ -3,7 +3,7 @@ import type { AdminSessionResponse } from "@brimax/contracts";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
 import { toast } from "sonner";
-import { useAdminDashboard } from "@/hooks/use-admin-dashboard";
+import { ADMIN_CREATE_INVITATION_KEY, useAdminDashboard } from "@/hooks/use-admin-dashboard";
 import { useDashboardRoute } from "@/hooks/use-dashboard-route";
 import type { AdminDashboardSource } from "@/lib/admin-dashboard-source";
 import {
@@ -12,7 +12,7 @@ import {
   type DashboardSection
 } from "@/lib/admin-dashboard-route";
 import { toMusicSuggestionRows } from "@/lib/admin-dashboard-model";
-import type { GuestFilter, InviteFilter, MessageFilter, GiftFilter, ChatFilter } from "@/lib/admin-dashboard-model";
+import type { GuestFilter, InviteFilter, GiftFilter, ChatFilter } from "@/lib/admin-dashboard-model";
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
 import { OverviewScreen } from "@/components/dashboard/screens/OverviewScreen";
 import { InvitesScreen } from "@/components/dashboard/screens/InvitesScreen";
@@ -36,6 +36,7 @@ import {
   SendWhatsappModal
 } from "@/components/dashboard/modals/InvitationModals";
 import { GiftEditorModal, NewGiftModal } from "@/components/dashboard/modals/GiftModals";
+import { DeleteMessageModal } from "@/components/dashboard/modals/MessageModals";
 
 type ModalState =
   | null
@@ -46,6 +47,7 @@ type ModalState =
   | { kind: "confirm-all"; invitationCode: string }
   | { kind: "add-guests"; invitationCode: string }
   | { kind: "send"; invitationCode: string }
+  | { kind: "delete-message"; messageId: string }
   | { kind: "new-gift" };
 
 export type DashboardShellProps = {
@@ -64,7 +66,11 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
     retryWhatsappThread, loadMoreWhatsappThread,
     refreshWhatsappInvitation, retryWhatsappInvitation,
     sendWhatsappRsvp, whatsappSendStates,
-    sendWhatsappText, whatsappTextSendStates, demo
+    sendWhatsappText, whatsappTextSendStates,
+    deleteGuestMessage, messageDeleteStates,
+    updateGuest, confirmGuests, guestWriteStates, confirmGuestsStates,
+    addGuests, removeGuest, createInvitation, getNextInvitationCode, deleteInvitation, updateInvitationPhone,
+    addGuestsStates, invitationWriteStates, phoneWriteStates, nextCodeState, demo
   } = useAdminDashboard({ source });
 
   const [collapsed, setCollapsed] = useState(false);
@@ -74,7 +80,6 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const [inviteQuery, setInviteQuery] = useState("");
   const [guestFilter, setGuestFilter] = useState<GuestFilter>("Todos");
   const [guestQuery, setGuestQuery] = useState("");
-  const [messageFilter, setMessageFilter] = useState<MessageFilter>("Todos");
   const [messageQuery, setMessageQuery] = useState("");
   // Músicas is search-only: its rows are all suggestions, so there is nothing to filter by.
   const [musicQuery, setMusicQuery] = useState("");
@@ -82,6 +87,10 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
   const [giftQuery, setGiftQuery] = useState("");
   const [chatFilter, setChatFilter] = useState<ChatFilter>("Todas");
   const [chatQuery, setChatQuery] = useState("");
+
+  useEffect(() => {
+    if (modal?.kind === "new-invitation") void getNextInvitationCode().catch(() => undefined);
+  }, [modal?.kind, getNextInvitationCode]);
 
   const displayName = session.admin.name ?? session.admin.email;
   const musicSuggestions = toMusicSuggestionRows(state.invitations);
@@ -123,7 +132,7 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
 
   const closeModal = () => setModal(null);
 
-  const confirmGuestAction = () => {
+  const confirmGuestAction = async () => {
     if (modal?.kind !== "guest-action") return;
     const guest = guestBy(modal.guestId);
     if (!guest) return closeModal();
@@ -134,20 +143,41 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         setModal({ kind: "delete-invitation", invitationCode: guest.invitationCode });
         return;
       }
-      dispatch({ type: "remove-guest", guestId: guest.guestId });
-      closeModal();
-      navigate(routeForSection("convidados"));
+      try {
+        await removeGuest(guest.invitationCode, guest.guestId);
+        closeModal();
+        navigate(routeForSection("convidados"));
+        toast.success("Convidado removido do convite.");
+      } catch {
+        // The hook keeps the modal open and exposes a safe localized error.
+      }
       return;
     }
 
-    if (modal.action === "child") {
-      dispatch({ type: "set-guest-child", guestId: guest.guestId, isChild: !guest.isChild });
-      closeModal();
-      return;
-    }
+    // Unmarking a criança retires the age question, so the answer it produced goes with it —
+    // otherwise a courtesy seat would outlive the flag that justified it. Marking one leaves any
+    // existing answer alone; only the guest can give a new one.
+    const patch = modal.action === "child"
+      ? guest.isChild
+        ? { isChild: false, isChildSixOrYounger: false }
+        : { isChild: true }
+      : { rsvpStatus: modal.action };
 
-    dispatch({ type: "set-guest-status", guestId: guest.guestId, status: modal.action });
-    closeModal();
+    try {
+      await updateGuest(guest.invitationCode, guest.guestId, patch);
+      closeModal();
+      toast.success(
+        modal.action === "child"
+          ? guest.isChild
+            ? "Convidado desmarcado como criança."
+            : "Convidado marcado como criança."
+          : modal.action === "attending"
+            ? "Presença confirmada."
+            : "Convidado marcado como não vai."
+      );
+    } catch {
+      // The hook keeps the modal open and exposes a safe localized error.
+    }
   };
 
   const renderScreen = () => {
@@ -246,11 +276,9 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         return (
           <MessagesScreen
             messages={state.guestMessages}
-            filter={messageFilter}
             query={messageQuery}
-            onFilterChange={setMessageFilter}
             onQueryChange={setMessageQuery}
-            onToggleHidden={(messageId) => dispatch({ type: "toggle-message-hidden", messageId })}
+            onDelete={(messageId) => setModal({ kind: "delete-message", messageId })}
           />
         );
 
@@ -411,31 +439,81 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         </main>
       </div>
 
-      {modal?.kind === "new-invitation" && (
-        <NewInvitationModal
-          onCancel={closeModal}
-          onCreate={(draft) => {
-            dispatch({ type: "create-invitation", ...draft });
-            closeModal();
-            setInviteFilter("Todos");
-            setInviteQuery("");
-            navigate(routeForSection("convites"));
-          }}
-        />
-      )}
+      {modal?.kind === "new-invitation" &&
+        (() => {
+          const createState =
+            invitationWriteStates[ADMIN_CREATE_INVITATION_KEY] ?? { status: "idle" };
+          return (
+            <NewInvitationModal
+              submitting={createState.status === "loading"}
+              error={createState.status === "error" ? createState.message : undefined}
+              suggestedInvitationCode={nextCodeState.status === "ready" ? nextCodeState.invitationCode : undefined}
+              suggestionLoading={nextCodeState.status === "loading"}
+              onCancel={closeModal}
+              onCreate={(request) => {
+                void (async () => {
+                  try {
+                    await createInvitation(request);
+                    closeModal();
+                    setInviteFilter("Todos");
+                    setInviteQuery("");
+                    navigate(routeForSection("convites"));
+                    toast.success("Convite criado.");
+                  } catch {
+                    // The hook keeps the modal open and exposes a safe localized error.
+                  }
+                })();
+              }}
+            />
+          );
+        })()}
 
       {modal?.kind === "delete-invitation" &&
         (() => {
           const invitation = invitationBy(modal.invitationCode);
           if (!invitation) return null;
+          const deleteState = invitationWriteStates[invitation.invitationCode] ?? { status: "idle" };
           return (
             <DeleteInvitationModal
               invitation={invitation}
+              submitting={deleteState.status === "loading"}
+              error={deleteState.status === "error" ? deleteState.message : undefined}
               onCancel={closeModal}
               onConfirm={() => {
-                dispatch({ type: "delete-invitation", invitationCode: invitation.invitationCode });
-                closeModal();
-                navigate(routeForSection("convites"));
+                void (async () => {
+                  try {
+                    await deleteInvitation(invitation.invitationCode);
+                    closeModal();
+                    navigate(routeForSection("convites"));
+                    toast.success("Convite excluído.");
+                  } catch {
+                    // The hook keeps the modal open and exposes a safe localized error.
+                  }
+                })();
+              }}
+            />
+          );
+        })()}
+
+      {modal?.kind === "delete-message" &&
+        (() => {
+          const message = state.guestMessages.find((item) => item.messageId === modal.messageId);
+          if (!message) return null;
+          const deleteState = messageDeleteStates[message.messageId] ?? { status: "idle" };
+          return (
+            <DeleteMessageModal
+              message={message}
+              submitting={deleteState.status === "loading"}
+              error={deleteState.status === "error" ? deleteState.message : undefined}
+              onCancel={closeModal}
+              onConfirm={async () => {
+                try {
+                  await deleteGuestMessage(message.messageId);
+                  closeModal();
+                  toast.success("Recado excluído.");
+                } catch {
+                  // The hook keeps the modal open and exposes a safe localized error.
+                }
               }}
             />
           );
@@ -445,12 +523,15 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         (() => {
           const guest = guestBy(modal.guestId);
           if (!guest) return null;
+          const writeState = guestWriteStates[guest.guestId] ?? { status: "idle" };
           return (
             <GuestActionModal
               guest={guest}
               kind={modal.action}
+              submitting={writeState.status === "loading"}
+              error={writeState.status === "error" ? writeState.message : undefined}
               onCancel={closeModal}
-              onConfirm={confirmGuestAction}
+              onConfirm={() => void confirmGuestAction()}
             />
           );
         })()}
@@ -462,14 +543,19 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
           return (
             <PhoneModal
               invitation={invitation}
+              submitting={phoneWriteStates[invitation.invitationCode]?.status === "loading"}
+              error={(() => {
+                const state = phoneWriteStates[invitation.invitationCode];
+                return state?.status === "error" ? state.message : undefined;
+              })()}
               onCancel={closeModal}
               onSave={(phoneNumber) => {
-                dispatch({
-                  type: "update-phone",
-                  invitationCode: invitation.invitationCode,
-                  phoneNumber
-                });
-                closeModal();
+                void updateInvitationPhone(invitation.invitationCode, phoneNumber)
+                  .then(() => {
+                    closeModal();
+                    toast.success("Telefone do convite atualizado.");
+                  })
+                  .catch(() => undefined);
               }}
             />
           );
@@ -479,17 +565,25 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         (() => {
           const invitation = invitationBy(modal.invitationCode);
           if (!invitation) return null;
+          const confirmState = confirmGuestsStates[invitation.invitationCode] ?? { status: "idle" };
           return (
             <ConfirmAllModal
               invitation={invitation}
+              submitting={confirmState.status === "loading"}
+              error={confirmState.status === "error" ? confirmState.message : undefined}
               onCancel={closeModal}
               onSave={(guestIds) => {
-                dispatch({
-                  type: "confirm-guests",
-                  invitationCode: invitation.invitationCode,
-                  guestIds
-                });
-                closeModal();
+                void (async () => {
+                  try {
+                    await confirmGuests(invitation.invitationCode, guestIds);
+                    closeModal();
+                    toast.success(
+                      guestIds.length > 1 ? "Presenças confirmadas." : "Presença confirmada."
+                    );
+                  } catch {
+                    // The hook keeps the modal open and exposes a safe localized error.
+                  }
+                })();
               }}
             />
           );
@@ -499,13 +593,26 @@ export function DashboardShell({ session, preview, onSignOut, source }: Dashboar
         (() => {
           const invitation = invitationBy(modal.invitationCode);
           if (!invitation) return null;
+          const addState = addGuestsStates[invitation.invitationCode] ?? { status: "idle" };
           return (
             <AddGuestsModal
               invitation={invitation}
+              submitting={addState.status === "loading"}
+              error={addState.status === "error" ? addState.message : undefined}
               onCancel={closeModal}
               onSave={(rows) => {
-                dispatch({ type: "add-guests", invitationCode: invitation.invitationCode, rows });
-                closeModal();
+                void (async () => {
+                  try {
+                    await addGuests(
+                      invitation.invitationCode,
+                      rows.map((row) => ({ guestName: row.name.trim(), isChild: row.isChild }))
+                    );
+                    closeModal();
+                    toast.success(rows.length > 1 ? "Convidados adicionados." : "Convidado adicionado.");
+                  } catch {
+                    // The hook keeps the modal open and exposes a safe localized error.
+                  }
+                })();
               }}
             />
           );

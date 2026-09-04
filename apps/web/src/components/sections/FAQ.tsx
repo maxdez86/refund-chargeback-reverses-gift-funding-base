@@ -47,6 +47,23 @@ const faqs = [
       "Reais! Cada item foi escolhido por nós com carinho para a nossa nova casa. Para facilitar, você escolhe o presente e nós mesmos compramos todos de uma vez no final, assim eles chegam direto na nossa futura casa, sem que você precise se preocupar com a loja."
   },
   {
+    question: "Não gosto de comprar presente online, prefiro entregar pessoalmente. E agora?",
+    answer: (
+      <>
+        Nós criamos a lista de presentes online para facilitar a vida de todos, mas entendemos que algumas pessoas preferem escolher o presente na loja física e entregar pessoalmente. Pensamos em vocês também! Se essa é a sua preferência, basta ir a qualquer loja da Preçolandia e pedir pela lista de casamento da Brida e do Max, referente ao casamento no dia 06/12/2026. Você poderá escolher qualquer item disponível nessa lista física ou acessar diretamente a versão online aqui:{" "}
+        <a
+          href="https://www.precolandia.com.br/gift-list-details/view/brida-e-max"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#9f7a34] underline underline-offset-2 transition-colors hover:text-[#d6ae64]"
+        >
+          Lista de presentes Brida e Max
+        </a>
+        . Vamos ficar muito felizes em receber o seu presente pessoalmente, e ainda mais se ele vier acompanhado de um abraço bem apertado! 💖
+      </>
+    )
+  },
+  {
     question: "Qual o horário de chegada ideal?",
     answer:
       "A cerimônia começará às 15:00. Recomendamos chegar com 15 minutos de antecedência para se acomodar com tranquilidade."

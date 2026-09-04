@@ -87,7 +87,8 @@ const completeResponse: AdminDashboardResponse = {
       availableAmountCents: 10_000,
       availableParts: 1,
       fullyFunded: false,
-      updatedAt: null
+      updatedAt: null,
+      payerNames: []
     }
   ],
   guestMessages: [
@@ -145,10 +146,8 @@ describe("admin dashboard response mapping", () => {
       photoUrl: null,
       version: 0
     });
-    expect(snapshot.guestMessages[0]).toEqual({
-      ...completeResponse.guestMessages[0],
-      hidden: false
-    });
+    expect(snapshot.guestMessages[0]).toEqual({ ...completeResponse.guestMessages[0] });
+    expect(snapshot.guestMessages[0]).not.toBe(completeResponse.guestMessages[0]);
     expect(snapshot.invitations[0].commands).toEqual([]);
     expect(snapshot.invitations[0].whatsappConversation).toEqual(
       completeResponse.invitations[0].whatsappConversation
@@ -325,7 +324,7 @@ describe("admin dashboard source selection", () => {
     const source = createLiveDashboardSource({
       getToken: () => "test-token",
       apiUrl: "/api",
-      fetcher: vi.fn().mockResolvedValue(new Response("", { status })),
+      fetcher: vi.fn(async () => new Response("", { status })),
       onAuthError
     });
 
@@ -653,5 +652,300 @@ describe("WhatsApp history page mapping", () => {
     expect(result.page.invitationCode).toBe("SW2748");
     expect(result.page.messages).toHaveLength(1);
     expect(result.page.commands).toHaveLength(1);
+  });
+});
+
+describe("guest message deletion through the source seam", () => {
+  const knownId = createFixtureDashboardSnapshot().guestMessages[0].messageId;
+
+  it("delegates the live delete with auth and returns the parsed confirmation", async () => {
+    const deleted = { ok: true, messageId: knownId, deletedAt: "2026-08-27T12:00:00.000Z" };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(deleted), { status: 200 }));
+    const live = createLiveDashboardSource({ getToken: () => "test-token", apiUrl: "/api", fetcher });
+
+    await expect(live.deleteGuestMessage(knownId)).resolves.toEqual(deleted);
+    expect(fetcher).toHaveBeenCalledWith(`/api/admin/guest-messages/${knownId}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer test-token" },
+      signal: undefined
+    });
+  });
+
+  it("reports an auth failure to the session owner and rethrows it", async () => {
+    const onAuthError = vi.fn();
+    const live = createLiveDashboardSource({
+      getToken: () => "test-token",
+      apiUrl: "/api",
+      onAuthError,
+      fetcher: vi.fn().mockResolvedValue(new Response("", { status: 401 }))
+    });
+
+    await expect(live.deleteGuestMessage(knownId)).rejects.toMatchObject({ kind: "unauthorized" });
+    expect(onAuthError).toHaveBeenCalledWith(expect.any(AdminApiError));
+  });
+
+  it("confirms a fixture delete without touching the network", async () => {
+    const fetcher = vi.fn();
+    createLiveDashboardSource({ getToken: () => "test-token", fetcher });
+
+    await expect(fixtureDashboardSource.deleteGuestMessage(knownId)).resolves.toMatchObject({
+      ok: true,
+      messageId: knownId,
+      deletedAt: expect.any(String)
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown fixture id so the error path stays demoable", async () => {
+    await expect(fixtureDashboardSource.deleteGuestMessage("not-a-recado")).rejects.toMatchObject({
+      kind: "rejected",
+      status: 404
+    });
+  });
+
+  it("leaves the fixture singleton intact — the reducer owns the removal", async () => {
+    const before = createFixtureDashboardSnapshot().guestMessages.length;
+    await fixtureDashboardSource.deleteGuestMessage(knownId);
+    expect(createFixtureDashboardSnapshot().guestMessages).toHaveLength(before);
+  });
+});
+
+describe("admin RSVP writes through the source", () => {
+  const fixtureCode = () => createFixtureDashboardSnapshot().invitations[0]!;
+
+  it("sends an invitation phone update through the live source", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      invitationCode: "SW2748",
+      phoneNumber: "5511912345678",
+      updatedAt: "2026-08-28T12:00:00.000Z"
+    }), { status: 200 }));
+    const source = createLiveDashboardSource({ getToken: () => "id-token", apiUrl: "/api", fetcher });
+
+    await expect(source.updateInvitationPhone!("SW2748", "+55 (11) 91234-5678")).resolves.toMatchObject({
+      phoneNumber: "5511912345678"
+    });
+    expect(fetcher).toHaveBeenCalledWith("/api/admin/whatsapp/invitations/SW2748/phone", expect.objectContaining({
+      method: "PUT"
+    }));
+  });
+
+  it("keeps the fixture source stateless while returning a normalized phone", async () => {
+    const invitation = fixtureCode();
+    const response = await fixtureDashboardSource.updateInvitationPhone!(
+      invitation.invitationCode,
+      "+55 (11) 91234-5678"
+    );
+    expect(response).toMatchObject({ invitationCode: invitation.invitationCode, phoneNumber: "5511912345678" });
+    expect(createFixtureDashboardSnapshot().invitations[0]!.phoneNumber).toBe(invitation.phoneNumber);
+  });
+
+  it("sends a guest patch through the live source and returns the API payload", async () => {
+    const invitation = fixtureCode();
+    const written = {
+      ok: true as const,
+      invitationCode: invitation.invitationCode,
+      guests: invitation.guests.map((guest) => ({
+        guestId: guest.guestId,
+        guestName: guest.guestName,
+        allowedPlusOnes: guest.allowedPlusOnes,
+        rsvpStatus: "attending" as const
+      })),
+      rsvp: {
+        status: "attending" as const,
+        updatedAt: "2026-08-20T12:00:00.000Z",
+        submittedBy: invitation.guests[0]!.guestId,
+        attending: invitation.guests.length,
+        paid: invitation.guests.length,
+        childrenSixOrYounger: 0
+      },
+      updatedAt: "2026-08-20T12:00:00.000Z"
+    };
+    // A Response body can only be read once, so each call needs its own.
+    const fetcher = vi.fn(async () =>
+      new Response(JSON.stringify(written), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const source = createLiveDashboardSource({ getToken: () => "id-token", apiUrl: "/api", fetcher });
+
+    await expect(
+      source.updateGuest(invitation.invitationCode, invitation.guests[0]!.guestId, {
+        rsvpStatus: "attending"
+      })
+    ).resolves.toEqual(written);
+    await expect(
+      source.confirmGuests(invitation.invitationCode, [invitation.guests[0]!.guestId])
+    ).resolves.toEqual(written);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 403])("reports HTTP %i to onAuthError from both writes", async (status) => {
+    const onAuthError = vi.fn();
+    const invitation = fixtureCode();
+    const source = createLiveDashboardSource({
+      getToken: () => "id-token",
+      apiUrl: "/api",
+      fetcher: vi.fn().mockResolvedValue(new Response("", { status })),
+      onAuthError
+    });
+
+    await expect(
+      source.updateGuest(invitation.invitationCode, invitation.guests[0]!.guestId, {
+        isChild: true
+      })
+    ).rejects.toBeInstanceOf(AdminApiError);
+    await expect(
+      source.confirmGuests(invitation.invitationCode, [invitation.guests[0]!.guestId])
+    ).rejects.toBeInstanceOf(AdminApiError);
+    expect(onAuthError).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers a fixture guest patch with a recomputed aggregate, without the network", async () => {
+    const fetcher = vi.fn();
+    createLiveDashboardSource({ getToken: () => "id-token", fetcher });
+    const invitation = fixtureCode();
+
+    const response = await fixtureDashboardSource.updateGuest(
+      invitation.invitationCode,
+      invitation.guests[0]!.guestId,
+      { rsvpStatus: "attending" }
+    );
+
+    expect(response.invitationCode).toBe(invitation.invitationCode);
+    expect(response.guests[0]!.rsvpStatus).toBe("attending");
+    expect(response.rsvp.attending).toBeGreaterThan(0);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("confirms only the selected fixture guests", async () => {
+    const invitation = createFixtureDashboardSnapshot().invitations.find(
+      (item) => item.guests.length > 1
+    )!;
+
+    const response = await fixtureDashboardSource.confirmGuests(invitation.invitationCode, [
+      invitation.guests[0]!.guestId
+    ]);
+
+    expect(response.guests[0]!.rsvpStatus).toBe("attending");
+    expect(response.guests[1]!.rsvpStatus).toBe(invitation.guests[1]!.rsvpStatus);
+  });
+
+  it("rejects unknown fixture subjects so the failure path stays demoable", async () => {
+    const invitation = fixtureCode();
+
+    await expect(
+      fixtureDashboardSource.updateGuest("ZY9999", "whoever", { isChild: true })
+    ).rejects.toMatchObject({ kind: "rejected", status: 404 });
+    await expect(
+      fixtureDashboardSource.updateGuest(invitation.invitationCode, "not-a-guest", { isChild: true })
+    ).rejects.toMatchObject({ kind: "rejected", status: 404 });
+    await expect(
+      fixtureDashboardSource.confirmGuests(invitation.invitationCode, ["not-a-guest"])
+    ).rejects.toMatchObject({ kind: "rejected", status: 404 });
+  });
+
+  it("leaves the fixture singleton intact — the reducer owns the update", async () => {
+    const invitation = fixtureCode();
+    await fixtureDashboardSource.updateGuest(invitation.invitationCode, invitation.guests[0]!.guestId, {
+      rsvpStatus: "declined"
+    });
+
+    expect(createFixtureDashboardSnapshot().invitations[0]!.guests[0]!.rsvpStatus).toBe(
+      invitation.guests[0]!.rsvpStatus
+    );
+  });
+});
+
+describe("fixture structural writes", () => {
+  const anInvitation = () => createFixtureDashboardSnapshot().invitations[0]!;
+
+  it("creates an invitation shaped like a never-asked one", async () => {
+    const response = await fixtureDashboardSource.createInvitation({
+      invitationCode: "KP3456",
+      householdName: "Família Moretti",
+      phoneNumber: "5511912345678",
+      guests: [{ guestName: "Ana Moretti" }, { guestName: "Caio Moretti", isChild: true }]
+    });
+
+    expect(response.invitation.guests.map((guest) => guest.guestId)).toEqual([
+      "KP3456--guest-01",
+      "KP3456--guest-02"
+    ]);
+    expect(response.invitation.phoneNumberSource).toBe("operator");
+    expect(response.invitation.rsvp).toMatchObject({ status: "pending", submittedBy: null });
+    expect(response.invitation.whatsappSendAvailability).toEqual({
+      firstAllowed: true,
+      resendAllowed: false
+    });
+  });
+
+  it("refuses a code the fixture snapshot already uses", async () => {
+    await expect(
+      fixtureDashboardSource.createInvitation({
+        invitationCode: anInvitation().invitationCode,
+        householdName: "Família Moretti",
+        guests: [{ guestName: "Ana Moretti" }]
+      })
+    ).rejects.toMatchObject({ kind: "rejected", status: 409 });
+  });
+
+  it("reports what a delete would remove, and 404s an unknown invitation", async () => {
+    const invitation = anInvitation();
+
+    await expect(fixtureDashboardSource.deleteInvitation(invitation.invitationCode)).resolves
+      .toMatchObject({
+        ok: true,
+        invitationCode: invitation.invitationCode,
+        deleted: { guests: invitation.guests.length }
+      });
+    await expect(fixtureDashboardSource.deleteInvitation("ZY9999")).rejects.toMatchObject({
+      kind: "rejected",
+      status: 404
+    });
+  });
+
+  it("adds guests above the highest slot in use, never into a gap", async () => {
+    const invitation = anInvitation();
+    const highest = invitation.guests.length;
+
+    const response = await fixtureDashboardSource.addGuests(invitation.invitationCode, [
+      { guestName: "Duda" }
+    ]);
+
+    expect(response.guests).toHaveLength(invitation.guests.length + 1);
+    expect(response.guests.at(-1)!.guestId).toBe(
+      `${invitation.invitationCode}--guest-${String(highest + 1).padStart(2, "0")}`
+    );
+    expect(response.guests.at(-1)!.rsvpStatus).toBe("pending");
+  });
+
+  it("removes a guest, and refuses both an unknown one and the last one", async () => {
+    const invitation = createFixtureDashboardSnapshot().invitations.find(
+      (item) => item.guests.length > 1
+    )!;
+
+    const response = await fixtureDashboardSource.removeGuest(
+      invitation.invitationCode,
+      invitation.guests[1]!.guestId
+    );
+    expect(response.guests.map((guest) => guest.guestId)).not.toContain(
+      invitation.guests[1]!.guestId
+    );
+
+    await expect(
+      fixtureDashboardSource.removeGuest(invitation.invitationCode, "not-a-guest")
+    ).rejects.toMatchObject({ kind: "rejected", status: 404 });
+
+    const solo = createFixtureDashboardSnapshot().invitations.find(
+      (item) => item.guests.length === 1
+    );
+    if (solo) {
+      // The write response requires at least one guest, so emptying an invitation is refused and
+      // the operator is pointed at "Excluir convite" instead.
+      await expect(
+        fixtureDashboardSource.removeGuest(solo.invitationCode, solo.guests[0]!.guestId)
+      ).rejects.toMatchObject({ kind: "rejected", status: 409 });
+    }
   });
 });

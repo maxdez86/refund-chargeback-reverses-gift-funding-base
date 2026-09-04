@@ -40,6 +40,7 @@ describe("checkout-expiry-worker handler", () => {
   });
 
   beforeEach(() => {
+    vi.stubEnv("STAGE", "dev");
     sweepMock.mockReset().mockResolvedValue(emptySummary());
   });
 
@@ -55,10 +56,11 @@ describe("checkout-expiry-worker handler", () => {
 
     expect(sweepMock).toHaveBeenCalledWith(expect.anything(), expect.any(Number), {
       limit: 100,
-      concurrency: 4
+      concurrency: 4,
+      stage: "dev"
     });
     expect(infoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("\"metric\":\"CHECKOUT_EXPIRY_SWEEP_COMPLETED\"")
+      expect.stringContaining("\"stage\":\"dev\"")
     );
   });
 
@@ -70,6 +72,7 @@ describe("checkout-expiry-worker handler", () => {
     await expect(
       handler(eventWith(JSON.stringify({ source: "schedule" })), context, callback)
     ).rejects.toThrow(/retryable failure/);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("\"stage\":\"dev\""));
   });
 
   it("warns on protected-stale reservations but does not throw", async () => {

@@ -8,6 +8,7 @@ import {
   type AdminDashboardAction,
   type AdminDashboardState
 } from "@/lib/admin-dashboard-store";
+import type { AdminInvitation } from "@/lib/admin-dashboard-types";
 
 const NOW = "2026-08-20T12:00:00Z";
 
@@ -23,66 +24,183 @@ const invitationOf = (state: AdminDashboardState, code: string) =>
 const apply = (state: AdminDashboardState, ...actions: AdminDashboardAction[]) =>
   actions.reduce(adminDashboardReducer, state);
 
-describe("admin dashboard reducer", () => {
-  it("confirms the selected guests and rolls the invitation RSVP up", () => {
-    const next = apply(freshState(), {
-      type: "confirm-guests",
-      invitationCode: "LB6640",
-      guestIds: ["LB6640--guest-01", "LB6640--guest-02"],
-      now: NOW
-    });
-    const invitation = invitationOf(next, "LB6640");
+/** One invitation exactly as the create endpoint returns it, mapped into the panel's shape. */
+function createdInvitation(
+  invitationCode: string,
+  guestNames: readonly string[] = ["Ana Moretti", "Caio Moretti"]
+): AdminInvitation {
+  return {
+    invitationCode,
+    householdName: "Família Moretti",
+    phoneNumber: "5511912345678",
+    phoneNumberSource: "operator",
+    phoneNumberUpdatedAt: NOW,
+    whatsappFlowStatus: "idle",
+    whatsappFlowStage: "pending",
+    whatsappFlowUpdatedAt: null,
+    whatsappFlowCompletedAt: null,
+    whatsappFallbackSentAt: null,
+    whatsappLastInboundMessageId: null,
+    whatsappLastOutboundMessageId: null,
+    whatsappFailureReason: null,
+    whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+    whatsappFreeTextWindow: { open: false },
+    reconciliationStatus: "none",
+    rsvp: {
+      status: "pending",
+      updatedAt: null,
+      submittedBy: null,
+      attending: 0,
+      paid: 0,
+      childrenSixOrYounger: 0
+    },
+    guests: guestNames.map((guestName, index) => ({
+      guestId: `${invitationCode}--guest-${String(index + 1).padStart(2, "0")}`,
+      guestName,
+      allowedPlusOnes: 0,
+      rsvpStatus: "pending" as const,
+      isChild: false
+    })),
+    commands: [],
+    whatsappConversation: null
+  };
+}
 
-    expect(invitation.guests.every((guest) => guest.rsvpStatus === "attending")).toBe(true);
-    // Antônio is a criança, but nobody has answered the age question for him yet, so the
-    // panel bills his seat until the guest confirms "6 anos ou menos" in the RSVP.
-    expect(invitation.rsvp).toMatchObject({
+describe("admin dashboard reducer", () => {
+  it("installs the guests and aggregate the API recomputed", () => {
+    const state = freshState();
+    const invitation = invitationOf(state, "LB6640");
+    const next = apply(state, {
+      type: "apply-invitation-rsvp",
+      response: {
+        ok: true,
+        invitationCode: "LB6640",
+        guests: invitation.guests.map((guest) => ({
+          guestId: guest.guestId,
+          guestName: guest.guestName,
+          allowedPlusOnes: guest.allowedPlusOnes,
+          rsvpStatus: "attending" as const,
+          isChild: guest.isChild
+        })),
+        rsvp: {
+          status: "attending" as const,
+          updatedAt: NOW,
+          submittedBy: "LB6640--guest-01",
+          attending: 2,
+          paid: 2,
+          childrenSixOrYounger: 0
+        },
+        updatedAt: NOW
+      }
+    });
+    const updated = invitationOf(next, "LB6640");
+
+    expect(updated.guests.every((guest) => guest.rsvpStatus === "attending")).toBe(true);
+    // The reducer never recomputes: the counts are exactly the ones the API returned, so the
+    // panel cannot show a roll-up that a later refetch would contradict.
+    expect(updated.rsvp).toEqual({
       status: "attending",
+      updatedAt: NOW,
+      submittedBy: "LB6640--guest-01",
       attending: 2,
       paid: 2,
       childrenSixOrYounger: 0
     });
-    expect(invitation.whatsappFlowStatus).toBe("attendance_confirmed_whatsapp");
-    expect(invitation.rsvp.submittedBy).toBe("LB6640--guest-01");
   });
 
-  it("ignores a confirmation with nothing selected", () => {
+  it("leaves the WhatsApp flow untouched, because an admin edit sends nothing", () => {
+    const state = freshState();
+    const before = invitationOf(state, "LB6640");
+    const next = apply(state, {
+      type: "apply-invitation-rsvp",
+      response: {
+        ok: true,
+        invitationCode: "LB6640",
+        guests: before.guests.map((guest) => ({
+          guestId: guest.guestId,
+          guestName: guest.guestName,
+          allowedPlusOnes: guest.allowedPlusOnes,
+          rsvpStatus: "attending" as const
+        })),
+        rsvp: {
+          status: "attending" as const,
+          updatedAt: NOW,
+          submittedBy: "LB6640--guest-01",
+          attending: 2,
+          paid: 2,
+          childrenSixOrYounger: 0
+        },
+        updatedAt: NOW
+      }
+    });
+    const after = invitationOf(next, "LB6640");
+
+    expect(after.whatsappFlowStatus).toBe(before.whatsappFlowStatus);
+    expect(after.whatsappFlowUpdatedAt).toBe(before.whatsappFlowUpdatedAt);
+  });
+
+  it("keeps the seed child flag a boolean and carries the answered age band through", () => {
+    const state = freshState();
+    const invitation = invitationOf(state, "HL4120");
+    const next = apply(state, {
+      type: "apply-invitation-rsvp",
+      response: {
+        ok: true,
+        invitationCode: "HL4120",
+        guests: invitation.guests.map((guest, index) => ({
+          guestId: guest.guestId,
+          guestName: guest.guestName,
+          allowedPlusOnes: guest.allowedPlusOnes,
+          rsvpStatus: guest.rsvpStatus,
+          // The contract omits the flag rather than sending false; the panel keeps a boolean.
+          ...(index === 1 ? { isChild: true, isChildSixOrYounger: false } : {})
+        })),
+        rsvp: {
+          status: "attending" as const,
+          updatedAt: NOW,
+          submittedBy: "HL4120--guest-01",
+          attending: 4,
+          paid: 4,
+          childrenSixOrYounger: 0
+        },
+        updatedAt: NOW
+      }
+    });
+    const updated = invitationOf(next, "HL4120");
+
+    expect(updated.guests[0].isChild).toBe(false);
+    expect(updated.guests[0].isChildSixOrYounger).toBeUndefined();
+    expect(updated.guests[1]).toMatchObject({ isChild: true, isChildSixOrYounger: false });
+  });
+
+  it("ignores a write for an invitation it does not hold", () => {
     const state = freshState();
     expect(
-      apply(state, { type: "confirm-guests", invitationCode: "LB6640", guestIds: [], now: NOW })
+      apply(state, {
+        type: "apply-invitation-rsvp",
+        response: {
+          ok: true,
+          invitationCode: "ZY9999",
+          guests: [
+            {
+              guestId: "ZY9999--guest-01",
+              guestName: "Ninguém",
+              allowedPlusOnes: 0,
+              rsvpStatus: "attending" as const
+            }
+          ],
+          rsvp: {
+            status: "attending" as const,
+            updatedAt: NOW,
+            submittedBy: "ZY9999--guest-01",
+            attending: 1,
+            paid: 1,
+            childrenSixOrYounger: 0
+          },
+          updatedAt: NOW
+        }
+      })
     ).toBe(state);
-  });
-
-  it("recalculates the roll-up when one guest changes status", () => {
-    const next = apply(freshState(), {
-      type: "set-guest-status",
-      guestId: "HL4120--guest-02",
-      status: "declined",
-      now: NOW
-    });
-    const invitation = invitationOf(next, "HL4120");
-    expect(invitation.rsvp).toMatchObject({
-      status: "attending",
-      attending: 3,
-      paid: 2,
-      childrenSixOrYounger: 1
-    });
-  });
-
-  it("removes an accompanying guest and re-derives the RSVP", () => {
-    const next = apply(freshState(), {
-      type: "remove-guest",
-      guestId: "HL4120--guest-04",
-      now: NOW
-    });
-    const invitation = invitationOf(next, "HL4120");
-    expect(invitation.guests.map((guest) => guest.guestId)).not.toContain("HL4120--guest-04");
-    expect(invitation.rsvp).toMatchObject({ attending: 3, paid: 2, childrenSixOrYounger: 1 });
-  });
-
-  it("refuses to remove the primary guest, who answers for the invitation", () => {
-    const state = freshState();
-    expect(apply(state, { type: "remove-guest", guestId: "HL4120--guest-01", now: NOW })).toBe(state);
   });
 
   it("deletes an invitation together with its conversation", () => {
@@ -91,118 +209,18 @@ describe("admin dashboard reducer", () => {
     expect(next.threads.RQ7712).toBeUndefined();
   });
 
-  it("creates an invitation at the top of the list with pending guests", () => {
-    const next = apply(freshState(), {
-      type: "create-invitation",
-      invitationCode: " brx-014 ",
-      householdName: " Família Moretti ",
-      phoneNumber: "+55 (11) 91234-5678",
-      guests: [
-        { name: "Ana Moretti", isChild: false },
-        { name: "Caio Moretti", isChild: false }
-      ],
-      now: NOW
-    });
-    const invitation = next.invitations[0];
+  it("inserts the invitation the API created at the top of the list", () => {
+    // The reducer no longer mints guest ids or guesses a WhatsApp state: it installs the row the
+    // server returned, exactly as `apply-invitation-rsvp` installs a recomputed guest list.
+    const created = createdInvitation("KP3456");
 
-    expect(invitation.invitationCode).toBe("BRX-014");
-    expect(invitation.householdName).toBe("Família Moretti");
-    expect(invitation.phoneNumber).toBe("5511912345678");
-    expect(invitation.guests.map((guest) => guest.guestId)).toEqual([
-      "BRX-014--guest-01",
-      "BRX-014--guest-02"
-    ]);
-    expect(invitation.guests.every((guest) => guest.rsvpStatus === "pending")).toBe(true);
-    expect(invitation.whatsappFlowStatus).toBe("idle");
-    expect(invitation.commands).toEqual([]);
-  });
+    const next = apply(freshState(), { type: "create-invitation", invitation: created });
 
-  it("creates children with the seed flag only, trimming their names", () => {
-    const next = apply(freshState(), {
-      type: "create-invitation",
-      invitationCode: "BRX-015",
-      householdName: "Família Moretti",
-      phoneNumber: "+55 (11) 91234-5678",
-      guests: [
-        { name: "Ana Moretti", isChild: false },
-        { name: " Caio Moretti ", isChild: true }
-      ],
-      now: NOW
-    });
-    const guests = next.invitations[0].guests;
-
-    expect(guests[0]).toMatchObject({ guestName: "Ana Moretti", isChild: false });
-    expect(guests[1]).toMatchObject({ guestName: "Caio Moretti", isChild: true });
-    // Neither one has answered the RSVP, so neither carries a confirmed age band.
-    expect(guests.every((seat) => seat.isChildSixOrYounger === undefined)).toBe(true);
-  });
-
-  it("adds guests after the existing ones without inventing a courtesy", () => {
-    const next = apply(freshState(), {
-      type: "add-guests",
-      invitationCode: "SW2748",
-      rows: [{ name: " Pedro Ribeiro ", isChild: true }],
-      now: NOW
-    });
-    const invitation = invitationOf(next, "SW2748");
-    const added = invitation.guests[1];
-
-    expect(added).toMatchObject({
-      guestId: "SW2748--guest-02",
-      guestName: "Pedro Ribeiro",
-      isChild: true,
-      rsvpStatus: "pending"
-    });
-    // The ≤6 answer belongs to the guest, so a freshly added criança has none.
-    expect(added.isChildSixOrYounger).toBeUndefined();
-    // Eugênia is still attending, so the invitation stays confirmed for one seat.
-    expect(invitation.rsvp).toMatchObject({ status: "attending", attending: 1, paid: 1 });
-  });
-
-  it("seeds a guest as a criança without touching the paying seats", () => {
-    const next = apply(freshState(), {
-      type: "set-guest-child",
-      guestId: "HL4120--guest-02",
-      isChild: true,
-      now: NOW
-    });
-    const invitation = invitationOf(next, "HL4120");
-
-    expect(invitation.guests[1]).toMatchObject({ isChild: true, isChildSixOrYounger: false });
-    // Paulo already answered "7 anos ou mais", so seeding the flag changes no count.
-    expect(invitation.rsvp).toMatchObject({ attending: 4, paid: 3, childrenSixOrYounger: 1 });
-  });
-
-  it("discards the confirmed age band when the criança flag is cleared", () => {
-    const next = apply(freshState(), {
-      type: "set-guest-child",
-      guestId: "HL4120--guest-03",
-      isChild: false,
-      now: NOW
-    });
-    const invitation = invitationOf(next, "HL4120");
-
-    // Manuela's cortesia came from the age question that no longer applies to her.
-    expect(invitation.guests[2]).toMatchObject({ isChild: false });
-    expect(invitation.guests[2].isChildSixOrYounger).toBeUndefined();
-    expect(invitation.rsvp).toMatchObject({ attending: 4, paid: 4, childrenSixOrYounger: 0 });
-  });
-
-  it("ignores a criança toggle for a guest that does not exist", () => {
-    const state = freshState();
-    expect(apply(state, { type: "set-guest-child", guestId: "nope", isChild: true, now: NOW })).toBe(
-      state
-    );
-  });
-
-  it("moves a fully declined invitation back to pending when a guest is added", () => {
-    const next = apply(freshState(), {
-      type: "add-guests",
-      invitationCode: "RQ7712",
-      rows: [{ name: "Bruna Queiroz", isChild: false }],
-      now: NOW
-    });
-    expect(invitationOf(next, "RQ7712").rsvp.status).toBe("pending");
+    expect(next.invitations[0]).toEqual(created);
+    expect(next.invitations).toHaveLength(freshState().invitations.length + 1);
+    // Nothing has been sent yet, so the invitation owns no conversation and stays out of the
+    // WhatsApp tab until a real one exists.
+    expect(next.invitations[0].whatsappConversation).toBeNull();
   });
 
   it("stores a new phone as operator-sourced, keeping only the digits", () => {
@@ -222,11 +240,7 @@ describe("admin dashboard reducer", () => {
   it("records an accepted first send using backend facts", () => {
     const state = adminDashboardReducer(freshState(), {
       type: "create-invitation",
-      invitationCode: "NEW001",
-      householdName: "Casa Nova",
-      phoneNumber: "5511999999999",
-      guests: [{ name: "Alguém", isChild: false }],
-      now: NOW
+      invitation: createdInvitation("NEW001", ["Alguém"])
     });
     const next = apply(state, {
       type: "whatsapp-send-accepted",
@@ -277,14 +291,20 @@ describe("admin dashboard reducer", () => {
     expect(invitation.commands).toHaveLength(3);
   });
 
-  it("toggles a guest message between the mural and the moderation queue", () => {
+  it("removes one guest message and leaves the rest of the mural alone", () => {
     const state = freshState();
     const id = state.guestMessages[0].messageId;
-    const hidden = apply(state, { type: "toggle-message-hidden", messageId: id });
-    expect(hidden.guestMessages[0].hidden).toBe(true);
-    expect(apply(hidden, { type: "toggle-message-hidden", messageId: id }).guestMessages[0].hidden).toBe(
-      false
-    );
+    const next = apply(state, { type: "remove-message", messageId: id });
+    expect(next.guestMessages).toHaveLength(state.guestMessages.length - 1);
+    expect(next.guestMessages.some((message) => message.messageId === id)).toBe(false);
+    expect(next.invitations).toEqual(state.invitations);
+    expect(next.gifts).toEqual(state.gifts);
+  });
+
+  it("leaves the mural untouched when the removed message is unknown", () => {
+    const state = freshState();
+    const next = apply(state, { type: "remove-message", messageId: "does-not-exist" });
+    expect(next.guestMessages).toEqual(state.guestMessages);
   });
 
   it("saves a gift, bumping its version and re-deriving the quotas", () => {
@@ -806,13 +826,26 @@ describe("WhatsApp invitation refreshed action", () => {
   });
 
   it("preserves local flow mutations when local whatsappFlowUpdatedAt is newer than refreshed flow", () => {
+    // The stamp is set on the snapshot rather than produced by a mutation: no reducer case writes
+    // `whatsappFlowUpdatedAt` any more, but a snapshot can still carry one newer than a late
+    // refresh, which is the race this branch exists to lose gracefully.
     const initial = unloadedState();
     const withLocalSend = apply(initial, {
-      type: "confirm-guests",
-      invitationCode: "SW2748",
-      guestIds: [invitationOf(initial, "SW2748").guests[0].guestId],
-      now: "2026-08-20T16:00:00.000Z"
+      type: "replace-snapshot",
+      snapshot: {
+        ...initial,
+        invitations: initial.invitations.map((invitation) =>
+          invitation.invitationCode === "HL4120"
+            ? {
+                ...invitation,
+                whatsappFlowStatus: "message_sent" as const,
+                whatsappFlowUpdatedAt: "2026-08-20T16:00:00.000Z"
+              }
+            : invitation
+        )
+      }
     });
+    const localStatus = invitationOf(withLocalSend, "HL4120").whatsappFlowStatus;
 
     const olderServerFlow = {
       ...freshFlow,
@@ -822,12 +855,12 @@ describe("WhatsApp invitation refreshed action", () => {
 
     const next = apply(withLocalSend, {
       type: "whatsapp-invitation-refreshed",
-      invitationCode: "SW2748",
+      invitationCode: "HL4120",
       flow: olderServerFlow
     });
 
-    const target = invitationOf(next, "SW2748");
-    expect(target.whatsappFlowStatus).toBe("attendance_confirmed_whatsapp");
+    const target = invitationOf(next, "HL4120");
+    expect(target.whatsappFlowStatus).toBe(localStatus);
     expect(target.whatsappFlowUpdatedAt).toBe("2026-08-20T16:00:00.000Z");
   });
 

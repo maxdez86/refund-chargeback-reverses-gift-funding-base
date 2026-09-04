@@ -171,6 +171,7 @@ export class ObservabilityStack extends cdk.Stack {
         metric: new cloudwatch.Metric({
           metricName: "checkout-expiry-worker-sweep-failed",
           namespace: "Brimax/Payments",
+          dimensionsMap: { Stage: props.stage },
           period: cdk.Duration.minutes(5),
           statistic: "Sum"
         }),
@@ -551,6 +552,7 @@ export class ObservabilityStack extends cdk.Stack {
           new cloudwatch.Metric({
             metricName: "checkout-expiry-worker-sweep-failed",
             namespace: "Brimax/Payments",
+            dimensionsMap: { Stage: props.stage },
             period: cdk.Duration.minutes(5),
             statistic: "Sum"
           }),

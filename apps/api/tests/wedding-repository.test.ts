@@ -1,4 +1,4 @@
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { ConditionalCheckFailedException, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -316,6 +316,122 @@ describe("WeddingRepository", () => {
         SK: "RSVP#CURRENT",
         websiteIdempotencyKeyDigest: "b".repeat(64)
       }));
+    });
+  });
+
+  describe("applyAdminGuestEdit", () => {
+    const edit = {
+      invitationCode: "ABCD2345",
+      guestResponses: [
+        { guestId: "ABCD2345--guest-01", status: "attending" as const, isChildSixOrYounger: false },
+        { guestId: "ABCD2345--guest-02", status: "pending" as const, isChildSixOrYounger: false }
+      ],
+      status: "attending" as const,
+      counts: {
+        attendingGuestCount: 1,
+        paidAttendingGuestCount: 1,
+        childSixOrYoungerAttendingCount: 0
+      },
+      updatedAt: "2026-08-20T12:00:00.000Z",
+      fallbackSubmittedBy: "ABCD2345--guest-01"
+    };
+
+    it("updates only the recomputed attributes and seeds submittedBy just once", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      const updatedAt = await repository.applyAdminGuestEdit(edit);
+
+      expect(updatedAt).toBe("2026-08-20T12:00:00.000Z");
+      expect(send).toHaveBeenCalledTimes(1);
+      const command = send.mock.calls[0][0] as UpdateCommand;
+      expect(command.input.Key).toEqual({ PK: "INVITATION#ABCD2345", SK: "RSVP#CURRENT" });
+      expect(command.input.TableName).toBe("table-test");
+      expect(command.input.UpdateExpression).toContain(
+        "submittedBy = if_not_exists(submittedBy, :fallbackSubmittedBy)"
+      );
+      expect(command.input.ExpressionAttributeNames).toEqual({ "#status": "status" });
+      expect(command.input.ExpressionAttributeValues).toEqual({
+        ":entityType": "RsvpResponse",
+        ":invitationCode": "ABCD2345",
+        ":fallbackSubmittedBy": "ABCD2345--guest-01",
+        ":guestResponses": edit.guestResponses,
+        ":attending": 1,
+        ":paid": 1,
+        ":children": 0,
+        ":status": "attending",
+        ":updatedAt": "2026-08-20T12:00:00.000Z"
+      });
+    });
+
+    it("never touches the note or the website idempotency fields", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.applyAdminGuestEdit(edit);
+
+      const expression = (send.mock.calls[0][0] as UpdateCommand).input.UpdateExpression ?? "";
+      expect(expression).not.toContain("note");
+      expect(expression).not.toContain("websiteOperationId");
+      expect(expression).not.toContain("websitePayloadDigest");
+      expect(expression).not.toContain("websiteIdempotencyKeyDigest");
+      expect(expression.startsWith("SET ")).toBe(true);
+      expect(expression).not.toContain("REMOVE");
+    });
+
+    it("writes the seed child flag and the RSVP item in one transaction", async () => {
+      const send = vi.fn().mockResolvedValue({});
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await repository.applyAdminGuestEdit({
+        ...edit,
+        guestFlags: { guestId: "ABCD2345--guest-02", isChild: true }
+      });
+
+      const transaction = send.mock.calls[0][0] as TransactWriteCommand;
+      expect(transaction.input.TransactItems).toHaveLength(2);
+      expect(transaction.input.TransactItems?.[0]?.Update?.Key).toEqual({
+        PK: "INVITATION#ABCD2345",
+        SK: "RSVP#CURRENT"
+      });
+      const guestUpdate = transaction.input.TransactItems?.[1]?.Update;
+      expect(guestUpdate?.Key).toEqual({
+        PK: "INVITATION#ABCD2345",
+        SK: "GUEST#ABCD2345--guest-02"
+      });
+      expect(guestUpdate?.UpdateExpression).toBe("SET isChild = :isChild");
+      expect(guestUpdate?.ExpressionAttributeValues).toEqual({ ":isChild": true });
+      expect(guestUpdate?.ConditionExpression).toBe("attribute_exists(PK)");
+    });
+
+    it("reports a missing guest item as a 404", async () => {
+      const send = vi.fn().mockRejectedValue(
+        new TransactionCanceledException({
+          $metadata: {},
+          message: "cancelled",
+          CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }]
+        })
+      );
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.applyAdminGuestEdit({
+          ...edit,
+          guestFlags: { guestId: "ABCD2345--missing", isChild: true }
+        })
+      ).rejects.toMatchObject({ statusCode: 404, message: "Guest not found." });
+    });
+
+    it("rethrows a transport failure untouched", async () => {
+      const send = vi.fn().mockRejectedValue(new Error("network down"));
+      const repository = new WeddingRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.applyAdminGuestEdit({
+          ...edit,
+          guestFlags: { guestId: "ABCD2345--guest-02", isChild: true }
+        })
+      ).rejects.toThrow("network down");
     });
   });
 

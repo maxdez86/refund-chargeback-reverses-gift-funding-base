@@ -139,6 +139,7 @@ describe("ObservabilityStack", () => {
       AlarmActions: Match.anyValue(),
       AlarmDescription: "Alerts when the checkout-expiry worker cannot clean up stale reservations.",
       ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      Dimensions: [{ Name: "Stage", Value: "prod" }],
       EvaluationPeriods: 1,
       MetricName: "checkout-expiry-worker-sweep-failed",
       Namespace: "Brimax/Payments",

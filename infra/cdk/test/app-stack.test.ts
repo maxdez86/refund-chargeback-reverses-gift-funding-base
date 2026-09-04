@@ -95,6 +95,41 @@ describe("AppStack", () => {
       AuthorizerId: Match.anyValue()
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "PATCH /admin/invitations/{invitationCode}/guests/{guestId}",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/invitations/{invitationCode}/confirm-all",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/invitations",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "GET /admin/invitations/next-code",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "DELETE /admin/invitations/{invitationCode}",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /admin/invitations/{invitationCode}/guests",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "DELETE /admin/invitations/{invitationCode}/guests/{guestId}",
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue()
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /payments/{paymentId}/message"
     });
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
@@ -153,7 +188,7 @@ describe("AppStack", () => {
           "x-turnstile-token",
           "x-rsvp-lookup-proof"
         ],
-        AllowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        AllowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         AllowOrigins: ["https://dev.brimax.life", "https://www.dev.brimax.life"],
         MaxAge: 600
       }
@@ -298,12 +333,18 @@ describe("AppStack", () => {
     // The sweep failure metric now lives on the worker log group, not GET /gifts.
     template.hasResourceProperties("AWS::Logs::MetricFilter", {
       FilterPattern:
-        '?"CHECKOUT_EXPIRY_SWEEP_FAILED" ?"CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED"',
+        '{ $.stage = "dev" && ($.metric = "CHECKOUT_EXPIRY_SWEEP_FAILED" || $.metric = "CHECKOUT_EXPIRY_SWEEP_ITEM_FAILED") }',
       LogGroupName: {
         Ref: Match.stringLikeRegexp("^CheckoutExpiryWorkerFunctionLogGroup")
       },
       MetricTransformations: [
         {
+          Dimensions: [
+            {
+              Key: "Stage",
+              Value: "$.stage"
+            }
+          ],
           MetricName: "checkout-expiry-worker-sweep-failed",
           MetricNamespace: "Brimax/Payments",
           MetricValue: "1"
@@ -480,7 +521,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(adminRoutes).toHaveLength(9);
+    expect(adminRoutes).toHaveLength(16);
     const adminAuthorizerIds = new Set(
       adminRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))
     );
@@ -848,7 +889,7 @@ describe("AppStack", () => {
     template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
       CorsConfiguration: Match.objectLike({
         AllowHeaders: Match.arrayWith(["authorization"]),
-        AllowMethods: Match.arrayWith(["PUT"]),
+        AllowMethods: Match.arrayWith(["PUT", "PATCH"]),
         AllowOrigins: ["https://brimax.life", "https://www.brimax.life"]
       })
     });
@@ -861,7 +902,7 @@ describe("AppStack", () => {
         resource.Type === "AWS::ApiGatewayV2::Route" &&
         String(resource.Properties?.RouteKey).includes(" /admin/")
     );
-    expect(protectedRoutes).toHaveLength(9);
+    expect(protectedRoutes).toHaveLength(16);
     expect(protectedRoutes.every((route) => route.Properties?.AuthorizationType === "CUSTOM")).toBe(true);
     expect(new Set(protectedRoutes.map((route) => JSON.stringify(route.Properties?.AuthorizerId))).size).toBe(1);
     const authorizerInvokePermissions = Object.values(resources).filter(

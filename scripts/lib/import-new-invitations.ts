@@ -7,8 +7,19 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { pathToFileURL } from "node:url";
 import { NEW_INVITATIONS, type NewInvitation } from "../data/new-invitations.ts";
-import { guestKeys, invitationKeys } from "../../apps/api/src/services/dynamodb/key-builder.ts";
+import { invitationKeys } from "../../apps/api/src/services/dynamodb/key-builder.ts";
+import {
+  buildGuestId,
+  buildInvitationItems,
+  type InvitationGuestRecord,
+  type InvitationRecord
+} from "../../apps/api/src/domain/invitation-provisioning.ts";
 import { INVITATION_CODE_REGEX } from "../../packages/contracts/src/invitation-code.ts";
+
+// Re-exported so the script keeps the public surface its tests import, while the item shapes stay
+// owned by the domain module the admin handler also calls. Two builders would drift; one cannot.
+export { buildGuestId, buildInvitationItems };
+export type { InvitationGuestRecord, InvitationRecord };
 
 type ImportMode = "dry-run" | "apply";
 
@@ -23,33 +34,7 @@ type ImportResult = {
   skipped: number;
 };
 
-type InvitationItem = {
-  PK: string;
-  SK: string;
-  entityType: "Invitation";
-  invitationCode: string;
-  householdName: string;
-  phoneNumber?: string;
-};
-
-type GuestItem = {
-  PK: string;
-  SK: string;
-  entityType: "InvitationGuest";
-  invitationCode: string;
-  guestId: string;
-  guestName: string;
-  sortOrder: number;
-  allowedPlusOnes: 0;
-  rsvpStatus: "pending";
-  isChild: boolean;
-};
-
 const CONDITIONAL_INSERT = "attribute_not_exists(PK) AND attribute_not_exists(SK)";
-
-export function buildGuestId(invitationCode: string, slot: number): string {
-  return `${invitationCode}--guest-${String(slot).padStart(2, "0")}`;
-}
 
 export function validateNewInvitations(invitations: readonly NewInvitation[]) {
   const seenCodes = new Set<string>();
@@ -92,34 +77,6 @@ export function validateNewInvitations(invitations: readonly NewInvitation[]) {
       seenSlots.add(guest.slot);
     }
   }
-}
-
-export function buildInvitationItems(invitation: NewInvitation): [InvitationItem, ...GuestItem[]] {
-  const invitationItem: InvitationItem = {
-    ...invitationKeys(invitation.invitationCode),
-    entityType: "Invitation",
-    invitationCode: invitation.invitationCode,
-    householdName: invitation.householdName,
-    ...(invitation.phoneNumber ? { phoneNumber: invitation.phoneNumber } : {})
-  };
-
-  const guestItems = invitation.guests.map<GuestItem>((guest) => {
-    const guestId = buildGuestId(invitation.invitationCode, guest.slot);
-
-    return {
-      ...guestKeys(invitation.invitationCode, guestId),
-      entityType: "InvitationGuest",
-      invitationCode: invitation.invitationCode,
-      guestId,
-      guestName: guest.guestName,
-      sortOrder: guest.slot,
-      allowedPlusOnes: 0,
-      rsvpStatus: "pending",
-      isChild: guest.isChild ?? false
-    };
-  });
-
-  return [invitationItem, ...guestItems];
 }
 
 export function buildImportTransaction(

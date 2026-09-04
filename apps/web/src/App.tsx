@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
+import Privacidade from "@/pages/Privacidade";
 
 import { Navigation } from "@/components/Navigation";
 import { PaymentConfirmationDialog } from "@/components/PaymentConfirmationDialog";
@@ -111,6 +112,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/privacidade" component={Privacidade} />
       <Route path="/dashboard" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>

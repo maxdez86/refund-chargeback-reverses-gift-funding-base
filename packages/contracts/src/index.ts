@@ -2,6 +2,7 @@ export * from "./admin";
 export * from "./gifts";
 export * from "./guest";
 export * from "./invitation-code";
+export * from "./invitation-code-suggestion";
 export * from "./messages";
 export * from "./payments";
 export * from "./registry";

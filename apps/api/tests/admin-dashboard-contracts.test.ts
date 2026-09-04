@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  AdminConfirmGuestsRequestSchema,
   AdminDashboardInvitationSchema,
   AdminDashboardResponseSchema,
-  AdminDashboardWhatsappConversationSchema
+  AdminDashboardWhatsappConversationSchema,
+  AdminAddGuestsRequestSchema,
+  AdminCreateInvitationRequestSchema,
+  AdminDeleteInvitationResponseSchema,
+  AdminGuestUpdateRequestSchema,
+  AdminInvitationGuestInputSchema,
+  AdminInvitationRsvpWriteResponseSchema
 } from "@brimax/contracts";
 
 const completeInvitation = {
@@ -302,5 +309,203 @@ describe("admin dashboard contracts", () => {
     expect(parsedInvitation.whatsappConversation).toBeUndefined();
     expect(parsedInvitation.whatsappFlowStatus).toBeUndefined();
     expect(parsedInvitation.phoneNumber).toBeUndefined();
+  });
+});
+
+describe("admin guest write contracts", () => {
+  it("accepts a single-field guest patch", () => {
+    expect(AdminGuestUpdateRequestSchema.parse({ rsvpStatus: "attending" })).toEqual({
+      rsvpStatus: "attending"
+    });
+    expect(AdminGuestUpdateRequestSchema.parse({ isChild: false })).toEqual({ isChild: false });
+  });
+
+  it("accepts the seed flag and the per-response age answer together", () => {
+    const patch = { isChild: false, isChildSixOrYounger: false };
+    expect(AdminGuestUpdateRequestSchema.parse(patch)).toEqual(patch);
+  });
+
+  it("rejects an empty guest patch", () => {
+    expect(AdminGuestUpdateRequestSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects unknown guest patch fields", () => {
+    expect(
+      AdminGuestUpdateRequestSchema.safeParse({ rsvpStatus: "attending", guestName: "Amanda" })
+        .success
+    ).toBe(false);
+  });
+
+  it("rejects a guest patch that cannot express a status", () => {
+    expect(AdminGuestUpdateRequestSchema.safeParse({ rsvpStatus: "maybe" }).success).toBe(false);
+  });
+
+  it("refuses to un-answer a guest", () => {
+    expect(AdminGuestUpdateRequestSchema.safeParse({ rsvpStatus: "pending" }).success).toBe(false);
+    expect(AdminGuestUpdateRequestSchema.parse({ rsvpStatus: "declined" })).toEqual({
+      rsvpStatus: "declined"
+    });
+  });
+
+  it("requires at least one guest id to confirm", () => {
+    expect(AdminConfirmGuestsRequestSchema.parse({ guestIds: ["guest-1"] })).toEqual({
+      guestIds: ["guest-1"]
+    });
+    expect(AdminConfirmGuestsRequestSchema.safeParse({ guestIds: [] }).success).toBe(false);
+    expect(AdminConfirmGuestsRequestSchema.safeParse({ guestIds: [""] }).success).toBe(false);
+  });
+
+  it("accepts the reconciliation payload both writes answer with", () => {
+    const response = {
+      ok: true as const,
+      invitationCode: "AB2345",
+      guests: [
+        {
+          guestId: "guest-1",
+          guestName: "Amanda",
+          allowedPlusOnes: 0,
+          rsvpStatus: "attending" as const,
+          isChild: true,
+          isChildSixOrYounger: true
+        }
+      ],
+      rsvp: {
+        status: "attending" as const,
+        updatedAt: "2026-08-20T12:00:00.000Z",
+        submittedBy: "guest-1",
+        attending: 1,
+        paid: 0,
+        childrenSixOrYounger: 1
+      },
+      updatedAt: "2026-08-20T12:00:00.000Z"
+    };
+
+    expect(AdminInvitationRsvpWriteResponseSchema.parse(response)).toEqual(response);
+  });
+
+  it("rejects a reconciliation payload with no guests or a non-ISO timestamp", () => {
+    const base = {
+      ok: true as const,
+      invitationCode: "AB2345",
+      guests: [
+        {
+          guestId: "guest-1",
+          guestName: "Amanda",
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending" as const
+        }
+      ],
+      rsvp: {
+        status: "pending" as const,
+        updatedAt: null,
+        submittedBy: null,
+        attending: 0,
+        paid: 0,
+        childrenSixOrYounger: 0
+      },
+      updatedAt: "2026-08-20T12:00:00.000Z"
+    };
+
+    expect(AdminInvitationRsvpWriteResponseSchema.safeParse({ ...base, guests: [] }).success).toBe(
+      false
+    );
+    expect(
+      AdminInvitationRsvpWriteResponseSchema.safeParse({ ...base, updatedAt: "2026-08-20" }).success
+    ).toBe(false);
+  });
+});
+
+describe("AdminInvitationGuestInputSchema", () => {
+  it("accepts the two fields an operator actually supplies", () => {
+    expect(AdminInvitationGuestInputSchema.parse({ guestName: "Duda", isChild: true })).toEqual({
+      guestName: "Duda",
+      isChild: true
+    });
+  });
+
+  it("rejects a client that tries to choose the slot or the guest id", () => {
+    // The server derives both from max(sortOrder) + 1, so a client-sent value has to be a 400
+    // rather than a field that is silently ignored.
+    expect(AdminInvitationGuestInputSchema.safeParse({ guestName: "Duda", slot: 3 }).success).toBe(
+      false
+    );
+    expect(
+      AdminInvitationGuestInputSchema.safeParse({ guestName: "Duda", guestId: "AB2345--guest-03" })
+        .success
+    ).toBe(false);
+  });
+
+  it("rejects a blank name", () => {
+    expect(AdminInvitationGuestInputSchema.safeParse({ guestName: "   " }).success).toBe(false);
+  });
+});
+
+describe("AdminCreateInvitationRequestSchema", () => {
+  const base = {
+    invitationCode: "AB2345",
+    householdName: "Amanda e Chris",
+    guests: [{ guestName: "Amanda" }]
+  };
+
+  it("accepts a well-formed request with and without a phone number", () => {
+    expect(AdminCreateInvitationRequestSchema.safeParse(base).success).toBe(true);
+    expect(
+      AdminCreateInvitationRequestSchema.safeParse({ ...base, phoneNumber: "5511999998888" }).success
+    ).toBe(true);
+  });
+
+  it("rejects codes outside the unambiguous invitation-code alphabet", () => {
+    // The format is two letters from A-HJ-NP-Z then four digits 2-9: no I, O, 0 or 1, and never
+    // lower case or a separator.
+    for (const invitationCode of ["brx-014", "BRX-014", "AB2345 ", "IO2345", "AB1234", "AB234"]) {
+      expect(AdminCreateInvitationRequestSchema.safeParse({ ...base, invitationCode }).success).toBe(
+        false
+      );
+    }
+  });
+
+  it("requires at least one guest and rejects unknown fields", () => {
+    expect(AdminCreateInvitationRequestSchema.safeParse({ ...base, guests: [] }).success).toBe(false);
+    expect(
+      AdminCreateInvitationRequestSchema.safeParse({ ...base, whatsappFlowStatus: "idle" }).success
+    ).toBe(false);
+  });
+});
+
+describe("AdminAddGuestsRequestSchema", () => {
+  it("requires at least one guest", () => {
+    expect(AdminAddGuestsRequestSchema.safeParse({ guests: [] }).success).toBe(false);
+    expect(AdminAddGuestsRequestSchema.safeParse({ guests: [{ guestName: "Duda" }] }).success).toBe(
+      true
+    );
+  });
+});
+
+describe("AdminDeleteInvitationResponseSchema", () => {
+  const base = {
+    ok: true as const,
+    invitationCode: "AB2345",
+    deletedAt: "2026-08-20T12:00:00.000Z",
+    deleted: { guests: 2, rsvp: 1, whatsappItems: 7, phoneLookups: 0 }
+  };
+
+  it("round-trips a cascade report", () => {
+    expect(AdminDeleteInvitationResponseSchema.parse(base)).toEqual(base);
+  });
+
+  it("rejects counts that cannot describe a single invitation", () => {
+    // There is exactly one RSVP item and at most one current phone lookup per invitation.
+    expect(
+      AdminDeleteInvitationResponseSchema.safeParse({
+        ...base,
+        deleted: { ...base.deleted, rsvp: 2 }
+      }).success
+    ).toBe(false);
+    expect(
+      AdminDeleteInvitationResponseSchema.safeParse({
+        ...base,
+        deleted: { ...base.deleted, extra: 1 }
+      }).success
+    ).toBe(false);
   });
 });

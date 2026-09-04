@@ -1,16 +1,26 @@
-import type { AdminDashboardResponse, WhatsappOperatorTextSendResponse, WhatsappRsvpSendMode, WhatsappRsvpSendResponse, WhatsappRsvpStatusResponse } from "@brimax/contracts";
+import { findNextAvailableInvitationCode, type AdminAddGuestsRequest, type AdminCreateInvitationRequest, type AdminCreateInvitationResponse, type AdminDashboardResponse, type AdminDeleteInvitationResponse, type AdminGuestUpdateRequest, type AdminInvitationRsvpWriteResponse, type DeleteGuestMessageResponse, type WhatsappOperatorTextSendResponse, type WhatsappPhoneUpdateResponse, type WhatsappRsvpSendMode, type WhatsappRsvpSendResponse, type WhatsappRsvpStatusResponse } from "@brimax/contracts";
 import {
   AdminApiError,
+  addAdminInvitationGuests,
+  confirmAdminInvitationGuests,
+  createAdminInvitation,
+  getNextAdminInvitationCode,
+  deleteAdminGuestMessage,
+  deleteAdminInvitation,
   getAdminDashboard,
+  updateAdminInvitationPhone,
+  removeAdminInvitationGuest,
   getAdminWhatsappThread,
   sendAdminWhatsappRsvp,
   sendAdminWhatsappText,
+  updateAdminGuest,
   type AdminTokenAccessor
 } from "@/lib/admin-api";
 import { createFixtureDashboardSnapshot } from "@/lib/admin-dashboard-fixtures";
-import { deriveReconciliationStatus, messageFallback } from "@/lib/admin-dashboard-model";
+import { deriveReconciliationStatus, messageFallback, recalculateRsvp } from "@/lib/admin-dashboard-model";
 import type {
   AdminDashboardSnapshot,
+  AdminInvitation,
   AdminWhatsappFlowSnapshot,
   AdminWhatsappInvitationPage,
   AdminWhatsappThreadPage
@@ -31,6 +41,60 @@ export type AdminDashboardSource = {
     cursor?: string,
     signal?: AbortSignal
   ): Promise<AdminWhatsappInvitationPage>;
+  /**
+   * Hard-deletes one guest message. Required — both sources implement it, so callers need no
+   * "not available" branch. New mutation methods follow this shape; the two optional WhatsApp
+   * sends above predate the convention.
+   */
+  deleteGuestMessage(messageId: string, signal?: AbortSignal): Promise<DeleteGuestMessageResponse>;
+  /**
+   * Corrects one guest's RSVP status, seed child flag, and/or confirmed age band. Both writes
+   * below answer with the invitation's full guest list and recomputed aggregate, so the caller
+   * reconciles from the response instead of refetching the whole dashboard.
+   */
+  updateGuest(
+    invitationCode: string,
+    guestId: string,
+    patch: AdminGuestUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<AdminInvitationRsvpWriteResponse>;
+  /** Confirms the selected guests; unselected guests keep the status they already had. */
+  confirmGuests(
+    invitationCode: string,
+    guestIds: string[],
+    signal?: AbortSignal
+  ): Promise<AdminInvitationRsvpWriteResponse>;
+  /**
+   * Creates one invitation. Answers with the whole dashboard row rather than the RSVP envelope: a
+   * brand-new invitation has no guest list to reconcile against, it *is* the new row.
+   */
+  createInvitation(
+    draft: AdminCreateInvitationRequest,
+    signal?: AbortSignal
+  ): Promise<AdminCreateInvitationResponse>;
+  getNextInvitationCode?(signal?: AbortSignal): Promise<string>;
+  /** Hard-deletes one invitation and everything keyed to its code, WhatsApp history included. */
+  deleteInvitation(
+    invitationCode: string,
+    signal?: AbortSignal
+  ): Promise<AdminDeleteInvitationResponse>;
+  updateInvitationPhone?(
+    invitationCode: string,
+    phoneNumber: string,
+    signal?: AbortSignal
+  ): Promise<WhatsappPhoneUpdateResponse>;
+  /** Adds guests to an invitation; the server assigns each new slot and guest id. */
+  addGuests(
+    invitationCode: string,
+    guests: AdminAddGuestsRequest["guests"],
+    signal?: AbortSignal
+  ): Promise<AdminInvitationRsvpWriteResponse>;
+  /** Removes one guest and prunes the answer they left. Removing the last guest is refused. */
+  removeGuest(
+    invitationCode: string,
+    guestId: string,
+    signal?: AbortSignal
+  ): Promise<AdminInvitationRsvpWriteResponse>;
   sendWhatsappRsvp?(
     invitationCode: string,
     mode: WhatsappRsvpSendMode,
@@ -44,6 +108,53 @@ export type AdminDashboardSource = {
     signal?: AbortSignal
   ): Promise<WhatsappOperatorTextSendResponse>;
 };
+
+/**
+ * Locates one invitation in a freshly built fixture snapshot, or throws the same error the live
+ * source would. The fixture source stays a stateless singleton: every method rebuilds the snapshot
+ * and the reducer applies the result, exactly as it does for a live write.
+ */
+function fixtureInvitation(invitationCode: string) {
+  const invitation = createFixtureDashboardSnapshot().invitations.find(
+    (item) => item.invitationCode === invitationCode
+  );
+  if (!invitation) {
+    throw new AdminApiError("Este convite não está mais disponível.", "rejected", 404);
+  }
+  return invitation;
+}
+
+/** Recomputes the aggregate the API would return, through the panel's own derivation. */
+function fixtureWriteResponse(
+  invitation: AdminInvitation,
+  guests: AdminInvitation["guests"]
+): AdminInvitationRsvpWriteResponse {
+  const updatedAt = new Date().toISOString();
+  const rsvp = recalculateRsvp(guests, invitation.rsvp, updatedAt);
+  return {
+    ok: true,
+    invitationCode: invitation.invitationCode,
+    guests: guests.map((guest) => ({
+      guestId: guest.guestId,
+      guestName: guest.guestName,
+      allowedPlusOnes: guest.allowedPlusOnes,
+      rsvpStatus: guest.rsvpStatus,
+      isChild: guest.isChild,
+      isChildSixOrYounger: guest.isChildSixOrYounger,
+      dietaryNotes: guest.dietaryNotes
+    })),
+    rsvp: {
+      status: rsvp.status,
+      updatedAt,
+      submittedBy: rsvp.submittedBy ?? guests[0]?.guestId ?? null,
+      attending: rsvp.attending,
+      paid: rsvp.paid,
+      childrenSixOrYounger: rsvp.childrenSixOrYounger,
+      ...(rsvp.note === undefined ? {} : { note: rsvp.note })
+    },
+    updatedAt
+  };
+}
 
 export const fixtureDashboardSource: AdminDashboardSource = {
   demo: true,
@@ -86,6 +197,165 @@ export const fixtureDashboardSource: AdminDashboardSource = {
         nextCursor: null
       }
     };
+  },
+  async deleteGuestMessage(messageId) {
+    // The fixture source is a stateless singleton: every method rebuilds the snapshot, and the
+    // row leaving the list is the reducer's job, exactly as it is for a live delete. A demo
+    // refresh restores it, like every other demonstration mutation here.
+    const snapshot = createFixtureDashboardSnapshot();
+    const message = snapshot.guestMessages.find((item) => item.messageId === messageId);
+    if (!message) throw new AdminApiError("Este recado não existe mais.", "rejected", 404);
+    return { ok: true as const, messageId, deletedAt: new Date().toISOString() };
+  },
+  async updateInvitationPhone(invitationCode, phoneNumber) {
+    const invitation = fixtureInvitation(invitationCode);
+    const normalized = phoneNumber.replace(/\D/g, "");
+    if (normalized.length < 8 || normalized.length > 15) {
+      throw new AdminApiError("Informe um número válido com DDI e DDD.", "rejected", 400);
+    }
+    return {
+      invitationCode: invitation.invitationCode,
+      phoneNumber: normalized,
+      updatedAt: new Date().toISOString()
+    };
+  },
+  async updateGuest(invitationCode, guestId, patch) {
+    const invitation = fixtureInvitation(invitationCode);
+    const guest = invitation.guests.find((item) => item.guestId === guestId);
+    if (!guest) throw new AdminApiError("Este convidado não está mais disponível. Atualize os dados do painel.", "rejected", 404);
+    return fixtureWriteResponse(
+      invitation,
+      invitation.guests.map((item) =>
+        item.guestId === guestId
+          ? {
+              ...item,
+              rsvpStatus: patch.rsvpStatus ?? item.rsvpStatus,
+              isChild: patch.isChild ?? item.isChild,
+              isChildSixOrYounger:
+                patch.isChildSixOrYounger === undefined
+                  ? item.isChildSixOrYounger
+                  : patch.isChildSixOrYounger
+            }
+          : item
+      )
+    );
+  },
+  async confirmGuests(invitationCode, guestIds) {
+    const invitation = fixtureInvitation(invitationCode);
+    const known = new Set(invitation.guests.map((guest) => guest.guestId));
+    if (guestIds.length === 0 || guestIds.some((guestId) => !known.has(guestId))) {
+      throw new AdminApiError("Este convidado não está mais disponível. Atualize os dados do painel.", "rejected", 404);
+    }
+    return fixtureWriteResponse(
+      invitation,
+      invitation.guests.map((guest) =>
+        guestIds.includes(guest.guestId) ? { ...guest, rsvpStatus: "attending" as const } : guest
+      )
+    );
+  },
+  async createInvitation(draft) {
+    const snapshot = createFixtureDashboardSnapshot();
+    if (snapshot.invitations.some((item) => item.invitationCode === draft.invitationCode)) {
+      throw new AdminApiError(
+        "Já existe um convite com este código. Escolha outro código.",
+        "rejected",
+        409
+      );
+    }
+    const createdAt = new Date().toISOString();
+    return {
+      ok: true as const,
+      invitation: {
+        invitationCode: draft.invitationCode,
+        householdName: draft.householdName,
+        ...(draft.phoneNumber
+          ? {
+              phoneNumber: draft.phoneNumber,
+              phoneNumberSource: "operator" as const,
+              phoneNumberUpdatedAt: createdAt
+            }
+          : {}),
+        whatsappSendAvailability: { firstAllowed: true, resendAllowed: false },
+        whatsappFreeTextWindow: { open: false },
+        guests: draft.guests.map((guest, index) => ({
+          guestId: `${draft.invitationCode}--guest-${String(index + 1).padStart(2, "0")}`,
+          guestName: guest.guestName,
+          allowedPlusOnes: 0,
+          rsvpStatus: "pending" as const,
+          isChild: guest.isChild ?? false
+        })),
+        rsvp: {
+          status: "pending" as const,
+          updatedAt: null,
+          submittedBy: null,
+          attending: 0,
+          paid: 0,
+          childrenSixOrYounger: 0
+        }
+      },
+      createdAt
+    };
+  },
+  async getNextInvitationCode() {
+    const code = findNextAvailableInvitationCode(
+      createFixtureDashboardSnapshot().invitations.map((invitation) => invitation.invitationCode)
+    );
+    if (!code) throw new AdminApiError("Não há códigos de convite disponíveis.", "unavailable", 503);
+    return code;
+  },
+  async deleteInvitation(invitationCode) {
+    const invitation = fixtureInvitation(invitationCode);
+    return {
+      ok: true as const,
+      invitationCode,
+      deletedAt: new Date().toISOString(),
+      deleted: {
+        guests: invitation.guests.length,
+        rsvp: 1 as const,
+        whatsappItems: invitation.whatsappConversation?.messageCount ?? 0,
+        phoneLookups: invitation.phoneNumber ? (1 as const) : (0 as const)
+      }
+    };
+  },
+  async addGuests(invitationCode, guests) {
+    const invitation = fixtureInvitation(invitationCode);
+    // Mirrors the server rule: slots come from the highest one in use, never from a gap.
+    const nextSlot =
+      invitation.guests.reduce((max, guest) => {
+        const slot = Number(guest.guestId.slice(guest.guestId.lastIndexOf("-") + 1));
+        return Number.isInteger(slot) && slot > max ? slot : max;
+      }, 0) + 1;
+    return fixtureWriteResponse(invitation, [
+      ...invitation.guests,
+      ...guests.map((guest, index) => ({
+        guestId: `${invitationCode}--guest-${String(nextSlot + index).padStart(2, "0")}`,
+        guestName: guest.guestName,
+        allowedPlusOnes: 0,
+        rsvpStatus: "pending" as const,
+        isChild: guest.isChild ?? false
+      }))
+    ]);
+  },
+  async removeGuest(invitationCode, guestId) {
+    const invitation = fixtureInvitation(invitationCode);
+    if (!invitation.guests.some((guest) => guest.guestId === guestId)) {
+      throw new AdminApiError(
+        "Este convidado não está mais disponível. Atualize os dados do painel.",
+        "rejected",
+        404
+      );
+    }
+    if (invitation.guests.length <= 1) {
+      throw new AdminApiError(
+        "Este é o último convidado do convite. Exclua o convite em vez de remover o convidado.",
+        "rejected",
+        409
+      );
+    }
+    return fixtureWriteResponse(
+      invitation,
+      invitation.guests.filter((guest) => guest.guestId !== guestId)
+    );
   },
   async sendWhatsappRsvp(invitationCode, mode, idempotencyKey) {
     const snapshot = createFixtureDashboardSnapshot();
@@ -181,49 +451,59 @@ export function mapAdminWhatsappFlowSnapshot(
   };
 }
 
+/**
+ * One API invitation as the panel's reducer holds it.
+ *
+ * Shared by the dashboard load and the create write, so a freshly created invitation is shaped by
+ * exactly the same rules as one that arrived in a snapshot — no second, drifting mapping.
+ */
+export function mapAdminDashboardInvitation(
+  invitation: AdminDashboardResponse["invitations"][number]
+): AdminInvitation {
+  return {
+    invitationCode: invitation.invitationCode,
+    householdName: invitation.householdName,
+    phoneNumber: invitation.phoneNumber ?? "",
+    phoneNumberSource: invitation.phoneNumberSource ?? "import",
+    phoneNumberUpdatedAt: invitation.phoneNumberUpdatedAt ?? null,
+    whatsappFlowStatus: invitation.whatsappFlowStatus ?? "idle",
+    whatsappFlowStage: invitation.whatsappFlowStage ?? "pending",
+    whatsappFlowUpdatedAt: invitation.whatsappFlowUpdatedAt ?? null,
+    whatsappFlowCompletedAt: invitation.whatsappFlowCompletedAt ?? null,
+    whatsappFallbackSentAt: invitation.whatsappFallbackSentAt ?? null,
+    whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ?? null,
+    whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ?? null,
+    whatsappFailureReason: invitation.whatsappFailureReason ?? null,
+    whatsappSendAvailability: invitation.whatsappSendAvailability,
+    whatsappFreeTextWindow: invitation.whatsappFreeTextWindow,
+    reconciliationStatus: deriveReconciliationStatus(invitation.whatsappFlowStatus),
+    rsvp: { ...invitation.rsvp },
+    // Absent means "this invitation owns no WhatsApp message", which is what removes it from
+    // the WhatsApp tab. The API never sends a zero-valued summary, so `null` is unambiguous.
+    whatsappConversation: invitation.whatsappConversation
+      ? { ...invitation.whatsappConversation }
+      : null,
+    guests: invitation.guests.map((guest) => ({
+      ...guest,
+      isChild: guest.isChild ?? false
+    })),
+    commands: []
+  };
+}
+
 export function mapAdminDashboardResponse(
   response: AdminDashboardResponse
 ): AdminDashboardSnapshot {
   return {
-    invitations: response.invitations.map((invitation) => ({
-      invitationCode: invitation.invitationCode,
-      householdName: invitation.householdName,
-      phoneNumber: invitation.phoneNumber ?? "",
-      phoneNumberSource: invitation.phoneNumberSource ?? "import",
-      phoneNumberUpdatedAt: invitation.phoneNumberUpdatedAt ?? null,
-      whatsappFlowStatus: invitation.whatsappFlowStatus ?? "idle",
-      whatsappFlowStage: invitation.whatsappFlowStage ?? "pending",
-      whatsappFlowUpdatedAt: invitation.whatsappFlowUpdatedAt ?? null,
-      whatsappFlowCompletedAt: invitation.whatsappFlowCompletedAt ?? null,
-      whatsappFallbackSentAt: invitation.whatsappFallbackSentAt ?? null,
-      whatsappLastInboundMessageId: invitation.whatsappLastInboundMessageId ?? null,
-      whatsappLastOutboundMessageId: invitation.whatsappLastOutboundMessageId ?? null,
-      whatsappFailureReason: invitation.whatsappFailureReason ?? null,
-      whatsappSendAvailability: invitation.whatsappSendAvailability,
-      whatsappFreeTextWindow: invitation.whatsappFreeTextWindow,
-      reconciliationStatus: deriveReconciliationStatus(invitation.whatsappFlowStatus),
-      rsvp: { ...invitation.rsvp },
-      // Absent means "this invitation owns no WhatsApp message", which is what removes it from
-      // the WhatsApp tab. The API never sends a zero-valued summary, so `null` is unambiguous.
-      whatsappConversation: invitation.whatsappConversation
-        ? { ...invitation.whatsappConversation }
-        : null,
-      guests: invitation.guests.map((guest) => ({
-        ...guest,
-        isChild: guest.isChild ?? false
-      })),
-      commands: []
-    })),
+    invitations: response.invitations.map(mapAdminDashboardInvitation),
     gifts: response.gifts.map((gift) => ({
       ...gift,
+      payerNames: [...gift.payerNames],
       paused: false,
       photoUrl: null,
       version: 0
     })),
-    guestMessages: response.guestMessages.map((message) => ({
-      ...message,
-      hidden: false
-    })),
+    guestMessages: response.guestMessages.map((message) => ({ ...message })),
     threads: {}
   };
 }
@@ -267,6 +547,133 @@ export function createLiveDashboardSource(options: LiveSourceOptions): AdminDash
           flow: mapAdminWhatsappFlowSnapshot(response),
           page: mapAdminWhatsappThreadPage(invitationCode, response)
         };
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async deleteGuestMessage(messageId, signal) {
+      try {
+        return await deleteAdminGuestMessage(messageId, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async updateInvitationPhone(invitationCode, phoneNumber, signal) {
+      try {
+        return await updateAdminInvitationPhone(invitationCode, phoneNumber, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async updateGuest(invitationCode, guestId, patch, signal) {
+      try {
+        return await updateAdminGuest(invitationCode, guestId, patch, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async confirmGuests(invitationCode, guestIds, signal) {
+      try {
+        return await confirmAdminInvitationGuests(invitationCode, guestIds, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async createInvitation(draft, signal) {
+      try {
+        return await createAdminInvitation(draft, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async getNextInvitationCode(signal) {
+      try {
+        const response = await getNextAdminInvitationCode(options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+        return response.invitationCode;
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async deleteInvitation(invitationCode, signal) {
+      try {
+        return await deleteAdminInvitation(invitationCode, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async addGuests(invitationCode, guests, signal) {
+      try {
+        return await addAdminInvitationGuests(invitationCode, guests, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
+      } catch (error) {
+        if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
+          options.onAuthError?.(error);
+        }
+        throw error;
+      }
+    },
+    async removeGuest(invitationCode, guestId, signal) {
+      try {
+        return await removeAdminInvitationGuest(invitationCode, guestId, options.getToken, {
+          apiUrl: options.apiUrl,
+          fetcher: options.fetcher,
+          signal
+        });
       } catch (error) {
         if (error instanceof AdminApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) {
           options.onAuthError?.(error);

@@ -1,3 +1,4 @@
+import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
   GetCommand,
@@ -8,6 +9,24 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 import { PaymentRepository } from "../src/services/dynamodb/repositories/payment-repository";
+
+const nonFractionalGift = {
+  id: "g-toalhas-banho",
+  name: "4 Toalhas de Banho",
+  image: "toalhas-banho",
+  totalValueCents: 17_600,
+  fractional: false as const,
+  partValueCents: null,
+  totalParts: null
+};
+
+function canceledTransaction(codes: string[]) {
+  return new TransactionCanceledException({
+    message: "cancelled",
+    $metadata: {},
+    CancellationReasons: codes.map((Code) => ({ Code }))
+  });
+}
 
 describe("PaymentRepository gift state", () => {
   it("writes gift metadata items", async () => {
@@ -203,6 +222,147 @@ describe("PaymentRepository gift state", () => {
 
       await expect(repository.batchGetGiftCatalog(["g-armario"])).rejects.toThrow(/unprocessed/);
     });
+  });
+
+  it.each([
+    ["funded", { partsFunded: 1, partsReserved: 0 }],
+    ["reserved", { partsFunded: 0, partsReserved: 1 }]
+  ])("rejects a non-fractional gift that is already %s", async (_case, counters) => {
+    const send = vi.fn().mockResolvedValueOnce({
+      Item: {
+        giftId: nonFractionalGift.id,
+        confirmedAmountCents: counters.partsFunded * nonFractionalGift.totalValueCents,
+        reservedAmountCents: counters.partsReserved * nonFractionalGift.totalValueCents,
+        fullyFunded: counters.partsFunded > 0,
+        version: 1,
+        updatedAt: "2026-06-12T11:00:00.000Z",
+        ...counters
+      }
+    });
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.reserveGiftSelection({
+        gift: nonFractionalGift,
+        paymentId: "payment-unavailable",
+        quantity: 1,
+        expiresAt: "2026-06-12T12:00:00.000Z"
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles a partial legacy state row where partsReserved is omitted and gift is available", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          PK: "GIFT#g-toalhas-banho",
+          SK: "STATE",
+          giftId: nonFractionalGift.id,
+          partsFunded: 0,
+          fullyFunded: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    const selection = await repository.reserveGiftSelection({
+      gift: nonFractionalGift,
+      paymentId: "payment-partial-state",
+      quantity: 1,
+      expiresAt: "2026-06-12T12:00:00.000Z"
+    });
+
+    expect(selection).toEqual(
+      expect.objectContaining({
+        amountCents: nonFractionalGift.totalValueCents,
+        quantity: 1
+      })
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a non-fractional gift when partial legacy state row has partsFunded = 1 and partsReserved omitted", async () => {
+    const send = vi.fn().mockResolvedValueOnce({
+      Item: {
+        PK: "GIFT#g-toalhas-banho",
+        SK: "STATE",
+        giftId: nonFractionalGift.id,
+        partsFunded: 1,
+        fullyFunded: true,
+        updatedAt: "2026-05-13T00:00:00.000Z"
+      }
+    });
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.reserveGiftSelection({
+        gift: nonFractionalGift,
+        paymentId: "payment-partial-funded",
+        quantity: 1,
+        expiresAt: "2026-06-12T12:00:00.000Z"
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps an atomic non-fractional reservation race to 409", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          giftId: nonFractionalGift.id,
+          partsFunded: 0,
+          partsReserved: 0,
+          confirmedAmountCents: 0,
+          reservedAmountCents: 0,
+          fullyFunded: false,
+          version: 1,
+          updatedAt: "2026-06-12T11:00:00.000Z"
+        }
+      })
+      .mockRejectedValueOnce(canceledTransaction(["ConditionalCheckFailed", "None"]));
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.reserveGiftSelection({
+        gift: nonFractionalGift,
+        paymentId: "payment-race",
+        quantity: 1,
+        expiresAt: "2026-06-12T12:00:00.000Z"
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("does not misclassify a reservation transaction conflict as unavailable inventory", async () => {
+    const conflict = canceledTransaction(["TransactionConflict", "None"]);
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          giftId: nonFractionalGift.id,
+          partsFunded: 0,
+          partsReserved: 0,
+          confirmedAmountCents: 0,
+          reservedAmountCents: 0,
+          fullyFunded: false,
+          version: 1,
+          updatedAt: "2026-06-12T11:00:00.000Z"
+        }
+      })
+      .mockRejectedValueOnce(conflict);
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    await expect(
+      repository.reserveGiftSelection({
+        gift: nonFractionalGift,
+        paymentId: "payment-conflict",
+        quantity: 1,
+        expiresAt: "2026-06-12T12:00:00.000Z"
+      })
+    ).rejects.toBe(conflict);
   });
 
   it("reserves against a legacy versionless gift state row", async () => {

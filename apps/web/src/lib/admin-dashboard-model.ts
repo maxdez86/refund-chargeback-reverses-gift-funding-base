@@ -243,8 +243,6 @@ export type InviteFilter = (typeof INVITE_FILTERS)[number];
 export const GUEST_FILTERS = ["Todos", "Confirmados", "Pendentes", "Não vão", "Cortesias"] as const;
 export type GuestFilter = (typeof GUEST_FILTERS)[number];
 
-export const MESSAGE_FILTERS = ["Todos", "No site", "Escondidos"] as const;
-export type MessageFilter = (typeof MESSAGE_FILTERS)[number];
 
 export const GIFT_FILTERS = ["Todos", "Em andamento", "Completos", "Pausados"] as const;
 export type GiftFilter = (typeof GIFT_FILTERS)[number];
@@ -357,7 +355,8 @@ export function deriveGift(
     | "fullyFunded"
     | "finalPartValueCents"
     | "fundingModelVersion"
-  >
+    | "payerNames"
+  > & { payerNames?: string[] }
 ): AdminGift {
   const totalParts = gift.fractional
     ? Math.max(1, Math.round(gift.totalValueCents / GIFT_PART_CENTS))
@@ -367,6 +366,7 @@ export function deriveGift(
   const reservedAmountCents = gift.partsReserved * unitCents;
   return {
     ...gift,
+    payerNames: gift.payerNames ?? [],
     partValueCents: gift.fractional ? GIFT_PART_CENTS : null,
     totalParts,
     finalPartValueCents: null,
@@ -414,7 +414,7 @@ export function filterGifts(gifts: AdminGift[], filter: GiftFilter, query: strin
   return gifts.filter((gift) => {
     const passesFilter =
       filter === "Todos" ||
-      (filter === "Em andamento" && !gift.paused && !gift.fullyFunded) ||
+      (filter === "Em andamento" && gift.partsFunded > 0 && !gift.paused && !gift.fullyFunded) ||
       (filter === "Completos" && gift.fullyFunded) ||
       (filter === "Pausados" && gift.paused);
     return passesFilter && matches(needle, gift.id, gift.name);

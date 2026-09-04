@@ -1,7 +1,7 @@
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
 import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
 import { AppError } from "../lib/errors";
-import { resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
+import { getEnv, resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
 import { AsaasClient } from "../services/asaas/client";
 import { EmailService } from "../services/email/client";
@@ -633,7 +633,17 @@ export class WebhookProcessor {
       currentPayment.payerEmail &&
       currentPayment.payerFirstName
     ) {
-      await this.sendPayerConfirmationEmailIfNeeded(currentPayment);
+      const notificationResults = await Promise.allSettled([
+        this.sendPayerConfirmationEmailIfNeeded(currentPayment),
+        this.sendCoupleGiftConfirmationEmailIfNeeded(currentPayment)
+      ]);
+      const failedNotification = notificationResults.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+
+      if (failedNotification) {
+        throw failedNotification.reason;
+      }
       return;
     }
 
@@ -649,6 +659,10 @@ export class WebhookProcessor {
         paymentId: input.paymentId,
         customerProfileStatus: "FAILED"
       });
+      const fallbackPayment = await this.repository.getPayment(input.paymentId);
+      if (fallbackPayment) {
+        await this.sendCoupleGiftConfirmationEmailIfNeeded(fallbackPayment);
+      }
       return;
     }
 
@@ -668,7 +682,17 @@ export class WebhookProcessor {
 
     const enrichedPayment = await this.repository.getPayment(input.paymentId);
     if (enrichedPayment) {
-      await this.sendPayerConfirmationEmailIfNeeded(enrichedPayment);
+      const notificationResults = await Promise.allSettled([
+        this.sendPayerConfirmationEmailIfNeeded(enrichedPayment),
+        this.sendCoupleGiftConfirmationEmailIfNeeded(enrichedPayment)
+      ]);
+      const failedNotification = notificationResults.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+
+      if (failedNotification) {
+        throw failedNotification.reason;
+      }
     }
   }
 
@@ -726,6 +750,76 @@ export class WebhookProcessor {
       });
     } catch (error) {
       await this.repository.releaseNotificationSend(payment.paymentId, "PAYER_CONFIRMATION");
+      throw error;
+    }
+  }
+
+  private async sendCoupleGiftConfirmationEmailIfNeeded(
+    payment: Awaited<ReturnType<PaymentRepository["getPayment"]>>
+  ) {
+    if (!payment) {
+      return;
+    }
+
+    const accepted = await this.repository.acquireNotificationSend({
+      paymentId: payment.paymentId,
+      type: "COUPLE_GIFT_CONFIRMATION",
+      payload: {
+        payerEmail: payment.payerEmail
+      }
+    });
+
+    if (!accepted) {
+      return;
+    }
+
+    const amount = (payment.amountCents / 100).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL"
+    });
+    const siteLabel = resolveSiteLabel();
+    const payerName = payment.payerName ?? payment.payerFirstName ?? "Uma pessoa convidada";
+
+    try {
+      await this.emailService.sendEmail({
+        to: getEnv().rsvpNotificationTo,
+        subject: "Novo presente recebido no site do casamento 🤍",
+        text:
+          "Oi, Brida & Max!\n\n" +
+          "Vocês receberam um novo presente pelo site do casamento ✨\n\n" +
+          `Presente: ${payment.gift.name}\n` +
+          `Valor: ${amount}\n` +
+          `Pagamento: ${payment.paymentId}\n` +
+          `Enviado por: ${payerName}\n` +
+          `Remetente: ${payment.payerEmail ?? "não informado"}\n\n` +
+          `Enviado automaticamente por ${siteLabel}.\n`,
+        html: renderEmailDocument(
+          '<p style="margin:0 0 12px;">Oi, Brida &amp; Max!</p>' +
+            '<p style="margin:0 0 16px;">Vocês receberam um novo presente pelo site do casamento ✨</p>' +
+            renderDetailLine("Presente", payment.gift.name) +
+            renderDetailLine("Valor", amount) +
+            renderDetailLine("Pagamento", payment.paymentId) +
+            renderDetailLine("Enviado por", payerName) +
+            renderDetailLine("Remetente", payment.payerEmail ?? "não informado") +
+            `<p style="margin:16px 0 0;color:#6b7280;font-size:14px;">Enviado automaticamente por ${escapeHtml(siteLabel)}.</p>`
+        )
+      });
+      await this.repository.markNotificationSent({
+        paymentId: payment.paymentId,
+        type: "COUPLE_GIFT_CONFIRMATION",
+        payload: {
+          payerEmail: payment.payerEmail
+        }
+      });
+      console.info(
+        JSON.stringify({
+          metric: "PAYMENT_NOTIFICATION_SENT",
+          notificationType: "COUPLE_GIFT_CONFIRMATION",
+          paymentId: payment.paymentId
+        })
+      );
+    } catch (error) {
+      await this.repository.releaseNotificationSend(payment.paymentId, "COUPLE_GIFT_CONFIRMATION");
       throw error;
     }
   }
