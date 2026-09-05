@@ -4,14 +4,37 @@ import { motion } from "framer-motion";
 const countdownTargetISO = "2026-12-06T15:00:00-03:00";
 
 function getTimeLeft(target: number) {
-  const difference = Math.max(0, target - Date.now());
+  const now = new Date();
 
-  return {
-    days: Math.floor(difference / 86_400_000),
-    hours: Math.floor((difference % 86_400_000) / 3_600_000),
-    minutes: Math.floor((difference % 3_600_000) / 60_000),
-    seconds: Math.floor((difference % 60_000) / 1000),
-  };
+  if (target <= now.getTime()) {
+    return { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
+  }
+
+  const targetDate = new Date(target);
+  let months =
+    (targetDate.getFullYear() - now.getFullYear()) * 12 +
+    (targetDate.getMonth() - now.getMonth());
+
+  const anchor = new Date(now);
+  anchor.setMonth(anchor.getMonth() + months);
+
+  if (anchor.getTime() > target) {
+    months -= 1;
+    anchor.setMonth(anchor.getMonth() - 1);
+  }
+
+  months = Math.max(0, months);
+
+  let rest = target - anchor.getTime();
+  const days = Math.floor(rest / 86_400_000);
+  rest -= days * 86_400_000;
+  const hours = Math.floor(rest / 3_600_000);
+  rest -= hours * 3_600_000;
+  const minutes = Math.floor(rest / 60_000);
+  rest -= minutes * 60_000;
+  const seconds = Math.floor(rest / 1000);
+
+  return { months, days, hours, minutes, seconds };
 }
 
 export function Countdown() {
@@ -26,11 +49,15 @@ export function Countdown() {
     return () => clearInterval(interval);
   }, [target]);
 
+  const showMonths = timeLeft.months > 0;
+
+  // Always four cards: Meses leads until the final month, then Segundos takes its slot.
   const items = [
+    ...(showMonths ? [{ label: "Meses", value: timeLeft.months }] : []),
     { label: "Dias", value: timeLeft.days },
     { label: "Horas", value: timeLeft.hours },
     { label: "Minutos", value: timeLeft.minutes },
-    { label: "Segundos", value: timeLeft.seconds },
+    ...(showMonths ? [] : [{ label: "Segundos", value: timeLeft.seconds }]),
   ];
 
   return (
@@ -49,7 +76,7 @@ export function Countdown() {
             Contando os dias para dizermos sim.
           </h2>
           <div
-            className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-4 md:grid-cols-4 md:gap-6"
+            className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-4 md:gap-6 md:grid-cols-4"
             role="timer"
             aria-live="off"
             aria-label="Contagem regressiva para 06 de dezembro de 2026"

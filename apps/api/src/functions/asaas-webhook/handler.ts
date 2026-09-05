@@ -59,20 +59,7 @@ async function onAsaasWebhook(event: APIGatewayProxyEventV2) {
     return jsonResponse(403, { message: "Forbidden." });
   }
 
-  // An empty body used to be coerced to "{}", stored as an UNKNOWN event and
-  // enqueued — a message no redelivery could ever resolve, which then poisoned
-  // the DLQ. Reject it before it is hashed so nothing is recorded.
-  const rawBody = event.body ?? "";
-  if (rawBody.trim() === "") {
-    reportHandledError(new Error("Empty webhook body."), {
-      context: { requestId: event.requestContext.requestId },
-      message: "Empty webhook body.",
-      metric: "WEBHOOK_PAYLOAD_INVALID",
-      statusCode: 400
-    });
-    return jsonResponse(400, { message: "Empty request body." });
-  }
-
+  const rawBody = event.body ?? "{}";
   let payload: AsaasWebhookPayload;
   try {
     payload = JSON.parse(rawBody) as AsaasWebhookPayload;

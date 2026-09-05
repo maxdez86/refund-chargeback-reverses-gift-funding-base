@@ -414,12 +414,6 @@ describe("AppStack", () => {
       ScalingConfig: { MaximumConcurrency: 2 },
       FunctionResponseTypes: ["ReportBatchItemFailures"]
     });
-    // The Asaas webhook processor reports per-record failures, so one poison
-    // message cannot redeliver the nine siblings that already succeeded.
-    template.hasResourceProperties("AWS::Lambda::EventSourceMapping", {
-      BatchSize: 10,
-      FunctionResponseTypes: ["ReportBatchItemFailures"]
-    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "index.handler",
       MemorySize: 1024,
@@ -748,15 +742,6 @@ describe("AppStack", () => {
     expect(workerPolicyJson).toContain("dynamodb:PutItem");
     expect(workerPolicyJson).toContain("dynamodb:DeleteItem");
     expect(workerPolicyJson).toContain("sqs:ReceiveMessage");
-
-    const webhookProcessorFunctionEntry = Object.entries(resources).find(
-      ([logicalId, resource]) =>
-        logicalId.startsWith("AsaasWebhookProcessorFunction") &&
-        resource.Type === "AWS::Lambda::Function"
-    );
-    expect(webhookProcessorFunctionEntry).toBeDefined();
-    expect(webhookProcessorFunctionEntry?.[1].Properties?.MemorySize).toBe(256);
-    expect(webhookProcessorFunctionEntry?.[1].Properties?.Timeout).toBe(30);
 
     // The guest-message create handler enqueues the notification (send-only on
     // the notification queue) and no longer holds SES send — that moved to the

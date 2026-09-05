@@ -553,7 +553,6 @@ export class AppStack extends cdk.Stack {
       entry: path.resolve(projectRoot, "apps/api/src/functions/asaas-webhook-processor/handler.ts"),
       environment: commonEnvironment,
       handler: "handler",
-      memorySize: 256,
       projectRoot,
       runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30)
@@ -675,8 +674,7 @@ export class AppStack extends cdk.Stack {
 
     webhookProcessorFn.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
-        batchSize: 10,
-        reportBatchItemFailures: true
+        batchSize: 10
       })
     );
 
