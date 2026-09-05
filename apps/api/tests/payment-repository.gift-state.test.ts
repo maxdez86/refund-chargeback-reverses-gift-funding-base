@@ -467,6 +467,105 @@ describe("PaymentRepository gift state", () => {
     expect(stateUpdate?.ExpressionAttributeValues).not.toHaveProperty(":fullyFunded");
   });
 
+  it("resells a regular part at the regular price after a refund freed it while the final part stays funded", async () => {
+    // 7 parts: six of R$50 and an exact final part of R$31. Everything sold,
+    // then one regular part was refunded: counts say "one part left", money
+    // says the remaining part is a regular one.
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          PK: "GIFT#g-pratos",
+          SK: "STATE",
+          giftId: "g-pratos",
+          partsFunded: 6,
+          partsReserved: 0,
+          confirmedAmountCents: 28_100,
+          reservedAmountCents: 0,
+          fullyFunded: false,
+          version: 9,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    const selection = await repository.reserveGiftSelection({
+      gift: {
+        id: "g-pratos",
+        name: "Jogo de Pratos 12 Peças",
+        image: "jogo-pratos",
+        totalValueCents: 33_100,
+        fractional: true,
+        partValueCents: 5_000,
+        totalParts: 7,
+        finalPartValueCents: 3_100,
+        fundingModelVersion: "EXACT_FINAL_QUOTA"
+      },
+      paymentId: "payment-resold-part",
+      quantity: 1,
+      expiresAt: "2026-06-12T20:00:00.000Z"
+    });
+
+    expect(selection).toEqual(
+      expect.objectContaining({
+        quantity: 1,
+        quotaValuesCents: [5_000],
+        amountCents: 5_000,
+        unitAmountCents: 5_000
+      })
+    );
+    const transaction = send.mock.calls[1][0] as TransactWriteCommand;
+    const stateUpdate = transaction.input.TransactItems?.[0]?.Update;
+    expect(stateUpdate?.ExpressionAttributeValues).toEqual(
+      expect.objectContaining({ ":amountIncrement": 5_000, ":expectedVersion": 9 })
+    );
+  });
+
+  it("offers the exact final part again when the refunded part was the final one", async () => {
+    // Same gift, but this time the refunded part was the R$31 final part and
+    // the six regular parts stay sold: the only thing left is the final part.
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: {
+          PK: "GIFT#g-pratos",
+          SK: "STATE",
+          giftId: "g-pratos",
+          partsFunded: 6,
+          partsReserved: 0,
+          confirmedAmountCents: 30_000,
+          reservedAmountCents: 0,
+          fullyFunded: false,
+          version: 9,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({});
+    const repository = new PaymentRepository({ send } as never, "table-test");
+
+    const selection = await repository.reserveGiftSelection({
+      gift: {
+        id: "g-pratos",
+        name: "Jogo de Pratos 12 Peças",
+        image: "jogo-pratos",
+        totalValueCents: 33_100,
+        fractional: true,
+        partValueCents: 5_000,
+        totalParts: 7,
+        finalPartValueCents: 3_100,
+        fundingModelVersion: "EXACT_FINAL_QUOTA"
+      },
+      paymentId: "payment-final-again",
+      quantity: 1,
+      expiresAt: "2026-06-12T20:00:00.000Z"
+    });
+
+    expect(selection).toEqual(
+      expect.objectContaining({ quotaValuesCents: [3_100], amountCents: 3_100 })
+    );
+  });
+
   it("increments a single gift and marks it fully funded", async () => {
     const send = vi
       .fn()

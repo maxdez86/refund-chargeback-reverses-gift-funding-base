@@ -1,5 +1,9 @@
 import { PaymentRepository } from "../services/dynamodb/repositories/payment-repository";
-import { mapAsaasWebhookToPaymentStatus, shouldApplyStatusTransition } from "./payment-state";
+import {
+  isChargebackReversalSignal,
+  mapAsaasWebhookToPaymentStatus,
+  shouldApplyStatusTransition
+} from "./payment-state";
 import { AppError } from "../lib/errors";
 import { getEnv, resolveSiteLabel, resolveSiteOrigin } from "../lib/env";
 import { normalizeSettlementDate } from "./payment-settlement-date";
@@ -35,6 +39,8 @@ type AsaasWebhookPayload = {
     confirmedDate?: string | null;
     clientPaymentDate?: string | null;
     paymentDate?: string | null;
+    value?: number;
+    refunds?: Array<{ value?: number; status?: string }>;
   };
   id?: string;
   status?: string;
@@ -172,8 +178,19 @@ export class WebhookProcessor {
       return result;
     }
 
+    // No id anywhere in the body, so no redelivery can ever resolve it. Throwing
+    // here would retry the message five times and poison the DLQ, reporting an
+    // unhandled error on every attempt; acknowledge it instead.
     if (!asaasPaymentId && !asaasCheckoutId && !externalReference) {
-      throw new AppError("Webhook payload does not contain a payment reference.", 400);
+      console.warn(
+        JSON.stringify({
+          metric: "WEBHOOK_PAYLOAD_UNREFERENCED",
+          eventId,
+          eventType
+        })
+      );
+      await this.repository.markWebhookProcessed(eventId, "ignored_unresolvable");
+      return { duplicate: false, updated: false };
     }
 
     const resolution = await this.resolvePaymentForWebhook({
@@ -227,8 +244,126 @@ export class WebhookProcessor {
       throw new AppError("Payment not found for webhook event.", 404);
     }
 
-    const nextStatus = mapAsaasWebhookToPaymentStatus(payload);
-    if (!shouldApplyStatusTransition(payment.status, nextStatus)) {
+    const event = String(payload.event ?? "").toUpperCase();
+    const status = String(payload.payment?.status ?? payload.status ?? "").toUpperCase();
+
+    if (event === "PAYMENT_REFUND_DENIED" || event === "PAYMENT_REFUND_IN_PROGRESS") {
+      await this.repository.markWebhookProcessed(eventId, "ignored_stale");
+      return { duplicate: false, updated: false };
+    }
+
+    const isRefundRelatedEvent = event.includes("REFUND") || status.includes("REFUND");
+
+    // Asaas reports refunds cumulatively on the payment object, and a later
+    // event (chargeback, dispute won) may omit the array altogether. Money
+    // never comes back once refunded, so the total only moves forward: keep
+    // the larger of the payload sum and what this payment already recorded.
+    //
+    // Only settled refunds count. A PENDING refund may still be denied — and a
+    // denied one arrives as CANCELLED on an event we ignore — so counting it
+    // would un-fund the gift permanently through the Math.max below. An entry
+    // with no status at all is counted: Asaas always sends one, and defaulting
+    // the other way would silently swallow a real refund.
+    const refundEntries = payload.payment?.refunds;
+    const usableRefunds = refundEntries?.filter((refund) => {
+      const refundStatus = String(refund.status ?? "").toUpperCase();
+      return refundStatus === "" || refundStatus === "DONE";
+    });
+    const payloadRefundSumCents = usableRefunds?.reduce(
+      (sum, refund) => sum + (typeof refund.value === "number" ? Math.round(refund.value * 100) : 0),
+      0
+    );
+
+    // Asaas sent a breakdown and not one entry in it has settled. The status
+    // alone would still map to REFUNDED below, and the repository zeroes every
+    // funded part on REFUNDED without consulting the amount — so a R$10 refund
+    // still awaiting authorization would release a whole R$50 gift, and the
+    // later DONE copy could never put it back (a REVERSED reservation has no
+    // funded parts left to release). Acknowledge and wait for the settled copy.
+    // Chargebacks are exempt: they carry no refunds[] of their own and must
+    // keep reversing on the status.
+    const hasRefundBreakdown = Array.isArray(refundEntries) && refundEntries.length > 0;
+    if (
+      hasRefundBreakdown &&
+      usableRefunds?.length === 0 &&
+      isRefundRelatedEvent &&
+      !event.includes("CHARGEBACK") &&
+      !status.includes("CHARGEBACK")
+    ) {
+      console.warn(
+        JSON.stringify({
+          metric: "REFUND_NOT_SETTLED",
+          eventId,
+          paymentId: payment.paymentId,
+          event,
+          refundStatuses: refundEntries.map((refund) => String(refund.status ?? "")),
+          unsettledAmountCents: refundEntries.reduce(
+            (sum, refund) => sum + (typeof refund.value === "number" ? Math.round(refund.value * 100) : 0),
+            0
+          )
+        })
+      );
+      await this.repository.markWebhookProcessed(eventId, "ignored_unsettled_refund");
+      return { duplicate: false, updated: false };
+    }
+
+    const refundedAmountCents = Math.max(payloadRefundSumCents ?? 0, payment.refundedAmountCents ?? 0);
+
+    // A PAYMENT_REFUNDED carrying its own refund breakdown is trusted for the
+    // amount it actually reports: Asaas labels a partial refund this way too,
+    // and taking it as full would wipe a gift the guest only partly got back.
+    const isExplicitFullRefund =
+      (event === "PAYMENT_REFUNDED" || status === "REFUNDED") &&
+      (payloadRefundSumCents === undefined || payloadRefundSumCents >= payment.amountCents);
+
+    const isPartialRefund =
+      !isExplicitFullRefund &&
+      isRefundRelatedEvent &&
+      refundedAmountCents < payment.amountCents &&
+      (event === "PAYMENT_PARTIALLY_REFUNDED" ||
+        status === "PARTIALLY_REFUNDED" ||
+        refundedAmountCents > 0);
+    const isCumulativeFullRefund =
+      !isExplicitFullRefund && isRefundRelatedEvent && refundedAmountCents >= payment.amountCents;
+
+    // A partial refund keeps the payment status; how many parts it still
+    // covers is the repository's decision, made against the reservation.
+    const nextStatus = isPartialRefund
+      ? payment.status
+      : isCumulativeFullRefund
+        ? "REFUNDED"
+        : mapAsaasWebhookToPaymentStatus(payload);
+
+    // A full refund with no settled breakdown (Asaas omits refunds[] on some
+    // PAYMENT_REFUNDED deliveries) still reverses every part, so the payment
+    // must say how much came back. Without this the guest sees a REFUNDED
+    // payment with no refundedAmountCents at all.
+    const settledBreakdownCents = payloadRefundSumCents ?? 0;
+    const recordedRefundedAmountCents =
+      nextStatus === "REFUNDED" && settledBreakdownCents === 0
+        ? Math.max(payment.amountCents, refundedAmountCents)
+        : refundedAmountCents;
+
+    // A chargeback is provisional, but only Asaas's explicit reversal signal
+    // lifts it. The webhook queue is a standard SQS queue with redelivery, so
+    // any other CONFIRMED/RECEIVED landing here is a stale or reordered copy
+    // of the original confirmation — honouring it would re-fund gift parts the
+    // acquirer already took back.
+    const isChargebackReversal = payment.status === "CHARGEBACK" && isChargebackReversalSignal(payload);
+
+    if (!isChargebackReversal && !shouldApplyStatusTransition(payment.status, nextStatus)) {
+      if (payment.status === "CHARGEBACK" && (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")) {
+        console.warn(
+          JSON.stringify({
+            metric: "CHARGEBACK_CONFIRMATION_IGNORED",
+            paymentId: payment.paymentId,
+            eventId,
+            event,
+            status
+          })
+        );
+      }
+
       await this.repository.markWebhookProcessed(eventId, "ignored_stale");
       return { duplicate: false, updated: false };
     }
@@ -244,10 +379,23 @@ export class WebhookProcessor {
         "receivedOn"
       ),
       asaasPaymentId: asaasPaymentId ?? payment.asaasPaymentId,
-      asaasCheckoutId: asaasCheckoutId ?? payment.asaasCheckoutId
+      asaasCheckoutId: asaasCheckoutId ?? payment.asaasCheckoutId,
+      ...(recordedRefundedAmountCents > 0
+        ? { refundedAmountCents: recordedRefundedAmountCents }
+        : {})
     });
 
-    if (applied && (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")) {
+    // A won dispute re-confirms a payment whose payer was already enriched and
+    // thanked on the original confirmation; only first-time confirmations
+    // build the profile and send the emails.
+    const isDisputeReinstatement = payment.status === "CHARGEBACK";
+
+    if (
+      applied &&
+      !isPartialRefund &&
+      !isDisputeReinstatement &&
+      (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED")
+    ) {
       await this.enrichCustomerProfile({
         asaasCustomerIdFromPayload,
         asaasPaymentId: asaasPaymentId ?? payment.asaasPaymentId,
@@ -266,7 +414,15 @@ export class WebhookProcessor {
   }) {
     const paymentId = input.externalReference;
     if (!paymentId) {
-      throw new AppError("Checkout webhook payload does not contain a payment reference.", 400);
+      console.warn(
+        JSON.stringify({
+          metric: "WEBHOOK_PAYLOAD_UNREFERENCED",
+          eventId: input.eventId,
+          eventType: input.eventType
+        })
+      );
+      await this.repository.markWebhookProcessed(input.eventId, "ignored_unresolvable");
+      return { duplicate: false, updated: false };
     }
 
     const existingPayment = await this.repository.getPayment(paymentId);
@@ -320,7 +476,9 @@ export class WebhookProcessor {
       if (!existingPayment) {
         if (
           input.eventType === "CHECKOUT_CREATED" &&
-          (reservation.status === "RELEASED" || reservation.status === "CONSUMED")
+          (reservation.status === "RELEASED" ||
+            reservation.status === "CONSUMED" ||
+            reservation.status === "REVERSED")
         ) {
           await this.repository.markWebhookProcessed(input.eventId, "ignored_stale");
           return { duplicate: false, updated: false };

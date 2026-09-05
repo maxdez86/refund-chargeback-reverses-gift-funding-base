@@ -53,7 +53,9 @@ export class GiftService {
           gift.totalValueCents - confirmedAmountCents - reservedAmountCents
         ),
         availableParts: Math.max(0, (gift.totalParts ?? 1) - partsFunded - partsReserved),
-        fullyFunded: state?.fullyFunded ?? false,
+        fullyFunded:
+          partsFunded >= (gift.fractional ? (gift.totalParts ?? 1) : 1) ||
+          (gift.totalValueCents > 0 && confirmedAmountCents >= gift.totalValueCents),
         updatedAt: state?.updatedAt ?? null
       };
     });

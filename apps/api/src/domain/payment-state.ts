@@ -11,7 +11,11 @@ const ALLOWED_STATUS_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
   EXPIRED: ["EXPIRED", "CONFIRMED", "RECEIVED", "CANCELED"],
   CANCELED: ["CANCELED"],
   REFUNDED: ["REFUNDED"],
-  CHARGEBACK: ["CHARGEBACK", "CONFIRMED", "RECEIVED", "REFUNDED"],
+  // A dispute the couple wins does bring the payment back to CONFIRMED, but
+  // only the explicit reversal signal may do it — see
+  // isChargebackReversalSignal. The webhook queue is a standard SQS queue, so
+  // a redelivered PAYMENT_RECEIVED must never re-fund a charged-back gift.
+  CHARGEBACK: ["CHARGEBACK", "REFUNDED"],
   FAILED: ["FAILED"]
 };
 
@@ -73,9 +77,26 @@ export function initialPaymentStatus(): PaymentStatus {
   return "CREATED";
 }
 
+// "Disputa vencida, aguardando repasse da adquirente": the only signal Asaas
+// sends that genuinely overturns a chargeback. Reinstating funded parts is
+// gated on this and nothing else — an ordinary PAYMENT_CONFIRMED or
+// PAYMENT_RECEIVED arriving after a chargeback is a redelivery, not a win.
+export function isChargebackReversalSignal(payload: AsaasWebhookPayload): boolean {
+  const status = String(payload.payment?.status ?? payload.status ?? "").toUpperCase();
+  const event = String(payload.event ?? "").toUpperCase();
+
+  return event === "PAYMENT_AWAITING_CHARGEBACK_REVERSAL" || status === "AWAITING_CHARGEBACK_REVERSAL";
+}
+
 export function mapAsaasWebhookToPaymentStatus(payload: AsaasWebhookPayload): PaymentStatus {
   const status = String(payload.payment?.status ?? payload.status ?? "").toUpperCase();
   const event = String(payload.event ?? "").toUpperCase();
+
+  // The chargeback was overturned, so the payment is confirmed again. Checked
+  // before the generic CHARGEBACK match below, which would otherwise swallow it.
+  if (isChargebackReversalSignal(payload)) {
+    return "CONFIRMED";
+  }
 
   if (status === "RECEIVED_IN_CASH" || status === "RECEIVED" || event.includes("RECEIVED")) {
     return "RECEIVED";
@@ -85,7 +106,7 @@ export function mapAsaasWebhookToPaymentStatus(payload: AsaasWebhookPayload): Pa
     return "CONFIRMED";
   }
 
-  if (status === "REFUNDED" || event.includes("REFUND")) {
+  if (status === "REFUNDED" || event === "PAYMENT_REFUNDED") {
     return "REFUNDED";
   }
 

@@ -177,6 +177,29 @@ describe("PaymentMessageService", () => {
     ).rejects.toThrow("Message can only be sent after payment confirmation.");
   });
 
+  it.each(["REFUNDED", "CHARGEBACK"] as const)(
+    "rejects messages after payment reversal (%s)",
+    async (status) => {
+      const repository = {
+        getPayment: vi.fn().mockResolvedValue({
+          paymentId: "payment-reversed",
+          status,
+          gift: {
+            name: "PIX Teste"
+          }
+        })
+      };
+
+      const service = new PaymentMessageService(repository as never, {} as never);
+
+      await expect(
+        service.createMessage("payment-reversed", {
+          body: "Mensagem"
+        })
+      ).rejects.toThrow("Message can only be sent after payment confirmation.");
+    }
+  );
+
   it("releases the notification lock if the couple email fails", async () => {
     const repository = {
       getPayment: vi.fn().mockResolvedValue({

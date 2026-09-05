@@ -58,7 +58,8 @@ export const PaymentSummarySchema = z.object({
   receivedOn: z.string().date().optional(),
   payerEmail: z.string().email().max(255).optional(),
   payerFirstName: z.string().min(1).max(120).optional(),
-  customerProfileStatus: z.enum(["PENDING", "READY", "FAILED"]).optional()
+  customerProfileStatus: z.enum(["PENDING", "READY", "FAILED"]).optional(),
+  refundedAmountCents: z.number().int().positive().optional()
 });
 
 export const CreatePaymentMessageRequestSchema = z.object({

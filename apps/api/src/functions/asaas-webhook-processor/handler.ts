@@ -1,6 +1,6 @@
-import type { SQSEvent } from "aws-lambda";
+import type { SQSBatchResponse, SQSEvent } from "aws-lambda";
 import { WebhookProcessor } from "../../domain/webhook-processor";
-import { wrapLambdaHandler } from "../../lib/sentry";
+import { reportHandledError, wrapLambdaHandler } from "../../lib/sentry";
 import { annotateTrace, withTracedSubsegment } from "../../lib/xray";
 
 const processor = new WebhookProcessor();
@@ -18,31 +18,46 @@ async function onProcessAsaasWebhook(event: SQSEvent) {
     );
   }
 
+  // Report failures per record: without this a single bad message fails the
+  // whole batch of ten and redelivers the nine that already succeeded.
+  const batchItemFailures: SQSBatchResponse["batchItemFailures"] = [];
+
   for (const record of event.Records) {
-    const message = JSON.parse(record.body) as { eventId: string };
-    const result = await withTracedSubsegment(
-      "webhook.process_event",
-      {
+    try {
+      const message = JSON.parse(record.body) as { eventId: string };
+      const result = await withTracedSubsegment(
+        "webhook.process_event",
+        {
+          entity_id: message.eventId,
+          flow: "webhook"
+        },
+        async () => processor.processEvent(message.eventId)
+      );
+
+      annotateTrace({
+        duplicate: result.duplicate,
         entity_id: message.eventId,
         flow: "webhook"
-      },
-      async () => processor.processEvent(message.eventId)
-    );
+      });
 
-    annotateTrace({
-      duplicate: result.duplicate,
-      entity_id: message.eventId,
-      flow: "webhook"
-    });
-
-    console.info(
-      JSON.stringify({
-        metric: "PAYMENT_STATE_TRANSITION",
-        eventId: message.eventId,
-        duplicate: result.duplicate
-      })
-    );
+      console.info(
+        JSON.stringify({
+          metric: "PAYMENT_STATE_TRANSITION",
+          eventId: message.eventId,
+          duplicate: result.duplicate
+        })
+      );
+    } catch (error) {
+      reportHandledError(error, {
+        context: { messageId: record.messageId },
+        metric: "WEBHOOK_RECORD_FAILED",
+        statusCode: 500
+      });
+      batchItemFailures.push({ itemIdentifier: record.messageId });
+    }
   }
+
+  return { batchItemFailures };
 }
 
 export const handler = wrapLambdaHandler(onProcessAsaasWebhook);
