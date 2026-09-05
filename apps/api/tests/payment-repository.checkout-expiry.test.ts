@@ -1,5 +1,5 @@
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import { QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaymentRepository } from "../src/services/dynamodb/repositories/payment-repository";
 
@@ -351,6 +351,37 @@ describe("PaymentRepository checkout expiry", () => {
         .mockResolvedValueOnce({});
     }
 
+    it.each(["REVERSED", "RECOVERY_HOLD"])(
+      "does not release a %s reservation that no longer holds reserved counters",
+      async (reservationStatus) => {
+        // The JS gate reads the reservation before the write. If it flips to a
+        // funded-but-not-reserved status in between, the condition expression
+        // is the only thing standing between a stale release and a gift losing
+        // parts another checkout is holding.
+        const send = mockSendForWebhookUpdate(reservationStatus);
+        const repository = new PaymentRepository({ send } as never, "table-test");
+
+        await repository.applyWebhookUpdate({
+          eventId: "event-1",
+          paymentId: "payment-1",
+          expectedCurrentStatus: "AWAITING_PAYMENT",
+          nextStatus: "EXPIRED",
+          asaasCheckoutId: "checkout-1"
+        });
+
+        const transactionCalls = send.mock.calls.filter(
+          (call) => call[0] instanceof TransactWriteCommand
+        );
+        const releasedGiftState = transactionCalls.some((call) =>
+          ((call[0] as TransactWriteCommand).input.TransactItems ?? []).some((item) =>
+            item.Update?.ExpressionAttributeValues?.[":reservationStatus"] === "RELEASED"
+          )
+        );
+
+        expect(releasedGiftState).toBe(false);
+      }
+    );
+
     it("guards the release branch on the reservation status and clears the open index", async () => {
       const send = mockSendForWebhookUpdate("ACTIVE");
       const repository = new PaymentRepository({ send } as never, "table-test");
@@ -367,8 +398,10 @@ describe("PaymentRepository checkout expiry", () => {
       const transaction = send.mock.calls[3][0] as TransactWriteCommand;
       const reservationUpdate = transaction.input.TransactItems?.[1]?.Update;
 
+      // An allow-list: a reservation that became REVERSED or RECOVERY_HOLD
+      // between the read and this write holds no reserved counters to release.
       expect(reservationUpdate?.ConditionExpression).toBe(
-        "attribute_exists(PK) AND #status <> :released AND #status <> :consumed"
+        "attribute_exists(PK) AND (#status = :pendingCheckout OR #status = :active)"
       );
       expect(reservationUpdate?.UpdateExpression).toContain("REMOVE GSI1PK, GSI1SK");
       expect(reservationUpdate?.ExpressionAttributeValues).toEqual(
@@ -432,6 +465,269 @@ describe("PaymentRepository checkout expiry", () => {
       expect(giftStateUpdate?.UpdateExpression).not.toContain("reservedAmountCents =");
       expect(giftStateUpdate?.UpdateExpression).toContain("partsFunded =");
       expect(giftStateUpdate?.UpdateExpression).toContain("confirmedAmountCents =");
+    });
+
+    it("reverses funding and releases reservation on full chargeback", async () => {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("CONSUMED") })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({
+          Item: {
+            ...giftStateItem,
+            partsFunded: 1,
+            confirmedAmountCents: 10_000,
+            fullyFunded: true
+          }
+        })
+        .mockResolvedValueOnce({});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const applied = await repository.applyWebhookUpdate({
+        eventId: "event-cb",
+        paymentId: "payment-1",
+        expectedCurrentStatus: "CONFIRMED",
+        nextStatus: "CHARGEBACK"
+      });
+
+      expect(applied).toBe(true);
+      const transaction = send.mock.calls[3][0] as TransactWriteCommand;
+      const paymentUpdate = transaction.input.TransactItems?.[0]?.Update;
+      const reservationUpdate = transaction.input.TransactItems?.[1]?.Update;
+      const giftStateUpdate = transaction.input.TransactItems?.[2]?.Update;
+      const shellUpdate = transaction.input.TransactItems?.[3]?.Update;
+
+      expect(paymentUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":status": "CHARGEBACK"
+        })
+      );
+      expect(reservationUpdate?.ConditionExpression).toBe(
+        "attribute_exists(PK) AND #status = :observedStatus AND " +
+          "(attribute_not_exists(reversedParts) OR reversedParts = :observedReversedParts)"
+      );
+      expect(reservationUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":observedStatus": "CONSUMED",
+          ":observedReversedParts": 0,
+          ":reservationStatus": "REVERSED",
+          ":reversedParts": 1,
+          ":reversedAmountCents": 10_000
+        })
+      );
+      expect(reservationUpdate?.UpdateExpression).toContain("REMOVE GSI1PK, GSI1SK");
+      // The counter math and fullyFunded come from the state read at this
+      // version; another writer bumping it must cancel the write.
+      expect(giftStateUpdate?.ConditionExpression).toBe(
+        "attribute_exists(PK) AND ((attribute_not_exists(version) AND :expectedVersion = :zero) OR version = :expectedVersion) AND " +
+          "partsFunded >= :partsDelta AND confirmedAmountCents >= :amountDelta"
+      );
+      expect(giftStateUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({ ":expectedVersion": 1 })
+      );
+      expect(giftStateUpdate?.UpdateExpression).toContain("partsFunded = partsFunded - :partsDelta");
+      expect(giftStateUpdate?.UpdateExpression).toContain("confirmedAmountCents = confirmedAmountCents - :amountDelta");
+      expect(giftStateUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":partsDelta": 1,
+          ":amountDelta": 10_000,
+          ":fullyFunded": false
+        })
+      );
+      expect(shellUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":shellStatus": "CHECKOUT_RELEASED"
+        })
+      );
+    });
+
+    it("reverses exact final quota values on an EXACT_FINAL_QUOTA gift", async () => {
+      const exactGiftItem = {
+        id: "g-pratos",
+        name: "Jogo de Pratos",
+        totalValueCents: 35_000,
+        fractional: true,
+        partValueCents: 10_000,
+        totalParts: 4,
+        fundingModelVersion: "EXACT_FINAL_QUOTA",
+        finalPartValueCents: 5_000
+      };
+      const finalReservationItem = {
+        paymentId: "payment-final",
+        giftId: "g-pratos",
+        quantity: 1,
+        quotaValuesCents: [5_000],
+        amountCents: 5_000,
+        status: "CONSUMED",
+        expiresAt: "2026-06-12T12:00:00.000Z",
+        createdAt: "2026-06-12T11:00:00.000Z",
+        updatedAt: "2026-06-12T11:00:00.000Z"
+      };
+      const exactGiftState = {
+        giftId: "g-pratos",
+        partsFunded: 4,
+        partsReserved: 0,
+        confirmedAmountCents: 35_000,
+        reservedAmountCents: 0,
+        fullyFunded: true,
+        version: 4,
+        updatedAt: "2026-06-12T11:00:00.000Z"
+      };
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: finalReservationItem })
+        .mockResolvedValueOnce({ Item: exactGiftItem })
+        .mockResolvedValueOnce({ Item: exactGiftState })
+        .mockResolvedValueOnce({});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const applied = await repository.applyWebhookUpdate({
+        eventId: "event-refund-exact",
+        paymentId: "payment-final",
+        expectedCurrentStatus: "RECEIVED",
+        nextStatus: "REFUNDED"
+      });
+
+      expect(applied).toBe(true);
+      const transaction = send.mock.calls[3][0] as TransactWriteCommand;
+      const giftStateUpdate = transaction.input.TransactItems?.[2]?.Update;
+
+      expect(giftStateUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":partsDelta": 1,
+          ":amountDelta": 5_000,
+          ":fullyFunded": false
+        })
+      );
+    });
+
+    it("does not decrement counters again on duplicate refund event or CHARGEBACK -> REFUNDED sequence", async () => {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("RELEASED") })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const applied = await repository.applyWebhookUpdate({
+        eventId: "event-duplicate",
+        paymentId: "payment-1",
+        expectedCurrentStatus: "CHARGEBACK",
+        nextStatus: "REFUNDED"
+      });
+
+      expect(applied).toBe(true);
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(send.mock.calls[1][0]).toBeInstanceOf(UpdateCommand);
+      const updateCommand = send.mock.calls[1][0] as UpdateCommand;
+      expect(updateCommand.input.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({
+          ":status": "REFUNDED",
+          ":expectedCurrentStatus": "CHARGEBACK"
+        })
+      );
+    });
+
+    it("keeps the single part funded when a partial refund does not pay back its full value", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("CONSUMED") })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const applied = await repository.applyWebhookUpdate({
+        eventId: "event-partial",
+        paymentId: "payment-1",
+        expectedCurrentStatus: "CONFIRMED",
+        nextStatus: "CONFIRMED",
+        refundedAmountCents: 2_500
+      });
+
+      // R$25 back on a R$100 part. Freeing the part would put it back on sale
+      // for R$100, so the gift would collect R$175 for a R$100 gift.
+      expect(applied).toBe(true);
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(send.mock.calls[1][0]).toBeInstanceOf(UpdateCommand);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"metric":"REFUND_NOT_PART_ALIGNED"')
+      );
+    });
+
+    it("releases the single part once the refund pays back its full value", async () => {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("CONSUMED") })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({
+          Item: { ...giftStateItem, partsFunded: 1, confirmedAmountCents: 10_000, fullyFunded: true }
+        })
+        .mockResolvedValueOnce({});
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      const applied = await repository.applyWebhookUpdate({
+        eventId: "event-partial-full",
+        paymentId: "payment-1",
+        expectedCurrentStatus: "CONFIRMED",
+        nextStatus: "CONFIRMED",
+        refundedAmountCents: 10_000
+      });
+
+      expect(applied).toBe(true);
+      const transaction = send.mock.calls[3][0] as TransactWriteCommand;
+      const paymentUpdate = transaction.input.TransactItems?.[0]?.Update;
+      const giftStateUpdate = transaction.input.TransactItems?.[2]?.Update;
+
+      // Payment stays confirmed and records the money; the gift gets its part back.
+      expect(paymentUpdate?.UpdateExpression).toContain("refundedAmountCents = :refundedAmountCents");
+      expect(paymentUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({ ":refundedAmountCents": 10_000, ":status": "CONFIRMED" })
+      );
+      expect(giftStateUpdate?.ExpressionAttributeValues).toEqual(
+        expect.objectContaining({ ":partsDelta": 1, ":amountDelta": 10_000, ":fullyFunded": false })
+      );
+    });
+
+    it("logs structured error metric and rethrows when reversal fails due to unexpected gift state invariant cancellation", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const canceledError = new TransactionCanceledException({
+        $metadata: {},
+        message: "Transaction cancelled",
+        CancellationReasons: [
+          { Code: "None" },
+          { Code: "None" },
+          { Code: "ConditionalCheckFailed" },
+          { Code: "None" }
+        ]
+      });
+
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce({ Item: reservationItem("CONSUMED") })
+        .mockResolvedValueOnce({ Item: giftItem })
+        .mockResolvedValueOnce({ Item: giftStateItem })
+        .mockRejectedValueOnce(canceledError)
+        // The gift-state condition failed while its version is unchanged, so
+        // it is a counter invariant, not a version race to retry.
+        .mockResolvedValueOnce({ Item: giftStateItem });
+
+      const repository = new PaymentRepository({ send } as never, "table-test");
+
+      await expect(
+        repository.applyWebhookUpdate({
+          eventId: "event-inv-fail",
+          paymentId: "payment-1",
+          expectedCurrentStatus: "CONFIRMED",
+          nextStatus: "REFUNDED"
+        })
+      ).rejects.toThrow(TransactionCanceledException);
+      expect(send).toHaveBeenCalledTimes(5);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"metric":"REVERSAL_TRANSACTION_INVARIANT_VIOLATION"')
+      );
+      errorSpy.mockRestore();
     });
   });
 
