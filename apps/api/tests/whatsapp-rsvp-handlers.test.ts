@@ -59,7 +59,7 @@ describe("WhatsApp RSVP operator handlers", () => {
     expect(invalidHeader.statusCode).toBe(400);
     expect(body(invalidHeader)).toMatchObject({ code: "VALIDATION_ERROR" });
     expect(queueTemplateMock).not.toHaveBeenCalled();
-  }, 15000);
+  });
 
   it("uses a case-insensitive idempotency header and returns 202", async () => {
     queueTemplateMock.mockResolvedValue({

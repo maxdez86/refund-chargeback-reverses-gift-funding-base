@@ -33,7 +33,6 @@ export class PaymentDiscardService {
     if (
       state.reservation.status === "RELEASED" ||
       state.reservation.status === "CONSUMED" ||
-      state.reservation.status === "REVERSED" ||
       state.shell.shellStatus === "CHECKOUT_RELEASED" ||
       state.shell.shellStatus === "CHECKOUT_CONSUMED"
     ) {

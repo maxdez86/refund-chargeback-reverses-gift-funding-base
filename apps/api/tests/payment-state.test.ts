@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   CHECKOUT_EXPIRY_GRACE_MS,
   initialPaymentStatus,
-  isChargebackReversalSignal,
   isStalePendingCheckout,
   mapAsaasWebhookToPaymentStatus,
   resolveGiftSelection,
@@ -88,66 +87,19 @@ describe("payment-state", () => {
       })
     ).toBe("CHARGEBACK");
 
-    // Dispute won: Asaas reports it before the money is passed back, and the
-    // generic CHARGEBACK match must not swallow it.
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_AWAITING_CHARGEBACK_REVERSAL",
-        payment: { status: "AWAITING_CHARGEBACK_REVERSAL" }
-      })
-    ).toBe("CONFIRMED");
-
     expect(
       mapAsaasWebhookToPaymentStatus({
         event: "PAYMENT_AWAITING_CHARGEBACK_REVERSAL",
         payment: { status: "CHARGEBACK" }
       })
-    ).toBe("CONFIRMED");
-
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_REFUND_DENIED",
-        payment: { status: "CONFIRMED" }
-      })
-    ).toBe("CONFIRMED");
-
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_REFUND_DENIED"
-      })
-    ).toBe("FAILED");
-
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_REFUND_IN_PROGRESS",
-        payment: { status: "CONFIRMED" }
-      })
-    ).toBe("CONFIRMED");
+    ).toBe("CHARGEBACK");
   });
 
   it("prevents stale updates from regressing a completed payment", () => {
     expect(shouldApplyStatusTransition("RECEIVED", "CONFIRMED")).toBe(false);
     expect(shouldApplyStatusTransition("CONFIRMED", "RECEIVED")).toBe(true);
     expect(shouldApplyStatusTransition("EXPIRED", "RECEIVED")).toBe(true);
-    // A chargeback only leaves CHARGEBACK for a refund by way of the table. A
-    // won dispute is an explicit exception the processor makes on the reversal
-    // signal, never something a redelivered confirmation can trigger.
-    expect(shouldApplyStatusTransition("CHARGEBACK", "RECEIVED")).toBe(false);
-    expect(shouldApplyStatusTransition("CHARGEBACK", "CONFIRMED")).toBe(false);
-    expect(shouldApplyStatusTransition("CHARGEBACK", "CHARGEBACK")).toBe(true);
-    expect(shouldApplyStatusTransition("CHARGEBACK", "REFUNDED")).toBe(true);
-    expect(shouldApplyStatusTransition("REFUNDED", "CONFIRMED")).toBe(false);
-  });
-
-  it("recognises only the explicit chargeback reversal signal", () => {
-    expect(isChargebackReversalSignal({ event: "PAYMENT_AWAITING_CHARGEBACK_REVERSAL" })).toBe(true);
-    expect(isChargebackReversalSignal({ payment: { status: "AWAITING_CHARGEBACK_REVERSAL" } })).toBe(true);
-    expect(isChargebackReversalSignal({ status: "AWAITING_CHARGEBACK_REVERSAL" })).toBe(true);
-
-    expect(isChargebackReversalSignal({ event: "PAYMENT_CONFIRMED" })).toBe(false);
-    expect(isChargebackReversalSignal({ event: "PAYMENT_RECEIVED" })).toBe(false);
-    expect(isChargebackReversalSignal({ event: "PAYMENT_CHARGEBACK_DISPUTE" })).toBe(false);
-    expect(isChargebackReversalSignal({})).toBe(false);
+    expect(shouldApplyStatusTransition("CHARGEBACK", "RECEIVED")).toBe(true);
   });
 
   it("flags a pending checkout as stale only past the expiry grace window", () => {
@@ -169,25 +121,5 @@ describe("payment-state", () => {
     expect(isStalePendingCheckout("CONFIRMED", "2026-06-12T12:00:00.000Z", farPastGrace)).toBe(false);
     expect(isStalePendingCheckout("CREATED", undefined, farPastGrace)).toBe(false);
     expect(isStalePendingCheckout("CREATED", "not-a-date", farPastGrace)).toBe(false);
-  });
-
-  it("maps a PAYMENT_REFUNDED whose payment is still RECEIVED to RECEIVED, not REFUNDED", () => {
-    // Asaas keeps payment.status at RECEIVED for a partial refund. RECEIVED is
-    // matched before the REFUNDED branch on purpose: the refunded amount, not
-    // the event label, decides how many parts come back. Flipping this order
-    // would make every partial refund reverse the whole gift.
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_REFUNDED",
-        payment: { status: "RECEIVED" }
-      })
-    ).toBe("RECEIVED");
-
-    expect(
-      mapAsaasWebhookToPaymentStatus({
-        event: "PAYMENT_REFUNDED",
-        payment: { status: "REFUNDED" }
-      })
-    ).toBe("REFUNDED");
   });
 });

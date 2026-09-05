@@ -20,7 +20,6 @@ import { getEnv } from "../../../lib/env";
 import { AppError } from "../../../lib/errors";
 import { createTracedAwsClient } from "../../../lib/xray";
 import {
-  isConditionalTransactionCancellation,
   isExpectedConditionalTransactionCancellation,
   isTransactionConflictCancellation
 } from "../transaction-errors";
@@ -57,10 +56,6 @@ export type StoredPaymentReservationStatus =
   | "ACTIVE"
   | "CONSUMED"
   | "RELEASED"
-  // Funded parts given back by a refund or chargeback. Unlike RELEASED (an
-  // open checkout that expired) the parts were funded, so a won dispute may
-  // re-fund them; orphan cleanup must never touch it.
-  | "REVERSED"
   | "RECOVERY_HOLD";
 
 // Per-item outcome of an orphan-reservation release, so the sweep can tally
@@ -82,11 +77,6 @@ export type StoredPaymentReservation = {
   createdAt: string;
   updatedAt: string;
   asaasCheckoutId?: string;
-  // Reversal bookkeeping: how many parts (counted from the end of
-  // quotaValuesCents) are no longer funded, and their summed value. Absent on
-  // reservations that never saw a refund or chargeback.
-  reversedParts?: number;
-  reversedAmountCents?: number;
 };
 
 export type StoredPaymentShellStatus =
@@ -191,21 +181,6 @@ function getAvailableParts(gift: PaymentGift, state: StoredGiftState) {
   return Math.max(0, 1 - partsFunded - partsReserved);
 }
 
-// Whether the single exact-value final part of an EXACT_FINAL_QUOTA gift is
-// currently taken. Which parts are sold is a question about money, not counts:
-// after a refund frees a regular part while the final part stays funded, the
-// counters alone say "one part left" and would price it as the final part.
-function isFinalPartSold(gift: PaymentGift, state: StoredGiftState): boolean {
-  if (gift.fundingModelVersion !== "EXACT_FINAL_QUOTA" || !gift.partValueCents || !gift.finalPartValueCents) {
-    return false;
-  }
-
-  const soldParts = (state.partsFunded ?? 0) + (state.partsReserved ?? 0);
-  const soldAmountCents = (state.confirmedAmountCents ?? 0) + (state.reservedAmountCents ?? 0);
-
-  return soldParts > 0 && soldAmountCents === (soldParts - 1) * gift.partValueCents + gift.finalPartValueCents;
-}
-
 function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity: number): ReservedQuotaSelection {
   if (!gift.fractional) {
     if (quantity !== 1) {
@@ -246,13 +221,11 @@ function buildQuotaSelection(gift: PaymentGift, state: StoredGiftState, quantity
 
   const regularPartsTotal = Math.max(0, gift.totalParts - 1);
   const soldParts = (state.partsFunded ?? 0) + (state.partsReserved ?? 0);
-  const finalPartSold = isFinalPartSold(gift, state);
-  const regularPartsSold = soldParts - (finalPartSold ? 1 : 0);
-  const regularPartsRemaining = Math.max(0, regularPartsTotal - regularPartsSold);
+  const regularPartsRemaining = Math.max(0, regularPartsTotal - soldParts);
   const regularPartsToTake = Math.min(quantity, regularPartsRemaining);
   const finalPartsToTake = quantity - regularPartsToTake;
 
-  if (finalPartsToTake > 1 || (finalPartsToTake === 1 && finalPartSold)) {
+  if (finalPartsToTake > 1) {
     throw new AppError("Requested quantity exceeds the available exact-value quota composition.", 409);
   }
 
@@ -320,145 +293,6 @@ function buildGiftReservationReleaseUpdate(input: {
         ":zero": 0
       }
     }
-  };
-}
-
-type ReservationFundingAdjustment =
-  | { kind: "none" }
-  | {
-      kind: "release" | "reinstate";
-      // Parts and their summed quota value moving in this adjustment.
-      parts: number;
-      amountCents: number;
-      // Bookkeeping observed on the reservation and what it becomes.
-      partValuesCents: number[];
-      observedReversedParts: number;
-      nextReversedParts: number;
-      nextReversedAmountCents: number;
-    };
-
-const NO_FUNDING_ADJUSTMENT: ReservationFundingAdjustment = { kind: "none" };
-
-// Number of trailing quota values a refund pays back in full. A part only
-// returns to inventory when the guest actually got its whole price back:
-// freeing a part for a refund that covered a fraction of it lets the gift be
-// resold past its own total value.
-function fullyRefundedTrailingParts(quotaValuesCents: number[], refundedCents: number) {
-  let released = 0;
-  let given = 0;
-  for (let index = quotaValuesCents.length - 1; index >= 0; index -= 1) {
-    const valueCents = quotaValuesCents[index] as number;
-    if (given + valueCents > refundedCents) {
-      break;
-    }
-    given += valueCents;
-    released += 1;
-  }
-  return { released, refundedPartsValueCents: given };
-}
-
-// A reservation's funded parts are a prefix of quotaValuesCents: a refund or
-// chargeback shrinks the prefix from the end (the exact final part goes
-// first), a won dispute grows it back. A refund only shrinks it by the parts
-// it paid back in full, so a fraction of a part's price never puts that part
-// back on sale. Comparing the target with the recorded bookkeeping yields the
-// exact parts and cents to move — or nothing, which is what makes redelivered
-// and out-of-order events idempotent.
-function planReservationFundingAdjustment(
-  reservation: StoredPaymentReservation,
-  nextStatus: PaymentStatus,
-  refundedAmountCents: number
-): ReservationFundingAdjustment {
-  // Only a funded reservation has parts to give back; RECOVERY_HOLD stays
-  // parked for the operator and open checkouts fund nothing yet.
-  if (reservation.status !== "CONSUMED" && reservation.status !== "REVERSED") {
-    return NO_FUNDING_ADJUSTMENT;
-  }
-
-  const quantity = reservation.quantity;
-  const quotaValuesCents =
-    reservation.quotaValuesCents?.length === quantity
-      ? reservation.quotaValuesCents
-      : Array.from({ length: quantity }, () => Math.round(reservation.amountCents / quantity));
-  const observedReversedParts =
-    reservation.status === "REVERSED" ? quantity : Math.min(quantity, reservation.reversedParts ?? 0);
-  const fundedParts = quantity - observedReversedParts;
-
-  let targetFundedParts: number;
-  // A chargeback always takes the whole payment, so it zeroes unconditionally.
-  // A refund only releases what it actually paid back: a caller that knows the
-  // amount and reports less than the reservation is worth must not wipe every
-  // part. Zero still means "amount unknown" (Asaas omits refunds[] on some
-  // PAYMENT_REFUNDED deliveries), and that keeps the full reversal.
-  if (nextStatus === "CHARGEBACK") {
-    targetFundedParts = 0;
-  } else if (nextStatus === "REFUNDED" && refundedAmountCents > 0 && refundedAmountCents < reservation.amountCents) {
-    const { released, refundedPartsValueCents } = fullyRefundedTrailingParts(
-      quotaValuesCents,
-      refundedAmountCents
-    );
-    targetFundedParts = quantity - released;
-
-    if (refundedAmountCents > refundedPartsValueCents) {
-      console.warn(
-        JSON.stringify({
-          metric: "REFUND_NOT_PART_ALIGNED",
-          paymentId: reservation.paymentId,
-          giftId: reservation.giftId,
-          refundedAmountCents,
-          residualCents: refundedAmountCents - refundedPartsValueCents
-        })
-      );
-    }
-  } else if (nextStatus === "REFUNDED") {
-    targetFundedParts = 0;
-  } else if (nextStatus === "CONFIRMED" || nextStatus === "RECEIVED") {
-    const { released, refundedPartsValueCents } = fullyRefundedTrailingParts(
-      quotaValuesCents,
-      refundedAmountCents
-    );
-    targetFundedParts = quantity - released;
-
-    // The refund did not land on a part boundary, so the gift stays credited
-    // for money that went back to the guest. Better than the alternative —
-    // freeing a part the refund only partly paid for, which lets the gift
-    // collect for it twice — but the couple needs to see it.
-    if (refundedAmountCents > refundedPartsValueCents) {
-      console.warn(
-        JSON.stringify({
-          metric: "REFUND_NOT_PART_ALIGNED",
-          paymentId: reservation.paymentId,
-          giftId: reservation.giftId,
-          refundedAmountCents,
-          residualCents: refundedAmountCents - refundedPartsValueCents
-        })
-      );
-    }
-  } else {
-    return NO_FUNDING_ADJUSTMENT;
-  }
-
-  if (targetFundedParts === fundedParts) {
-    return NO_FUNDING_ADJUSTMENT;
-  }
-
-  // Refunded money never comes back, so only a full reversal (a chargeback
-  // the couple then won) can grow the funded prefix again.
-  if (targetFundedParts > fundedParts && reservation.status !== "REVERSED") {
-    return NO_FUNDING_ADJUSTMENT;
-  }
-
-  const kind = targetFundedParts < fundedParts ? "release" : "reinstate";
-  const [from, to] = kind === "release" ? [targetFundedParts, fundedParts] : [fundedParts, targetFundedParts];
-
-  return {
-    kind,
-    parts: to - from,
-    partValuesCents: quotaValuesCents.slice(from, to),
-    amountCents: sumQuotaValues(quotaValuesCents.slice(from, to)),
-    observedReversedParts,
-    nextReversedParts: quantity - targetFundedParts,
-    nextReversedAmountCents: sumQuotaValues(quotaValuesCents.slice(targetFundedParts))
   };
 }
 
@@ -1054,9 +888,7 @@ export class PaymentRepository {
     // already released or consumed — flipping it back to ACTIVE without
     // re-incrementing the gift counters would defeat the late-confirm guard.
     const reservationHeld =
-      input.reservationStatus !== "RELEASED" &&
-      input.reservationStatus !== "CONSUMED" &&
-      input.reservationStatus !== "REVERSED";
+      input.reservationStatus !== "RELEASED" && input.reservationStatus !== "CONSUMED";
 
     await this.documentClient.send(
       new TransactWriteCommand({
@@ -1180,15 +1012,9 @@ export class PaymentRepository {
       return "race-lost";
     }
 
-    // CONSUMED (funded), REVERSED (funded parts already given back by a
-    // refund/chargeback, nothing reserved to free) or RECOVERY_HOLD (deliberate
-    // hold) must never be released by orphan cleanup; only open checkouts are
-    // eligible below.
-    if (
-      reservation.status === "CONSUMED" ||
-      reservation.status === "REVERSED" ||
-      reservation.status === "RECOVERY_HOLD"
-    ) {
+    // CONSUMED (funded) or RECOVERY_HOLD (deliberate hold) must never be
+    // released by orphan cleanup; only open checkouts are eligible below.
+    if (reservation.status === "CONSUMED" || reservation.status === "RECOVERY_HOLD") {
       return "protected";
     }
 
@@ -1726,8 +1552,6 @@ export class PaymentRepository {
     asaasCheckoutId?: string;
     giftId?: string;
     quantity?: number;
-    // Cumulative cents Asaas has refunded on this payment (refunds[] sum).
-    refundedAmountCents?: number;
   }) {
     const updateParts = [
       "#status = :status",
@@ -1738,11 +1562,6 @@ export class PaymentRepository {
       ":updatedAt": new Date().toISOString(),
       ":expectedCurrentStatus": input.expectedCurrentStatus
     };
-
-    if (input.refundedAmountCents !== undefined) {
-      updateParts.push("refundedAmountCents = :refundedAmountCents");
-      expressionAttributeValues[":refundedAmountCents"] = input.refundedAmountCents;
-    }
 
     if (input.asaasPaymentId) {
       updateParts.push("asaasPaymentId = :asaasPaymentId");
@@ -1769,15 +1588,8 @@ export class PaymentRepository {
     }
 
     const reservation = await this.getPaymentReservation(input.paymentId);
-    // Once a reservation has been through a refund/chargeback its funded parts
-    // are tracked by the reversal bookkeeping, and only that path may move
-    // them again (a won dispute re-funds through it, never through consume).
-    const hasReversalHistory =
-      reservation !== null &&
-      (reservation.status === "REVERSED" || reservation.reversedParts !== undefined);
     const shouldConsumeReservation =
       reservation &&
-      !hasReversalHistory &&
       (input.nextStatus === "CONFIRMED" || input.nextStatus === "RECEIVED") &&
       input.expectedCurrentStatus !== "CONFIRMED" &&
       input.expectedCurrentStatus !== "RECEIVED";
@@ -1785,25 +1597,9 @@ export class PaymentRepository {
       reservation &&
       (input.nextStatus === "EXPIRED" || input.nextStatus === "CANCELED" || input.nextStatus === "FAILED") &&
       reservation.status !== "RELEASED" &&
-      reservation.status !== "CONSUMED" &&
-      reservation.status !== "REVERSED" &&
-      reservation.status !== "RECOVERY_HOLD";
+      reservation.status !== "CONSUMED";
 
     if (!shouldConsumeReservation && !shouldReleaseReservation) {
-      const adjustment = reservation
-        ? planReservationFundingAdjustment(reservation, input.nextStatus, input.refundedAmountCents ?? 0)
-        : NO_FUNDING_ADJUSTMENT;
-
-      if (adjustment.kind !== "none") {
-        return this.applyReservationFundingAdjustment({
-          adjustment,
-          expressionAttributeValues,
-          input,
-          reservation: reservation as StoredPaymentReservation,
-          updateParts
-        });
-      }
-
       try {
         await this.documentClient.send(
           new UpdateCommand({
@@ -1848,11 +1644,9 @@ export class PaymentRepository {
     const nextConfirmedAmount = shouldConsumeReservation
       ? state.confirmedAmountCents + reservation.amountCents
       : state.confirmedAmountCents;
-    const nextPartsFunded = shouldConsumeReservation ? state.partsFunded + quantity : state.partsFunded;
-    const fullyFundedThreshold = gift.fractional ? (gift.totalParts ?? 0) : 1;
     const nextFullyFunded =
       nextConfirmedAmount >= gift.totalValueCents ||
-      nextPartsFunded >= fullyFundedThreshold;
+      state.partsFunded + (shouldConsumeReservation ? quantity : 0) >= (gift.fractional ? (gift.totalParts ?? 0) : 1);
 
     const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
       {
@@ -1950,22 +1744,14 @@ export class PaymentRepository {
             // concurrent releaseReservationAfterCheckoutFailure never touches
             // the payment item, so the payment-status condition alone would
             // let both racers decrement the gift counters.
-            //
-            // An allow-list, not a deny-list: only an open reservation holds
-            // the reserved counters this release decrements. A reservation
-            // that became REVERSED or RECOVERY_HOLD between the read and this
-            // write holds nothing, and releasing it would take parts from
-            // whatever other checkout happens to satisfy the global
-            // partsReserved guard.
-            ConditionExpression:
-              "attribute_exists(PK) AND (#status = :pendingCheckout OR #status = :active)",
+            ConditionExpression: "attribute_exists(PK) AND #status <> :released AND #status <> :consumed",
             UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
             ExpressionAttributeNames: {
               "#status": "status"
             },
             ExpressionAttributeValues: {
-              ":active": "ACTIVE",
-              ":pendingCheckout": "PENDING_CHECKOUT",
+              ":consumed": "CONSUMED",
+              ":released": "RELEASED",
               ":reservationStatus": "RELEASED",
               ":updatedAt": now
             }
@@ -2015,331 +1801,12 @@ export class PaymentRepository {
 
       return true;
     } catch (error) {
-      // Items are [0] payment, [1] reservation, [2] gift state, [3] webhook.
-      // A condition failure on the payment or the reservation is a race this
-      // caller loses and the queue redelivers; one on the gift-state counters
-      // is an invariant violation and must stay visible.
-      if (
-        error instanceof ConditionalCheckFailedException ||
-        isExpectedConditionalTransactionCancellation(error, [0, 1])
-      ) {
+      if (error instanceof ConditionalCheckFailedException) {
         return false;
       }
 
       throw error;
     }
-  }
-
-  // Refunds, chargebacks and won disputes move a funded reservation's parts
-  // down or back up. Either direction is one transaction conditioned on the
-  // gift-state version read in the same attempt, so `fullyFunded` and the
-  // availability check for a reinstatement are computed from exactly the
-  // counters the write lands on. A version race re-reads and retries; a
-  // reservation that another writer already moved is a lost race (`false`),
-  // which leaves the webhook unprocessed for the queue to redeliver.
-  private async applyReservationFundingAdjustment(context: {
-    adjustment: ReservationFundingAdjustment;
-    expressionAttributeValues: Record<string, unknown>;
-    input: {
-      eventId?: string;
-      paymentId: string;
-      expectedCurrentStatus: PaymentStatus;
-      nextStatus: PaymentStatus;
-    };
-    reservation: StoredPaymentReservation;
-    updateParts: string[];
-  }): Promise<boolean> {
-    const { adjustment, input, reservation } = context;
-    if (adjustment.kind === "none") {
-      return false;
-    }
-
-    const gift = await this.getGift(reservation.giftId);
-    if (!gift) {
-      throw new AppError("Unknown gift id for funding update.", 400);
-    }
-
-    const buildPaymentUpdate = (now: string) => ({
-      Update: {
-        TableName: this.tableName,
-        Key: paymentKeys(input.paymentId),
-        ConditionExpression: "attribute_not_exists(#status) OR #status = :expectedCurrentStatus",
-        UpdateExpression: `SET ${context.updateParts.join(", ")}`,
-        ExpressionAttributeNames: {
-          "#status": "status"
-        },
-        ExpressionAttributeValues: {
-          ...context.expressionAttributeValues,
-          ":expectedCurrentStatus": input.expectedCurrentStatus,
-          ":updatedAt": now
-        }
-      }
-    });
-    const buildWebhookUpdate = (now: string) =>
-      input.eventId
-        ? [
-            {
-              Update: {
-                TableName: this.tableName,
-                Key: webhookKeys("asaas", input.eventId),
-                ConditionExpression: "attribute_exists(PK)",
-                UpdateExpression: "SET processedAt = :processedAt, processingResult = :processingResult",
-                ExpressionAttributeValues: {
-                  ":processedAt": now,
-                  ":processingResult": "updated"
-                }
-              }
-            }
-          ]
-        : [];
-    // The counter math is derived from the reservation read by the caller;
-    // if another writer moved its status or bookkeeping since, the stale
-    // delta must not land (this is also what makes a redelivered event a
-    // no-op instead of a second decrement).
-    const observedReversedPartsCondition =
-      reservation.reversedParts === undefined
-        ? "(attribute_not_exists(reversedParts) OR reversedParts = :observedReversedParts)"
-        : "reversedParts = :observedReversedParts";
-    const reservationCondition = `attribute_exists(PK) AND #status = :observedStatus AND ${observedReversedPartsCondition}`;
-
-    for (let attempt = 1; attempt <= CHECKOUT_CLEANUP_MAX_ATTEMPTS; attempt += 1) {
-      const state = (await this.getGiftState(reservation.giftId)) ?? defaultGiftState(reservation.giftId);
-      const expectedVersion = state.version ?? 0;
-      const now = new Date().toISOString();
-
-      if (adjustment.kind === "reinstate") {
-        // A free slot is not the same as a slot the reinstated parts fit into.
-        // Count, value and — for EXACT_FINAL_QUOTA — composition all have to
-        // hold, or the gift collects past its own total value.
-        const availableParts = getAvailableParts(gift, state);
-        const soldAmountCents = (state.confirmedAmountCents ?? 0) + (state.reservedAmountCents ?? 0);
-
-        // Only EXACT_FINAL_QUOTA prices its parts to sum to exactly
-        // totalValueCents, so only there is money a real ceiling. A
-        // LEGACY_FIXED_50 gift is meant to over-collect by up to one part, and
-        // the reserve path lets it — the slot count is its ceiling.
-        //
-        // For a self-consistent state the slot count already subsumes the
-        // value check; it stays as a backstop for a gift state that has
-        // drifted from its reservations, where the counts would still agree.
-        const isExactQuota = gift.fundingModelVersion === "EXACT_FINAL_QUOTA";
-        const reinstatesFinalPart =
-          isExactQuota &&
-          Boolean(gift.finalPartValueCents) &&
-          adjustment.partValuesCents.includes(gift.finalPartValueCents as number);
-
-        const holdReason =
-          adjustment.parts > availableParts
-            ? "slots"
-            : isExactQuota && soldAmountCents + adjustment.amountCents > gift.totalValueCents
-              ? "value"
-              : reinstatesFinalPart && isFinalPartSold(gift, state)
-                ? "final_part"
-                : null;
-
-        if (holdReason) {
-          // The freed parts were sold to someone else while the dispute ran.
-          // The money is real, so the payment confirms, but the gift must
-          // not be over-funded: park the reservation for the operator.
-          console.warn(
-            JSON.stringify({
-              metric: "REVERSAL_REINSTATE_HELD",
-              paymentId: input.paymentId,
-              giftId: reservation.giftId,
-              reason: holdReason,
-              partsRequested: adjustment.parts,
-              partsAvailable: availableParts,
-              amountRequestedCents: adjustment.amountCents,
-              soldAmountCents,
-              totalValueCents: gift.totalValueCents
-            })
-          );
-
-          try {
-            await this.documentClient.send(
-              new TransactWriteCommand({
-                TransactItems: [
-                  buildPaymentUpdate(now),
-                  {
-                    Update: {
-                      TableName: this.tableName,
-                      Key: paymentReservationKeys(input.paymentId),
-                      ConditionExpression: reservationCondition,
-                      UpdateExpression: "SET #status = :reservationStatus, updatedAt = :updatedAt",
-                      ExpressionAttributeNames: {
-                        "#status": "status"
-                      },
-                      ExpressionAttributeValues: {
-                        ":observedReversedParts": adjustment.observedReversedParts,
-                        ":observedStatus": reservation.status,
-                        ":reservationStatus": "RECOVERY_HOLD",
-                        ":updatedAt": now
-                      }
-                    }
-                  },
-                  ...buildWebhookUpdate(now)
-                ]
-              })
-            );
-            return true;
-          } catch (error) {
-            if (isExpectedConditionalTransactionCancellation(error, [0, 1])) {
-              return false;
-            }
-            throw error;
-          }
-        }
-      }
-
-      const direction = adjustment.kind === "release" ? -1 : 1;
-      const nextPartsFunded = Math.max(0, (state.partsFunded ?? 0) + direction * adjustment.parts);
-      const nextConfirmedAmount = Math.max(0, (state.confirmedAmountCents ?? 0) + direction * adjustment.amountCents);
-      const fullyFundedThreshold = gift.fractional ? (gift.totalParts ?? 0) : 1;
-      const nextFullyFunded =
-        nextConfirmedAmount >= gift.totalValueCents || nextPartsFunded >= fullyFundedThreshold;
-      const nextReservationStatus: StoredPaymentReservationStatus =
-        adjustment.nextReversedParts >= reservation.quantity ? "REVERSED" : "CONSUMED";
-      const versionCondition =
-        "((attribute_not_exists(version) AND :expectedVersion = :zero) OR version = :expectedVersion)";
-
-      const transactItems: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]>["TransactItems"] = [
-        buildPaymentUpdate(now),
-        {
-          Update: {
-            TableName: this.tableName,
-            Key: paymentReservationKeys(input.paymentId),
-            ConditionExpression: reservationCondition,
-            UpdateExpression:
-              "SET #status = :reservationStatus, reversedParts = :reversedParts, " +
-              "reversedAmountCents = :reversedAmountCents, updatedAt = :updatedAt REMOVE GSI1PK, GSI1SK",
-            ExpressionAttributeNames: {
-              "#status": "status"
-            },
-            ExpressionAttributeValues: {
-              ":observedReversedParts": adjustment.observedReversedParts,
-              ":observedStatus": reservation.status,
-              ":reservationStatus": nextReservationStatus,
-              ":reversedAmountCents": adjustment.nextReversedAmountCents,
-              ":reversedParts": adjustment.nextReversedParts,
-              ":updatedAt": now
-            }
-          }
-        },
-        adjustment.kind === "release"
-          ? {
-              Update: {
-                TableName: this.tableName,
-                Key: giftStateKeys(reservation.giftId),
-                ConditionExpression:
-                  `attribute_exists(PK) AND ${versionCondition} AND ` +
-                  "partsFunded >= :partsDelta AND confirmedAmountCents >= :amountDelta",
-                UpdateExpression:
-                  "SET partsFunded = partsFunded - :partsDelta, " +
-                  "confirmedAmountCents = confirmedAmountCents - :amountDelta, " +
-                  "updatedAt = :updatedAt, " +
-                  "version = if_not_exists(version, :zero) + :versionIncrement, " +
-                  "fullyFunded = :fullyFunded",
-                ExpressionAttributeValues: {
-                  ":amountDelta": adjustment.amountCents,
-                  ":expectedVersion": expectedVersion,
-                  ":fullyFunded": nextFullyFunded,
-                  ":partsDelta": adjustment.parts,
-                  ":updatedAt": now,
-                  ":versionIncrement": 1,
-                  ":zero": 0
-                }
-              }
-            }
-          : {
-              Update: {
-                TableName: this.tableName,
-                Key: giftStateKeys(reservation.giftId),
-                // Availability was checked in code against this same version;
-                // condition expressions cannot do the arithmetic themselves.
-                ConditionExpression: `attribute_exists(PK) AND ${versionCondition}`,
-                UpdateExpression:
-                  "SET partsFunded = if_not_exists(partsFunded, :zero) + :partsDelta, " +
-                  "confirmedAmountCents = if_not_exists(confirmedAmountCents, :zero) + :amountDelta, " +
-                  "updatedAt = :updatedAt, lastConfirmedPaymentId = :paymentId, " +
-                  "version = if_not_exists(version, :zero) + :versionIncrement, " +
-                  "fullyFunded = :fullyFunded",
-                ExpressionAttributeValues: {
-                  ":amountDelta": adjustment.amountCents,
-                  ":expectedVersion": expectedVersion,
-                  ":fullyFunded": nextFullyFunded,
-                  ":partsDelta": adjustment.parts,
-                  ":paymentId": input.paymentId,
-                  ":updatedAt": now,
-                  ":versionIncrement": 1,
-                  ":zero": 0
-                }
-              }
-            }
-      ];
-
-      // The shell mirrors whether the checkout still funds anything; a
-      // partial release leaves it consumed.
-      if (nextReservationStatus === "REVERSED" || adjustment.kind === "reinstate") {
-        transactItems.push({
-          Update: {
-            TableName: this.tableName,
-            Key: paymentShellKeys(input.paymentId),
-            ConditionExpression: "attribute_exists(PK)",
-            UpdateExpression: "SET shellStatus = :shellStatus, updatedAt = :updatedAt",
-            ExpressionAttributeValues: {
-              ":shellStatus": nextReservationStatus === "REVERSED" ? "CHECKOUT_RELEASED" : "CHECKOUT_CONSUMED",
-              ":updatedAt": now
-            }
-          }
-        });
-      }
-      transactItems.push(...buildWebhookUpdate(now));
-
-      try {
-        await this.documentClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
-        return true;
-      } catch (error) {
-        if (isExpectedConditionalTransactionCancellation(error, [0, 1])) {
-          return false;
-        }
-
-        if (isExpectedConditionalTransactionCancellation(error, [2])) {
-          const latest = await this.getGiftState(reservation.giftId);
-          const versionMoved = (latest?.version ?? 0) !== expectedVersion;
-          if (versionMoved && attempt < CHECKOUT_CLEANUP_MAX_ATTEMPTS) {
-            const delayMs = Math.floor(Math.random() * CHECKOUT_CLEANUP_RETRY_BASE_MS * 2 ** (attempt - 1));
-            console.warn(
-              JSON.stringify({
-                metric: "REVERSAL_TRANSACTION_VERSION_RETRY",
-                paymentId: input.paymentId,
-                giftId: reservation.giftId,
-                attempt,
-                maxAttempts: CHECKOUT_CLEANUP_MAX_ATTEMPTS,
-                delayMs
-              })
-            );
-            await delay(delayMs);
-            continue;
-          }
-        }
-
-        if (isConditionalTransactionCancellation(error)) {
-          console.error(
-            JSON.stringify({
-              metric: "REVERSAL_TRANSACTION_INVARIANT_VIOLATION",
-              paymentId: input.paymentId,
-              giftId: reservation.giftId,
-              adjustment: adjustment.kind,
-              error: (error as Error).message
-            })
-          );
-        }
-
-        throw error;
-      }
-    }
-
-    throw new Error("Reservation funding adjustment retry loop exited unexpectedly.");
   }
 
   async listStaleOpenReservations(cutoffIso: string, limit = 25): Promise<StoredPaymentReservation[]> {
