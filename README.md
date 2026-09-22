@@ -2,22 +2,17 @@
 
 AWS-first monorepo for the Brimax wedding platform on **December 6, 2026**.
 
-## Proprietary software
+## License
 
-Brimax Life is proprietary software. It is not open source and is not licensed
-under MIT or any other public software license. The source code and related
-materials are confidential and may not be copied, modified, redistributed,
-resold, commercially used, or used to create a competing product without prior
-written permission.
+Brimax Life is licensed under the Apache License, Version 2.0. See
+[LICENSE](LICENSE) for the complete terms and conditions.
 
 Copyright (c) 2026 MAXUEL GUIMARAES REIS CONSULTORIA EM TECNOLOGIA DA INFORMACAO
-(CNPJ 42.781.389/0001-08). Original author: Maxuel Guimarães Reis. All rights
-reserved. See [LICENSE](LICENSE).
+(CNPJ 42.781.389/0001-08). Original author: Maxuel Guimarães Reis.
 
-Repository access does not grant ownership or a continuing license. Developers
-must sign the applicable employment, services, confidentiality, and intellectual
-property agreement before receiving access. Contributions are governed by
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Repository access and project materials may remain subject to separate
+confidentiality and intellectual-property agreements. Contributions are
+governed by [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Dependencies, images, fonts, icons, templates, and other third-party materials
 remain subject to their respective licenses; this notice does not relicense
